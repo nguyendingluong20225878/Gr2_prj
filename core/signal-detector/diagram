@@ -1,0 +1,60 @@
++------------------------+
+|  Input: DetectorParams |
+|------------------------|
+| formattedTweets        |
+| knownTokens            |
++-----------+------------+         
+            |
+            v
++------------------------+
+|  Build Prompt          |
+|------------------------|
+| signalPromptTemplate   |
+| + knownTokensBlock     |
+| + formattedTweets JSON |
++-----------+------------+
+            |
+            v
++------------------------+
+|      Chat Model        |
+|------------------------|
+| OpenAI / Azure LLM     |
+| - đọc prompt           |
+| - phân tích sentiment  |
+| - dự đoán tín hiệu     |
++-----------+------------+
+            |
+            v
++------------------------+
+|      Parser            |
+|------------------------|
+| StructuredOutputParser |
+| - Validate JSON output |
+| - Convert to TS object |
++-----------+------------+
+            |
+            v
++------------------------+
+|  Output: LlmSignalResponse  |
+|-----------------------------|
+| signalDetected: true         |
+| tokenAddress: "SOL"          |
+| suggestionType: "buy"        |
+| strength: 80                 |
+| confidence: 0.9              |
+| reasoning: "SOL tweets..."   |
+| relatedTweetIds: ["t1"]      |
++-----------------------------+
+
+
+Input: danh sách tweets + token quan tâm
+Prompt: template + biến → tạo prompt LLM đọc
+Chat Model: LLM đọc prompt, phân tích, dự đoán tín hiệu
+Parser: validate output JSON và convert thành object TypeScript
+
+Output: LlmSignalResponse dùng cho UI, báo cáo hoặc workflow tiếp theo
+
+
+
+//////////////////////////////////////////////////
+Tweet → Prompt → LLM → Map → DB

@@ -1,0 +1,34 @@
+{
+  "name": "gr2_project",
+  "version": "1.0.0",
+  "description": "GR2 Project - Monorepo for Web3 Signal Detection and Proposal Generation",
+  "private": true,
+  "packageManager": "npm@10.8.1",
+  "workspaces": [
+    "apps/*",
+    "core/*",
+    "services/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "test": "turbo run test"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@types/mongoose": "^5.11.96",
+    "@types/node": "^24.10.1",
+    "@types/selenium-webdriver": "^4.35.4",
+    "turbo": "^2.6.1",
+    "typescript": "^5.9.3",
+    "vitest": "^1.6.1"
+  },
+  "dependencies": {
+    "mongoose": "^9.0.0",
+    "selenium-webdriver": "^4.38.0"
+  }
+}

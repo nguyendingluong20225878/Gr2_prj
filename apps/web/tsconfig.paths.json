@@ -1,0 +1,8 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@gr2/shared": ["../../core/shared/src"]
+    }
+  }
+}

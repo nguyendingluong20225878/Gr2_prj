@@ -1,0 +1,58 @@
+
+# --- Dependencies & Logs (Áp dụng cho toàn bộ dự án) ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+*.log
+
+# --- TurboRepo ---
+.turbo/
+
+# --- Environment Variables (BẢO MẬT: Rất quan trọng) ---
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.env
+# Giữ lại file ví dụ để team biết cần cấu hình gì
+!.env.example
+
+# --- Build Outputs (TypeScript & Packages) ---
+dist/
+build/
+lib/
+*.tsbuildinfo
+
+# --- Next.js (apps/web) ---
+.next/
+out/
+next-env.d.ts
+.vercel/
+
+# --- IDE & System Files ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# --- Testing ---
+coverage/
+junit.xml
+test-results/
+
+
+# --- Specific Project Data (Dữ liệu scraper/crawler) ---
+# Dựa trên file bạn đã upload: core/x-scaper/cookies/...
+# Bạn TUYỆT ĐỐI không nên push cookies thật lên git
+core/x-scaper/cookies/*.json
+!core/x-scaper/cookies/.gitkeep
+
+# Ignore các file zip pack trong Next.js cache (đã thấy trong list file của bạn)
+*.pack
+*.pack.gz

@@ -1,0 +1,22 @@
+luong@NGUYENDINHLUONG:/mnt/c/Users/luong/Desktop/GR2/GR2_project/core/signal-detector$ npx tsx scripts/run-detection.ts
+[dotenv@17.2.3] injecting env from .env -- tip: ✅ audit secrets and track compliance: https://dotenvx.com/ops
+DEBUG: MONGODB_URI present? true
+Detection result: {
+  signalDetected: true,
+  tokenAddress: 'EPjF...',
+  sources: [
+    {
+      url: 'https://x.com/OnchainLens/status/1921886124303380660',
+      label: 'Tweet by @OnchainLens'
+    }
+  ],
+  sentimentScore: -0.5,
+  suggestionType: 'sell',
+  strength: 75,
+  confidence: 0.8,
+  reasoning: 'The tweet indicates a significant whale movement involving a $40.5M deposit of USDC to increase short positions on major cryptocurrencies, suggesting bearish sentiment towards BTC, ETH, and SOL. This could lead to downward pressure on USDC as the whale is leveraging against these assets.',
+  relatedTweetIds: [ '6949bb675c4f36f068626216' ],
+  reasonInvalid: '',
+  impactScore: 7
+}
+Signal saved to DB
