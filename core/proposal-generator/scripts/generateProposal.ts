@@ -15,9 +15,9 @@ const main = async () => {
     process.exit(1);
   }
 
-  if (!signalId) {
+if (!signalId) {
     const { fetchLatestSignal } = await import("../src/utils/db");
-    let latest;
+    let latest: any; // Dùng any tạm thời hoặc để TypeScript tự suy luận
     try {
       latest = await fetchLatestSignal();
     } catch (err: any) {
@@ -26,16 +26,22 @@ const main = async () => {
         err?.message ?? err,
       );
       console.error(
-        `Check MONGODB_URI, network access (Atlas IP whitelist), and credentials. You can test with: mongosh "<your uri>"`
+        `Check MONGODB_URI, network access (Atlas IP whitelist), and credentials.`
       );
       process.exit(1);
     }
 
-    if (!latest) {
+    
+    // Kiểm tra nếu latest là mảng thì lấy phần tử đầu tiên, nếu không thì giữ nguyên
+    const signalDoc = Array.isArray(latest) ? latest[0] : latest;
+
+    if (!signalDoc) {
       console.error("No signals found in DB; please provide a SIGNAL_ID.");
       process.exit(1);
     }
-    signalId = String(latest._id);
+    
+    // Lấy _id từ signalDoc đã được xử lý
+    signalId = String(signalDoc._id);
     console.log("Using latest signal:", signalId);
   }
 

@@ -9,18 +9,10 @@ const primary = dotenv.config();
 if (!process.env.MONGODB_URI) {
   const rootEnv = path.resolve(__dirname, '../../.env');
   const alt = dotenv.config({ path: rootEnv });
-  console.log(
-    'dotenv primary:',
-    primary.error ? 'not loaded' : 'loaded',
-    'alt:',
-    alt.error ? 'not loaded' : `loaded from ${rootEnv}`
-  );
 }
 
-console.log('DEBUG: MONGODB_URI present?', Boolean(process.env.MONGODB_URI));
-
 // =======================
-// 2. Imports (safe ones)
+// 2. Imports
 // =======================
 import { detectSignalWithLlm } from '../src/detector';
 import { saveSignalToDb } from '../src/persistence';
@@ -32,104 +24,93 @@ async function waitForDbConnect(retries = 3, delayMs = 2000) {
   const { connectToDatabase, disconnectFromDatabase } = await import(
     '../../shared/src/db/connection.js'
   );
-
-  let lastErr: any = null;
-
-  for (let i = 0; i < retries; i++) {
-    try {
-      const conn = await connectToDatabase();
-      return { conn, disconnectFromDatabase };
-    } catch (err) {
-      lastErr = err;
-      console.warn(`connectToDatabase attempt ${i + 1} failed:`, err);
-      if (i + 1 < retries) {
-        await new Promise((r) => setTimeout(r, delayMs));
-      }
-    }
-  }
-
-  throw lastErr;
+  await connectToDatabase();
+  return { disconnectFromDatabase };
 }
 
 // =======================
 // 4. Main runner
 // =======================
 (async () => {
-  // ⚠️ khai báo ở scope ngoài
   let disconnectFromDatabase: (() => Promise<void>) | undefined;
 
   try {
-    if (!process.env.MONGODB_URI) {
-      throw new Error('MONGODB_URI is not set');
-    }
+    if (!process.env.MONGODB_URI) throw new Error('MONGODB_URI is not set');
 
-    // ---- Connect DB
-    const db = await waitForDbConnect(3, 2000);
+    console.log('🌱 Connecting to Database...');
+    const db = await waitForDbConnect();
     disconnectFromDatabase = db.disconnectFromDatabase;
 
-    // ---- Import models AFTER DB connect
-    const { tweetTable } = await import(
-      '../../shared/src/db/schema/tweets.js'
-    );
+    // Load Resources from DB
+    const { tweetTable } = await import('../../shared/src/db/schema/tweets.js');
+    const { tokensTable } = await import('../../shared/src/db/schema/tokens.js');
 
-    // ---- Fetch tweets
-    const tweets = await tweetTable
-      .find()
-      .sort({ tweetTime: -1 })
-      .limit(10)
-      .lean();
+    // 1. Lấy Tweets mới nhất
+    const tweets = await tweetTable.find().sort({ tweetTime: -1 }).limit(30).lean(); // Tăng lên 30 để AI có nhiều context
+    console.log(`Loaded ${tweets.length} tweets from DB.`);
 
     const formattedTweets = tweets.map((t: any) => ({
       id: t._id?.toString?.() ?? String(t._id),
       text: t.content,
       author: t.authorId ?? t.author ?? 'unknown',
-      time: t.tweetTime
-        ? new Date(t.tweetTime).toISOString()
-        : new Date().toISOString(),
+      time: t.tweetTime ? new Date(t.tweetTime).toISOString() : new Date().toISOString(),
       url: t.url || '',
     }));
 
-    // ---- Known tokens (demo)
-    const knownTokens = [
-      {
-        address: 'EPjF...',
-        symbol: 'USDC',
-        name: 'USD Coin',
-      },
-    ];
+    // 2. Lấy Tokens
+    const dbTokens = await tokensTable.find({}).lean();
+    const knownTokens = dbTokens.map((t: any) => ({
+      address: t.address,
+      symbol: t.symbol,
+      name: t.name,
+    }));
+    console.log(`Loaded ${knownTokens.length} known tokens.`);
 
-    // ---- Detect signal
+    // 3. CHẠY PHÂN TÍCH (AGGREGATION MODE)
+    console.log('🧠 Running AI Aggregation Analysis...');
+    
     const result = await detectSignalWithLlm({
       formattedTweets,
       knownTokens,
     });
 
-    console.log('Detection result:', result);
+    // 4. Xử lý kết quả
+    if (result.signals && result.signals.length > 0) {
+      console.log(`\n=== 🚀 PHÁT HIỆN ${result.signals.length} TÍN HIỆU ===`);
+      
+      for (const signal of result.signals) {
+        console.log(`------------------------------------------------`);
+        console.log(`Token:      ${signal.tokenSymbol}`);
+        console.log(`Action:     ${signal.action} (Confidence: ${signal.confidence}%)`);
+        console.log(`Reason:     ${signal.reason}`);
+        console.log(`Sources:    ${signal.relatedTweetIds.length} tweets aggregated`);
 
-    // ---- Save if valid
-    if (result.signalDetected) {
-      await saveSignalToDb(result);
-      console.log('Signal saved to DB');
-    }
+        // Tìm address để lưu vào DB
+        const tokenInfo = knownTokens.find(t => t.symbol === signal.tokenSymbol);
+        
+        // Map sang object Signal DB
+        const signalToSave = {
+           ...signal,
+           tokenAddress: tokenInfo?.address || "unknown",
+           // Thêm metadata
+           type: "social_aggregation",
+           tweetCount: signal.relatedTweetIds.length,
+        };
 
-    // ---- Clean exit
-    if (disconnectFromDatabase) {
-      await disconnectFromDatabase();
-    }
-
-    process.exit(0);
-  } catch (err) {
-    console.error('Error in run-detection:', err);
-
-    // ---- Always try to cleanup
-    try {
-      if (disconnectFromDatabase) {
-        await disconnectFromDatabase();
+        await saveSignalToDb(signalToSave as any);
+        console.log(`✅ Saved to DB.`);
       }
-    } catch {
-      // ignore cleanup errors
+    } else {
+      console.log('\n=== 😴 KHÔNG TÌM THẤY TÍN HIỆU RÕ RÀNG ===');
+      console.log('Có thể do tweet không liên quan hoặc thông tin trái chiều chưa đủ độ tin cậy.');
     }
 
+    if (disconnectFromDatabase) await disconnectFromDatabase();
+    process.exit(0);
+
+  } catch (err) {
+    console.error('❌ Error:', err);
+    if (disconnectFromDatabase) await disconnectFromDatabase();
     process.exit(1);
   }
 })();

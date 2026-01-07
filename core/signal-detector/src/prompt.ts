@@ -1,92 +1,63 @@
 import { PromptTemplate } from "@langchain/core/prompts";
 import type { KnownTokenType } from "./types";
 
-
 export function buildKnownTokensBlock(knownTokens: KnownTokenType[]): string {
   if (!knownTokens || knownTokens.length === 0) {
     return "No specific tokens are pre-identified; analyze for any relevant crypto signals.";
   }
+  // Chỉ lấy các trường cần thiết để tiết kiệm token
   const tokensJson = JSON.stringify(
     knownTokens.map(({ symbol, name, address }) => ({ symbol, name, address })),
     null,
     2,
   );
   return `Only analyze signals for the following known tokens:
-
-        START_KNOWN_TOKENS_BLOCK
-         ${tokensJson}
-        END_KNOWN_TOKENS_BLOCK`;
-
+  ${tokensJson}
+  `;
 }
 
-//Template
+// Template mới theo tư duy "Aggregation" (Gộp nhóm)
 export const signalPromptTemplate = new PromptTemplate({
   template: `
-You are a crypto market analyst.
+You are a Senior Crypto Hedge Fund Analyst.
+Your specialty is "Sentiment Aggregation" and "News-based Trading".
 
-Your job is simple:
-Based ONLY on the tweets below, decide whether there is a clear and actionable signal
-that could realistically affect the price of a crypto token.
-
-Do not use outside knowledge.
-Do not guess.
-If the information is weak or unclear, return no signal.
-
---------------------
-TWEETS (JSON):
-{formattedTweets}
---------------------
-
+INPUT DATA:
+1. KNOWN TOKENS (Whitelist):
 {knownTokensBlock}
 
-Rules:
-- Analyze ONLY tokens listed in the known tokens block.
-- Ignore tweets unrelated to those tokens.
-- It is always better to return "no signal" than to make assumptions.
+2. RECENT TWEETS (Raw Data):
+{formattedTweets}
 
-What counts as a strong signal:
-1. Large or whale buy/sell activity.
-2. Official announcements from the project or founders.
-3. Major liquidity changes on well-known DEXs.
-4. Reports from reputable crypto news sources.
+YOUR MISSION:
+Analyze the tweets to find trading signals for the Known Tokens by AGGREGATING information.
 
-How to judge:
-- Ask: “Is this information likely to move price, not just sentiment?”
-- Source credibility matters more than likes or retweets.
-- Be conservative if details are missing.
+PROCESS (Step-by-Step):
 
-Output:
-Return exactly ONE JSON object following the schema below.
+1. **GROUPING**: 
+   - Scan all tweets and group them by the Token they mention.
+   - Example: Gather all tweets mentioning "SOL" or "Solana" into one cluster.
+   - Ignore tweets regarding tokens NOT in the Known List.
 
-If a signal exists:
-- Set signalDetected = true
-- Identify the token (only if explicit)
-- Explain briefly why this could impact price
-- Estimate sentiment, strength, impact, and confidence
+2. **AGGREGATION & ANALYSIS** (For each token cluster):
+   - **Consensus Check**: Do most tweets agree? (e.g. 3 tweets say Buy, 0 say Sell -> High Confidence).
+   - **Conflict Resolution**: If one tweet says "Buy" and another says "Sell":
+     - Prioritize tweets from influential authors (if discernable) or breaking news over random opinions.
+     - If the conflict is unresolved, set Action to "HOLD" or lower the Confidence score.
+   - **Noise Filtering**: Ignore spam or vague tweets like "SOL into the moon" without context.
 
-If no signal exists:
-- Set signalDetected = false
-- Briefly explain why the tweets are not strong enough
+3. **SIGNAL GENERATION**:
+   - Create ONE signal object per Token (if there is relevant info).
+   - The "reason" field must summarize ALL tweets used for that token.
+   - The "relatedTweetIds" must include IDs of all tweets used in the analysis for that token.
 
-Required JSON schema:
-{{
-  "signalDetected": boolean,
-  "tokenAddress": "string",
-  "sources": [{{ "url": "string", "label": "string" }}],
-  "sentimentScore": "number (-1.0 to 1.0)",
-  "suggestionType": "buy | sell | hold | close_position | stake",
-  "strength": "number (1-100 or null)",
-  "confidence": "number (0.0-1.0 or null)",
-  "reasoning": "string",
-  "relatedTweetIds": ["string"],
-  "reasonInvalid": "string (only if signalDetected is false)",
-  "impactScore": "number (1-10 or null)"
-}}
+RESPONSE FORMAT:
+{formatInstructions}
 
-Output ONLY the raw JSON.
-No markdown.
-No extra text.
+IMPORTANT:
+- Output ONLY the raw JSON based on the format instructions above.
+- Do not add markdown blocks or extra text.
 `,
-  inputVariables: ["formattedTweets", "knownTokensBlock"],
+  // Lưu ý: formatInstructions được LangChain tự động điền vào
+  inputVariables: ["formattedTweets", "knownTokensBlock", "formatInstructions"],
 });
-

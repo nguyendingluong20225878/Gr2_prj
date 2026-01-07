@@ -1,10 +1,5 @@
 import { LangGraphRunnableConfig } from "@langchain/langgraph";
-import { 
-  fetchUser, 
-  fetchTokenPrices, 
-  fetchTweets, 
-  fetchUserBalances 
-} from "../utils/db"; 
+import { fetchUser, fetchTokenPrices, fetchTweets } from "../utils/db"; 
 import { proposalGeneratorState } from "../utils/state";
 
 export const dataFetchNode = async (
@@ -12,32 +7,52 @@ export const dataFetchNode = async (
   options: LangGraphRunnableConfig,
 ) => {
   const userId = options.configurable?.userId;
-  // Lấy tokenAddress từ signal (đã được lưu bởi signalValidationNode)
-  const address = state.signal?.tokenAddress; 
+  // Lấy địa chỉ Token từ tín hiệu (Ví dụ: So11111111111111111111111111111111111111112)
+  const signalTokenAddress = state.signal?.tokenAddress; 
 
-  console.log(`[Data Fetch] Fetching data for User: ${userId}, Address: ${address}`);
+  console.log(`[Data Fetch] Fetching data for User: ${userId}, Token Address: ${signalTokenAddress}`);
 
-  const [user, tokenPrices, latestTweets, userBalance] = await Promise.all([
-    fetchUser(userId),
-    fetchTokenPrices(address),
-    fetchTweets(address),
-    fetchUserBalances(userId)
+  // 1. Fetch User (Lấy toàn bộ object User bao gồm cả mảng balances)
+  const user = await fetchUser(userId);
+  
+  // 2. Fetch dữ liệu thị trường song song
+  const [tokenPrices, latestTweets] = await Promise.all([
+    fetchTokenPrices(signalTokenAddress),
+    fetchTweets(signalTokenAddress),
   ]);
 
-  // ĐẢM BẢO DỮ LIỆU LUÔN TỒN TẠI ĐỂ TRÁNH LỖI Ở NODE TIẾP THEO
+  // 3. LOGIC MỚI: Trích xuất Balance từ mảng 'balances' bên trong User
+  let currentBalanceVal = "0";
+  
+  if (user && Array.isArray(user.balances)) {
+     console.log(`[Data Fetch] Found user wallet with ${user.balances.length} tokens.`);
+     
+     // Tìm token trùng khớp với tín hiệu
+     const found = user.balances.find((b: any) => b.tokenAddress === signalTokenAddress);
+     
+     if (found) {
+         currentBalanceVal = found.balance;
+         console.log(`[Data Fetch] ✅ User holds ${currentBalanceVal} of this token.`);
+     } else {
+         console.log(`[Data Fetch] ⚠️ User does not hold this token.`);
+     }
+  } else {
+      console.log(`[Data Fetch] User has no balance records.`);
+  }
+
+  // 4. Tạo object userBalance chuẩn để đưa vào Prompt cho AI
+  const userBalanceObj = {
+      tokenAddress: signalTokenAddress || "unknown",
+      balance: currentBalanceVal,
+      // Có thể thêm tổng tài sản để AI cân đối rủi ro
+      totalAssetUsd: user?.totalAssetUsd || 0 
+  };
+
   return {
-    // Nếu không có user trong DB, tạo object giả với ID hiện tại
-    user: user || { id: userId, username: "dev-user" },
-    
-    // Luôn trả về mảng (dù rỗng) cho tokenPrices và latestTweets
+    // Trả về user (nếu null thì fallback về object rỗng để tránh lỗi)
+    user: user || { _id: userId, name: "Unknown User" },
     tokenPrices: tokenPrices || [],
     latestTweets: latestTweets || [],
-    
-    // Nếu không có balance, trả về object mặc định với số dư bằng 0
-    userBalance: userBalance || { 
-      tokenAddress: address || "unknown", 
-      balance: "0", 
-      updatedAt: new Date() 
-    },
+    userBalance: userBalanceObj, // <--- Dữ liệu đã xử lý chính xác
   };
 };
