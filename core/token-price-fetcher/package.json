@@ -1,5 +1,5 @@
 {
-  "name": "@daiko-ai/token-price-fetcher",
+  "name": "@-ai/token-price-fetcher",
   "version": "1.0.0",
   "private": true,
   "main": "./dist/index.js",

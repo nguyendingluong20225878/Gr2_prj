@@ -69,10 +69,10 @@ If no signal exists:
 - Briefly explain why the tweets are not strong enough
 
 Required JSON schema:
-{
+{{
   "signalDetected": boolean,
   "tokenAddress": "string",
-  "sources": [{ "url": "string", "label": "string" }],
+  "sources": [{{ "url": "string", "label": "string" }}],
   "sentimentScore": "number (-1.0 to 1.0)",
   "suggestionType": "buy | sell | hold | close_position | stake",
   "strength": "number (1-100 or null)",
@@ -81,7 +81,7 @@ Required JSON schema:
   "relatedTweetIds": ["string"],
   "reasonInvalid": "string (only if signalDetected is false)",
   "impactScore": "number (1-10 or null)"
-}
+}}
 
 Output ONLY the raw JSON.
 No markdown.

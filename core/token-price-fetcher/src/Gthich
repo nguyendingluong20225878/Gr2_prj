@@ -1,0 +1,19 @@
+server.ts //lệnh (chạy 1 lần, định kì, lấy 1 token)
+   ↓
+process.ts //điều phối 
+   ↓
+TokenPriceService //lấy token
+   ├─ Jupiter API //Lấy giá token  (gọi API thật - nhận JSON - Parse giá)
+   ├─ Batch + rate limit // (chia token -> nhóm nhỏ (30 token) )
+   ├─ Optional DB // check DB
+   └─ Logging // In log 
+
+Jupiter API
+   ↓
+TokenPriceService
+   ↓
+Update token_prices (giá hiện tại)
+   ↓
+Insert token_price_history (lịch sử)
+   ↓
+(Cron) Update token_price_24h_ago_view

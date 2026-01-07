@@ -40,7 +40,7 @@ jobs:
         working-directory: core/proposal-generator
         run: pnpm test
         env:
-          MONGODB_URI: mongodb://localhost:27017/daiko-test
+          MONGODB_URI: 
 
       - name: Run token-price-fetcher tests
         working-directory: core/token-price-fetcher

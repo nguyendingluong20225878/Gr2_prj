@@ -1,5 +1,5 @@
 import "dotenv/config";
-import cron from "node-cron";
+import cron from "node-cron";//lập lịch
 import { processTokenPrices } from "./process";
 
 /**
@@ -13,7 +13,7 @@ async function main() {
 
   // Phân tích các đối số dòng lệnh
   const args = process.argv.slice(2);
-  const isCronMode = args.includes("--cron");
+  const isCronMode = args.includes("--cron");//có chạy cron không
   const tokenArg = args.find((arg) => arg.startsWith("--token="));
   const specificTokenAddress = tokenArg?.split("=")[1];
 
@@ -27,7 +27,7 @@ async function main() {
 
   // chế độ CRON
   if (isCronMode) {
-    const cronExpression = process.env.PRICE_UPDATE_CRON || "*/10 * * * *"; 
+    const cronExpression = process.env.PRICE_UPDATE_CRON || "*/30 * * * *"; 
     console.log(`chế độ CRON: ${cronExpression}`);
 
     cron.schedule(cronExpression, async () => {

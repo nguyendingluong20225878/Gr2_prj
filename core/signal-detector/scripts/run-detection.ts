@@ -30,7 +30,7 @@ import { saveSignalToDb } from '../src/persistence';
 // =======================
 async function waitForDbConnect(retries = 3, delayMs = 2000) {
   const { connectToDatabase, disconnectFromDatabase } = await import(
-    '../../shared/src/db/connection'
+    '../../shared/src/db/connection.js'
   );
 
   let lastErr: any = null;
@@ -69,7 +69,7 @@ async function waitForDbConnect(retries = 3, delayMs = 2000) {
 
     // ---- Import models AFTER DB connect
     const { tweetTable } = await import(
-      '../../shared/src/db/schema/tweets'
+      '../../shared/src/db/schema/tweets.js'
     );
 
     // ---- Fetch tweets

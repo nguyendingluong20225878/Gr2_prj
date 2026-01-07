@@ -1,9 +1,6 @@
 import { TokenPriceService } from "./services/token-price-service";
 
-/**
- * Core function to run the token price update process.
- * Designed to be callable from any environment.
- */
+//core function to run the token price update process
 export async function processTokenPrices(options?: { specificTokenAddress?: string }): Promise<{
   success: boolean;
   message: string;

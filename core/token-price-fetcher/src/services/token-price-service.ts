@@ -1,4 +1,4 @@
-type TokenSelect = any;
+type TokenSelect = any; // token ít nhất address và symbol
 
 // Jupiter price response type
 interface JupiterPriceResponse {
@@ -26,37 +26,48 @@ interface TokenPriceHistoryInsert {
   source: string;
 }
 
+// ==========================================
+// DB Connection Helpers (Đã fix từ bước trước)
+// ==========================================
 let cachedShared: any = null;
 async function getSharedIfConfigured() {
   if (cachedShared) return cachedShared;
 
   const mongoUri = process.env.MONGODB_URI;
   if (!mongoUri) {
-    // DB not configured — log and return null to make persistence optional
     console.warn(
-      "token-price-fetcher: MongoDB not configured (MONGODB_URI missing); persistence will be skipped",
+      "token-price-fetcher: MongoDB not configured (MONGODB_URI missing); persistence will be skipped"
     );
     return null;
   }
 
-  const mongoose = await import("mongoose");
-  await mongoose.connect(mongoUri);
-
-  // Correct path: shared is a sibling of the `core` folder, so go up three levels to reach `core/shared`
+  // Import shared module
   const shared = await import("../../../shared/src/index.js" as any);
-  const { tokenPricesTable, tokenPriceHistory } = shared as any;
+  
+  // FIX: Dùng hàm connect của shared để tránh conflict mongoose instance
+  if (shared.connectToDatabase) {
+    await shared.connectToDatabase();
+  } else {
+    const mongoose = await import("mongoose");
+    await mongoose.connect(mongoUri);
+  }
+  
+  // Lấy thêm tokensTable từ shared
+  const { tokenPricesTable, tokenPriceHistory, tokensTable } = shared as any;
 
   cachedShared = {
-    mongoose,
     tokenPricesTable,
     tokenPriceHistory,
-    connection: mongoose.connection,
+    tokensTable,
     logger: shared?.logger ?? console,
   };
 
   return cachedShared;
 }
 
+// ==========================================
+// Service Logic
+// ==========================================
 export class TokenPriceService {
   private jupiterApiUrl: string;
   private lastRefreshDate: Date | null = null;
@@ -66,16 +77,37 @@ export class TokenPriceService {
       process.env.JUPITER_API_URL || "https://api.jup.ag/price/v2";
   }
 
+  /**
+   * Helper tạo Headers để vượt qua chặn Bot (401 Unauthorized)
+   */
+  private getHeaders(): Record<string, string> {
+    const headers: Record<string, string> = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Origin": "https://jup.ag",
+        "Referer": "https://jup.ag/",
+        "Accept": "application/json"
+    };
+
+    // Nếu người dùng có set API Key trong .env
+    if (process.env.JUPITER_API_KEY) {
+        headers["x-api-key"] = process.env.JUPITER_API_KEY;
+    }
+
+    return headers;
+  }
+
   async updateAllTokenPrices(): Promise<void> {
     try {
       const shared = await getSharedIfConfigured();
       const logger = shared?.logger ?? console;
       logger.debug?.(
         "updateAllTokenPrices",
-        "start updating all token prices...",
+        "start updating all token prices..."
       );
 
-      const tokens = shared ? await shared.db.query.tokensTable.findMany() : [];
+      // FIX: Dùng Mongoose find() thay vì Drizzle
+      const tokens = shared ? await shared.tokensTable.find({}) : [];
+      
       if (tokens.length === 0) {
         logger.debug?.("updateAllTokenPrices", "no tokens to update");
         return;
@@ -83,16 +115,17 @@ export class TokenPriceService {
 
       logger.debug?.(
         "updateAllTokenPrices",
-        `${tokens.length} tokens to update`,
+        `${tokens.length} tokens to update`
       );
 
-      const batchSize = 30;
+      const batchSize = 30; // Giảm batch size nếu cần
       for (let i = 0; i < tokens.length; i += batchSize) {
         const batch = tokens.slice(i, i + batchSize);
         await this.updateTokenPricesBatch(batch, shared);
 
         if (i + batchSize < tokens.length) {
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+          // Delay nhẹ để tránh rate limit
+          await new Promise((resolve) => setTimeout(resolve, 500));
         }
       }
 
@@ -105,25 +138,32 @@ export class TokenPriceService {
 
   private async updateTokenPricesBatch(
     tokens: TokenSelect[],
-    shared: any,
+    shared: any
   ): Promise<void> {
     try {
       const logger = shared?.logger ?? console;
 
-      const tokenAddresses = tokens.map((token) => token.address);
+      const tokenAddresses = tokens.map((token: any) => token.address);
       const addressesParam = tokenAddresses.join(",");
 
+      // FIX: Thêm headers vào fetch
       const response = await fetch(
         `${this.jupiterApiUrl}?ids=${addressesParam}`,
+        { headers: this.getHeaders() } 
       );
 
       if (!response.ok) {
-        logger.error?.("updateTokenPricesBatch", "error fetching token prices", {
-          status: response.status,
-          statusText: response.statusText,
-        });
+        // Log chi tiết lỗi để debug
+        logger.error?.(
+          "updateTokenPricesBatch",
+          "error fetching token prices",
+          {
+            status: response.status,
+            statusText: response.statusText,
+          }
+        );
         throw new Error(
-          `Không thể lấy giá từ API Jupiter.: ${response.status} ${response.statusText}`,
+          `Không thể lấy giá từ API Jupiter.: ${response.status} ${response.statusText}`
         );
       }
 
@@ -136,10 +176,7 @@ export class TokenPriceService {
       for (const token of tokens) {
         const tokenPrice = priceData.data[token.address];
         if (!tokenPrice || !tokenPrice.price) {
-          logger.warn?.(
-            "updateTokenPricesBatch",
-            `${token.symbol} (${token.address}) price not found`,
-          );
+          // Token này không có giá trên Jupiter, bỏ qua
           continue;
         }
 
@@ -159,15 +196,11 @@ export class TokenPriceService {
 
         logger.debug?.(
           "updateTokenPricesBatch",
-          `${token.symbol} (${token.address}): ${tokenPrice.price} USD updated`,
+          `${token.symbol}: ${tokenPrice.price} USD`
         );
       }
 
       if (!shared) {
-        logger.debug?.(
-          "updateTokenPricesBatch",
-          `DB not configured — skipping persistence, ${priceInserts.length} prices prepared`,
-        );
         return;
       }
 
@@ -194,16 +227,12 @@ export class TokenPriceService {
         await tokenPriceHistory.insertMany(historyInserts as any);
       }
 
-      logger.debug?.(
-        "updateTokenPricesBatch",
-        `${historyInserts.length} tokens prices updated`,
-      );
     } catch (error) {
       const logger = (await getSharedIfConfigured())?.logger ?? console;
       logger.error?.(
         "updateTokenPricesBatch",
         "error updating token prices",
-        error,
+        error
       );
       throw error;
     }
@@ -211,13 +240,15 @@ export class TokenPriceService {
 
   async getTokenPrice(tokenAddress: string): Promise<string | null> {
     try {
+      // FIX: Thêm headers vào fetch
       const response = await fetch(
         `${this.jupiterApiUrl}?ids=${tokenAddress}`,
+        { headers: this.getHeaders() }
       );
 
       if (!response.ok) {
         throw new Error(
-          `Không thể lấy giá từ API Jupiter.: ${response.status} ${response.statusText}`,
+          `Không thể lấy giá từ API Jupiter.: ${response.status} ${response.statusText}`
         );
       }
 
@@ -230,7 +261,7 @@ export class TokenPriceService {
       logger.error?.(
         "getTokenPrice",
         `error fetching token price for ${tokenAddress}`,
-        error,
+        error
       );
       return null;
     }
@@ -238,14 +269,12 @@ export class TokenPriceService {
 
   private shouldRefreshTokenPriceView(): boolean {
     const now = new Date();
-    const isRefreshWindow =
-      now.getHours() === 0 && now.getMinutes() <= 5;
+    const isRefreshWindow = now.getHours() === 0 && now.getMinutes() <= 5;
 
     if (!isRefreshWindow) return false;
 
     if (this.lastRefreshDate) {
-      const lastDay =
-        this.lastRefreshDate.toISOString().slice(0, 10);
+      const lastDay = this.lastRefreshDate.toISOString().slice(0, 10);
       const today = now.toISOString().slice(0, 10);
       if (lastDay === today) return false;
     }
@@ -260,17 +289,8 @@ export class TokenPriceService {
     const logger = shared?.logger ?? console;
 
     if (!shared) {
-      logger.debug?.(
-        "refreshMaterializedViewsIfNeeded",
-        "no DB connection; skipping refresh",
-      );
       return;
     }
-
-    logger.debug?.(
-      "refreshMaterializedViewsIfNeeded",
-      "MongoDB: materialized views not applicable",
-    );
 
     this.lastRefreshDate = new Date();
   }

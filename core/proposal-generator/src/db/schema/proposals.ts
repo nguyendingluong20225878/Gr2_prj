@@ -85,7 +85,7 @@ const ProposalSchema = new Schema<ProposalDocument>(
 
     proposedBy: {
       type: String,
-      default: "Daiko AI",
+      default: "GR2 Project",
     },
 
     financialImpact: {
