@@ -8,16 +8,16 @@ dotenv.config();
 async function testConnection() {
   const uri = process.env.MONGODB_URI;
   if (!uri) {
-    console.error("❌ MONGODB_URI chưa được đặt trong .env");
+    console.error(" MONGODB_URI chưa được đặt trong .env");
     process.exit(1);
   }
 
   try {
     await mongoose.connect(uri);
-    console.log("✅ Kết nối MongoDB thành công!");
+    console.log(" Kết nối MongoDB thành công!");
     process.exit(0);
   } catch (err) {
-    console.error("❌ Kết nối MongoDB thất bại:", err);
+    console.error(" Kết nối MongoDB thất bại:", err);
     process.exit(1);
   }
 }

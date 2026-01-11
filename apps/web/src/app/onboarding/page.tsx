@@ -1,21 +1,7 @@
-"use client";
-import React, { useState } from "react";
-import { useRouter } from "next/navigation";
-import WalletStep from "./components/wallet-step";
-import ProfileStep from "./components/profile-step";
+'use client';
 
-export default function Page() {
-  const [step, setStep] = useState<number>(1);
-  const router = useRouter();
+import { OnboardingForm } from '../components/onboarding/OnboardingForm';
 
-  const handleRedirect = () => {
-    router.push("/");
-  };
-
-  return (
-    <main>
-      {step === 1 && <WalletStep onNext={() => setStep(2)} />}
-      {step === 2 && <ProfileStep onFinish={handleRedirect} />}
-    </main>
-  );
+export default function OnboardingPage() {
+  return <OnboardingForm />;
 }

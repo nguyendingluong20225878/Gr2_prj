@@ -19,6 +19,7 @@ export const TWEET_ARTICLE_SELECTOR_CSS = "article[data-testid='tweet']"; // Đ�
 export const TIME_SELECTOR_CSS = "time";
 export const TWEET_TEXT_SELECTOR_CSS = "div[data-testid='tweetText']";
 export const LANG_SELECTOR_CSS = "div[lang]";
+export const TWEET_LINK_SELECTOR = 'a[href*="/status/"]';
 export const SHARE_BUTTON_SELECTOR_CSS = "button[aria-label='Share post']";
 export const COPY_LINK_MENU_ITEM_XPATH =
   "//div[@data-testid='Dropdown']//div[@role='menuitem'][.//span[contains(text(),'Copy link') or contains(text(),'copy link')]]";

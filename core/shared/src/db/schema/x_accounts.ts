@@ -18,10 +18,10 @@ xAccountSchema.index({ lastTweetUpdatedAt: -1 });
 
 export type XAccountSchema = InferSchemaType<typeof xAccountSchema>;
 
-/** ✅ EXPORT Insert type */
+/** ✅ EXPORT Insert type */ //type~compile
 export type XAccountInsert = XAccountSchema;
 
-/** ✅ EXPORT Model */
+/** ✅ EXPORT Model */ // const~runtime 
 export const xAccountTable: Model<XAccountSchema> =
   (models.XAccount as Model<XAccountSchema>) ??
   model<XAccountSchema>("XAccount", xAccountSchema);

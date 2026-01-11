@@ -1,5 +1,3 @@
-// shared/src/types/tweets.ts
-
 export interface Tweet {
   url: string;
   data: string;        // db.ts đang map t.data vào content

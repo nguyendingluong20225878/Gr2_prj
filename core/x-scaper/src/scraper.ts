@@ -14,7 +14,6 @@ import {
 import chrome from "selenium-webdriver/chrome";
 
 import { getAllXAccounts, saveTweets } from "./db";
-import { randomDelay } from "./utils";
 import {
   X_BASE_URL,
   TWEET_ARTICLE_SELECTOR_CSS,
@@ -26,6 +25,7 @@ import {
   RETWEET_COUNT_SELECTOR_CSS,
   LIKE_COUNT_SELECTOR_CSS,
   TWEET_TEXT_SELECTOR_CSS,
+  TWEET_LINK_SELECTOR,
   PRIMARY_COLUMN_SELECTOR_CSS,
   COOKIES_DIR_RELATIVE,
   COOKIES_FILENAME,
@@ -76,7 +76,7 @@ export class XScraper {
   /* ======================= COOKIES ======================= */
 
   private getCookiesFilePath(): string {
-    // Sửa logic lấy path tuyệt đối để đảm bảo tìm đúng file
+    // Logic lấy path tuyệt đối để đảm bảo tìm đúng file
     const rootDir = path.resolve(__dirname, "../../x-scaper");
     const dir = path.join(rootDir, "cookies");
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -240,10 +240,22 @@ export class XScraper {
           likeCount = Number.isFinite(v) ? v : null;
         } catch {}
 
+        let tweetUrl = "unknown";
+        try {
+            const linkElem = await el.findElement(
+            By.css(TWEET_LINK_SELECTOR) );
+            const href = await linkElem.getAttribute("href");
+             if (href) {
+             tweetUrl = href.startsWith("http")
+              ? href
+           : `https://x.com${href}`;
+        }
+       } catch {}
+
         tweets.push({
           time: tweetTime,
           data: text.trim(),
-          url: "extracted_from_feed",
+          url: tweetUrl,
           replyCount,
           retweetCount,
           likeCount,
