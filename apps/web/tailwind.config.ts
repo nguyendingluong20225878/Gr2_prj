@@ -2,7 +2,8 @@ import type { Config } from "tailwindcss";
 
 const config: Config = {
   content: [
-    "./src/**/*.{js,ts,jsx,tsx,mdx}", 
+    "./app/**/*.{js,ts,jsx,tsx,mdx}",
+    "./components/**/*.{js,ts,jsx,tsx}", // nếu có
   ],
   theme: {
     extend: {
@@ -12,9 +13,10 @@ const config: Config = {
       },
       backgroundImage: {
         'ndl-gradient': 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)',
-      }
+      },
     },
   },
   plugins: [],
 };
+
 export default config;
