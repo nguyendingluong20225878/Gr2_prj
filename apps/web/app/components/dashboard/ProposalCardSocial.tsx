@@ -13,10 +13,12 @@ interface ProposalCardSocialProps {
 
 export function ProposalCardSocial({ proposal, onViewDetails }: ProposalCardSocialProps) {
   const isBuy = proposal.action === 'BUY';
-  
+  const currentValue = proposal.financialImpact.currentValue || 0;
+  const projectedValue = proposal.financialImpact.projectedValue || 0;
   // Calculate ROI
-  const roi = proposal.financialImpact.projectedValue - proposal.financialImpact.currentValue;
-  const roiPercent = ((roi / proposal.financialImpact.currentValue) * 100);
+ const roi = projectedValue - currentValue;
+  // Tránh chia cho 0
+  const roiPercent = currentValue !== 0 ? ((roi / currentValue) * 100) : 0;
   const isPositive = roi > 0;
 
   // Risk color

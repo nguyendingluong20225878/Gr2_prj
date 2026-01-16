@@ -64,24 +64,28 @@ export function Navbar() {
 
           {/* User Menu */}
           {user && (
-            <div className="relative">
-              <button
-                onClick={() => setShowDropdown(!showDropdown)}
-                className="flex items-center gap-3 px-4 py-2 rounded-lg bg-slate-900/50 border border-slate-700 hover:border-cyber-purple/50 transition-all"
-              >
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-cyber-purple to-cyber-cyan flex items-center justify-center text-sm font-semibold text-white">
-                  {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
-                </div>
-                <div className="hidden md:block text-left">
-                  <div className="text-sm font-medium text-slate-100">
-                    {user.name || 'User'}
-                  </div>
-                  <div className="text-xs text-slate-400">
-                    {formatWalletAddress(user.walletAddress)}
-                  </div>
-                </div>
-                <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
-              </button>
+          <div className="relative">
+            <button
+              onClick={() => setShowDropdown(!showDropdown)}
+              className="flex items-center gap-3 px-4 py-2 rounded-lg bg-slate-900/50 border border-slate-700 hover:border-cyber-purple/50 transition-all"
+            >
+              {/* SỬA: div -> span */}
+              <span className="w-8 h-8 rounded-full bg-gradient-to-br from-cyber-purple to-cyber-cyan flex items-center justify-center text-sm font-semibold text-white">
+                {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
+              </span>
+              
+              {/* SỬA: div -> span, và các con bên trong cũng đổi thành span */}
+              <span className="hidden md:block text-left">
+                <span className="block text-sm font-medium text-slate-100">
+                  {user.name || 'User'}
+                </span>
+                <span className="block text-xs text-slate-400">
+                  {formatWalletAddress(user.walletAddress)}
+                </span>
+              </span>
+              
+              <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
+            </button>
 
               {/* Dropdown Menu */}
               {showDropdown && (

@@ -2,6 +2,8 @@
 
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useEffect } from 'react';
+import { WalletReadyState } from '@solana/wallet-adapter-base';
+
 
 export function WalletDebug() {
   const wallet = useWallet();
@@ -13,7 +15,8 @@ export function WalletDebug() {
       disconnecting: wallet.disconnecting,
       publicKey: wallet.publicKey?.toBase58(),
       walletName: wallet.wallet?.adapter.name,
-      ready: wallet.wallet?.adapter.ready,
+     readyState: wallet.wallet?.adapter.readyState,
+
     });
   }, [wallet.connected, wallet.connecting, wallet.publicKey, wallet.wallet]);
 

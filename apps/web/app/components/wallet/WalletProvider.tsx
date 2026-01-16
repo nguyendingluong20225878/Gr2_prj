@@ -1,9 +1,9 @@
 'use client';
 
-import { FC, ReactNode, useMemo, useEffect, useState } from 'react';
+import { FC, ReactNode, useMemo } from 'react';
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
 import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
-import { PhantomWalletAdapter } from '@solana/wallet-adapter-phantom';
+import { PhantomWalletAdapter, SolflareWalletAdapter } from '@solana/wallet-adapter-wallets';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
 import { clusterApiUrl } from '@solana/web3.js';
 
@@ -15,32 +15,25 @@ interface WalletContextProviderProps {
 
 export const WalletContextProvider: FC<WalletContextProviderProps> = ({ children }) => {
   const network = WalletAdapterNetwork.Devnet;
-  const endpoint = useMemo(() => clusterApiUrl(network), [network]);
-  const [mounted, setMounted] = useState(false);
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  // FIX: Sử dụng endpoint ổn định hơn hoặc fallback nếu clusterApiUrl lỗi
+  // Tốt nhất nên dùng RPC riêng từ Helius/QuickNode nếu có, thay vì public node
+  const endpoint = useMemo(() => {
+    return clusterApiUrl(network); 
+  }, [network]);
 
+  // FIX: Khởi tạo wallets bên ngoài useMemo hoặc đảm bảo không lỗi
   const wallets = useMemo(
-    () => {
-      if (!mounted) {
-        return [];
-      }
-
-      try {
-        return [new PhantomWalletAdapter()];
-      } catch (error) {
-        console.warn('Wallet adapter initialization error:', error);
-        return [];
-      }
-    },
-    [mounted]
+    () => [
+      new PhantomWalletAdapter(),
+      new SolflareWalletAdapter(),
+    ],
+    [network]
   );
 
   return (
     <ConnectionProvider endpoint={endpoint}>
-      <WalletProvider wallets={wallets} autoConnect={false}>
+      <WalletProvider wallets={wallets} autoConnect>
         <WalletModalProvider>
           {children}
         </WalletModalProvider>

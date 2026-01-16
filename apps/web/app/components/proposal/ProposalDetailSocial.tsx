@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { 
   ArrowLeft, 
@@ -37,10 +38,17 @@ export function ProposalDetailSocial({
   onBack,
   onNavigateToPortfolio
 }: ProposalDetailSocialProps) {
+  const router = useRouter();
   const { connected, publicKey } = useWallet();
   const [amount, setAmount] = useState(0);
   const [executing, setExecuting] = useState(false);
-
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
+    } else {
+      router.push('/dashboard');
+    }
+  };
   // Use passed proposal or create mock data
   const proposal = propProposal || {
     _id: 'mock-1',
@@ -139,7 +147,7 @@ export function ProposalDetailSocial({
       {/* Back Button */}
       <Button
         variant="ghost"
-        onClick={onBack}
+        onClick={handleBack}
         className="gap-2 hover:bg-white/5"
       >
         <ArrowLeft className="w-4 h-4" />
