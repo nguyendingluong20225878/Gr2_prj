@@ -42,3 +42,6 @@ export type {
 
 // ===== CONSTANTS =====
 export * from "./constants";
+
+// export * from './types/proposal';
+

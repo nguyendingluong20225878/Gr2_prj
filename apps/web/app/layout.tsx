@@ -3,6 +3,7 @@ import { WalletContextProvider } from './components/wallet/WalletProvider';
 import { AuthProvider } from './contexts/AuthContext';
 import { Toaster } from './components/ui/sonner';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { WalletDebug } from './components/wallet/WalletDebug'; // [Mới] Import debug tool
 import './globals.css';
 import '@solana/wallet-adapter-react-ui/styles.css';
 
@@ -29,8 +30,12 @@ export default function RootLayout({
         <ErrorBoundary>
           <WalletContextProvider>
             <AuthProvider>
-              <div className="dark">
+              <div className="dark min-h-screen bg-background font-sans antialiased">
                 {children}
+                
+                {/* [Mới] Thêm bảng Debug vào đây để nó luôn hiển thị trên mọi trang */}
+                <WalletDebug />
+                
                 <Toaster 
                   position="top-right"
                   toastOptions={{

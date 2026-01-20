@@ -111,8 +111,9 @@ export function ProposalCardSocial({ proposal, onViewDetails }: ProposalCardSoci
         {/* Token Info */}
         <div className="flex items-center space-x-3">
           <div className="w-12 h-12 rounded-full bg-gradient-purple-cyan flex items-center justify-center neon-glow">
-            <span className="text-white font-bold text-lg">{proposal.tokenSymbol.slice(0, 2)}</span>
-          </div>
+             <span className="text-white font-bold text-lg">
+            {proposal?.tokenSymbol ? proposal.tokenSymbol.slice(0, 2) : '??'}
+          </span></div>
           <div>
             <h3 className="font-semibold text-lg">{proposal.tokenSymbol}</h3>
             <p className="text-sm text-muted-foreground">{proposal.tokenName}</p>

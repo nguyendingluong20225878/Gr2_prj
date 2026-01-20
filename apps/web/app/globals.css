@@ -6,7 +6,7 @@
   :root {
     --font-size: 16px;
     
-    /* Cyberpunk Colors - Cyan/Purple Theme */
+    /* --- Cyberpunk Palette (Static Hex for reference/gradients) --- */
     --cyber-purple: #a855f7;
     --cyber-purple-dark: #7e22ce;
     --cyber-cyan: #06b6d4;
@@ -14,38 +14,43 @@
     --cyber-pink: #ec4899;
     --cyber-blue: #3b82f6;
     
-    /* Base Colors - Chuyển sang HSL để Tailwind có thể chỉnh opacity */
-    --background: 260 50% 5%; /* #0a0118 */
-    --foreground: 210 40% 98%; /* #f8fafc */
+    /* --- Tailwind Base Colors (HSL format for opacity support) --- */
+    /* Background: #0a0118 (Deep Purple Black) */
+    --background: 265 80% 5%;
+    /* Foreground: #f8fafc (Slate 50) */
+    --foreground: 210 40% 98%;
 
-    --card: 260 50% 5%;
+    /* Card: Transparent Black/Purple for Glassmorphism */
+    --card: 265 80% 9%;
     --card-foreground: 210 40% 98%;
  
-    --popover: 260 50% 5%;
+    --popover: 265 80% 5%;
     --popover-foreground: 210 40% 98%;
  
-    --primary: 271 91% 65%; /* #a855f7 */
+    /* Primary: Purple #a855f7 */
+    --primary: 271 91% 65%;
     --primary-foreground: 0 0% 100%;
  
-    --secondary: 189 94% 43%; /* #06b6d4 */
+    /* Secondary: Cyan #06b6d4 */
+    --secondary: 189 94% 43%;
     --secondary-foreground: 0 0% 100%;
  
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
  
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    --accent: 271 91% 65%;
+    --accent-foreground: 0 0% 100%;
  
-    --destructive: 0 62.8% 30.6%;
+    --destructive: 0 84% 60%;
     --destructive-foreground: 210 40% 98%;
  
-    --border: 271 91% 65%;
-    --input: 217.2 32.6% 17.5%;
+    --border: 271 91% 65%; /* Purple Border */
+    --input: 217 33% 17%;
     --ring: 271 91% 65%;
  
     --radius: 0.75rem;
 
-    /* Charts */
+    /* --- Chart Colors (Recharts) --- */
     --chart-1: #a855f7;
     --chart-2: #06b6d4;
     --chart-3: #ec4899;
@@ -53,9 +58,9 @@
     --chart-5: #22d3ee;
   }
 
-  /* Dark mode variables (nếu cần override) */
+  /* Force Dark Mode defaults */
   .dark {
-    --background: 260 50% 5%;
+    --background: 265 80% 5%;
     --foreground: 210 40% 98%;
   }
   
@@ -65,22 +70,27 @@
   
   body {
     @apply bg-background text-foreground;
+    /* Optional: Global grid pattern overlay */
+    background-image: 
+      linear-gradient(rgba(168, 85, 247, 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(168, 85, 247, 0.03) 1px, transparent 1px);
+    background-size: 50px 50px;
   }
 
   html {
     font-size: var(--font-size);
   }
 
-  /* Typography defaults */
-  h1 { @apply text-4xl font-medium leading-tight; }
-  h2 { @apply text-3xl font-medium leading-tight; }
-  h3 { @apply text-2xl font-medium leading-tight; }
-  h4 { @apply text-xl font-medium leading-tight; }
+  /* Typography Defaults */
+  h1 { @apply text-4xl font-bold tracking-tight; }
+  h2 { @apply text-3xl font-semibold tracking-tight; }
+  h3 { @apply text-2xl font-semibold tracking-tight; }
+  h4 { @apply text-xl font-medium tracking-tight; }
 }
 
-/* --- Custom Utilities --- */
+/* --- Cyberpunk Utilities --- */
 @layer utilities {
-  /* Cyberpunk Glassmorphism */
+  /* 1. Glassmorphism Card */
   .glass-card {
     @apply bg-[rgba(15,6,30,0.6)] border border-[rgba(168,85,247,0.2)] shadow-[0_8px_32px_0_rgba(0,0,0,0.37)];
     backdrop-filter: blur(20px);
@@ -88,33 +98,42 @@
   }
 
   .glass-card-hover {
-    @apply transition-all duration-300;
+    @apply transition-all duration-300 ease-out;
   }
 
   .glass-card-hover:hover {
-    @apply bg-[rgba(15,6,30,0.8)] border-[rgba(168,85,247,0.5)] shadow-[0_8px_32px_0_rgba(168,85,247,0.3)] -translate-y-0.5;
+    @apply bg-[rgba(15,6,30,0.8)] border-[rgba(168,85,247,0.5)] shadow-[0_8px_32px_0_rgba(168,85,247,0.3)] -translate-y-1;
   }
 
+  /* 2. Neon Gradient Border */
   .neon-border {
     position: relative;
-    background: linear-gradient(#0f061e, #0f061e) padding-box,
+    background: linear-gradient(#0a0118, #0a0118) padding-box,
                 linear-gradient(135deg, #a855f7, #06b6d4) border-box;
     border: 2px solid transparent;
   }
 
+  /* 3. Neon Glow Effects */
   .neon-glow {
-    box-shadow: 0 0 20px rgba(168, 85, 247, 0.5),
-                0 0 40px rgba(6, 182, 212, 0.3);
+    box-shadow: 0 0 20px rgba(168, 85, 247, 0.4),
+                0 0 40px rgba(6, 182, 212, 0.2);
+  }
+  
+  .neon-text {
+    text-shadow: 0 0 10px rgba(168, 85, 247, 0.7),
+                 0 0 20px rgba(168, 85, 247, 0.3);
   }
 
+  /* 4. Gradient Text & Backgrounds */
   .gradient-text {
     @apply bg-clip-text text-transparent bg-gradient-to-r from-[var(--cyber-purple)] to-[var(--cyber-cyan)];
   }
   
-  .gradient-purple-cyan {
+  .bg-gradient-purple-cyan {
     @apply bg-gradient-to-r from-[var(--cyber-purple)] to-[var(--cyber-cyan)];
   }
 
+  /* 5. Cyber Grid Background */
   .cyber-grid {
     background-image: 
       linear-gradient(rgba(168, 85, 247, 0.05) 1px, transparent 1px),
@@ -123,7 +142,7 @@
   }
 }
 
-/* Animations - Giữ nguyên keyframes */
+/* --- Animations --- */
 @keyframes float {
   0%, 100% { transform: translateY(0px); }
   50% { transform: translateY(-20px); }
@@ -131,13 +150,14 @@
 .animate-float { animation: float 6s ease-in-out infinite; }
 
 @keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 0 20px rgba(168, 85, 247, 0.5); }
-  50% { box-shadow: 0 0 30px rgba(168, 85, 247, 0.8), 0 0 50px rgba(6, 182, 212, 0.5); }
+  0%, 100% { box-shadow: 0 0 15px rgba(168, 85, 247, 0.4); }
+  50% { box-shadow: 0 0 25px rgba(168, 85, 247, 0.7), 0 0 40px rgba(6, 182, 212, 0.4); }
 }
 .animate-pulse-glow { animation: pulse-glow 3s ease-in-out infinite; }
 
 @keyframes scan {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(100%); }
+  0% { transform: translateX(-100%); opacity: 0; }
+  50% { opacity: 1; }
+  100% { transform: translateX(100%); opacity: 0; }
 }
-.animate-scan { animation: scan 3s ease-in-out infinite; }
+.animate-scan { animation: scan 3s linear infinite; }
