@@ -1,137 +1,91 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { useWallet } from '@solana/wallet-adapter-react';
-import { toast } from 'sonner';
+import React, { createContext, useContext, useState, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 
+// Định nghĩa kiểu dữ liệu cho User
 interface User {
   _id: string;
-  email: string;
-  name?: string;
   walletAddress: string;
-  riskTolerance: string;
+  name?: string;
+  email?: string;
+  riskTolerance?: string;
   tradeStyle?: string;
   totalAssetUsd?: number;
   cryptoInvestmentUsd?: number;
   image?: string;
-  notificationEnabled: boolean;
-  createdAt: Date;
-  updatedAt: Date;
+  notificationEnabled?: boolean;
+  createdAt?: Date | string;
+  updatedAt?: Date | string;
 }
 
 interface AuthContextType {
   user: User | null;
-  setUser: (user: User | null) => void;
-  loading: boolean;
-  refreshUser: () => Promise<void>;
+  isAuthenticated: boolean;
+  isLoading: boolean; // [Mới] Để hiển thị loading spinner
+  setUser: (user: User | null) => void; // [Mới] Để Dev Mode hoạt động
+  verifyWallet: (address: string) => Promise<void>;
   logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(false);
-  const { publicKey, disconnect } = useWallet();
+  const [isLoading, setIsLoading] = useState(false); // [Mới] State loading
   const router = useRouter();
 
+  // Hàm xử lý logic đăng nhập/đăng ký
+  const verifyWallet = async (address: string) => {
+    if (!address) return;
 
-  // Verify wallet and handle routing
-  const verifyWallet = async (walletAddress: string) => {
     try {
-      setLoading(true);
-      
-      console.log('🔍 Verifying wallet:', walletAddress);
-      
-      const response = await fetch('/api/auth/verify', {
+      setIsLoading(true); // Bắt đầu loading
+      console.log("🔐 Verifying wallet:", address);
+
+      const res = await fetch('/api/auth/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ walletAddress })
+        body: JSON.stringify({ walletAddress: address }),
       });
-      
-      const data = await response.json();
-      
-      console.log('📥 Verify response:', data);
-      
-      if (data.error) {
-        toast.error(data.error);
-        return;
+
+      if (!res.ok) {
+        throw new Error(`API error: ${res.status}`);
       }
-      
-      if (data.requiresOnboarding) {
-        console.log('➡️ New user - redirecting to onboarding');
-        toast.info('Welcome! Please complete your profile.');
-        router.push('/onboarding');
-      } else {
-        console.log('✅ Existing user - redirecting to dashboard');
+
+      const data = await res.json();
+
+      if (data.exists && data.user) {
+        console.log("✅ User exists, logging in...");
         setUser(data.user);
-        toast.success('Welcome back!');
-        
-        // Only redirect if on landing page
-        const currentPath = typeof window !== 'undefined' ? window.location.pathname : '/';
-        if (currentPath === '/' || currentPath === '/onboarding') {
-          router.push('/dashboard');
-        }
+        router.push('/dashboard');
+      } else {
+        console.log("🆕 New user, redirecting to onboarding...");
+        router.push('/onboarding');
       }
-      
     } catch (error) {
-      console.error('❌ Verify wallet error:', error);
-      toast.error('Failed to verify wallet');
+      console.error("❌ Verify error:", error);
     } finally {
-      setLoading(false);
+      setIsLoading(false); // Kết thúc loading
     }
   };
 
-  // Refresh user data
-  const refreshUser = async () => {
-    if (!publicKey) return;
-    
-    try {
-      const walletAddress = publicKey.toBase58();
-      const response = await fetch(`/api/user/profile?wallet=${walletAddress}`);
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch user');
-      }
-      
-      const userData = await response.json();
-      setUser(userData);
-      
-    } catch (error) {
-      console.error('Refresh user error:', error);
-    }
-  };
-
-  // Logout
   const logout = () => {
     setUser(null);
-    disconnect();
     router.push('/');
-    toast.success('Logged out successfully');
-  };
-
-  // Auto-verify when wallet connects
-  useEffect(() => {
-    if (publicKey) {
-      const walletAddress = publicKey.toBase58();
-      verifyWallet(walletAddress);
-    } else {
-      setLoading(false);
-    }
-  }, [publicKey]);
-
-  const value = {
-    user,
-    setUser,
-    loading,
-    refreshUser,
-    logout,
   };
 
   return (
-    <AuthContext.Provider value={value}>
+    <AuthContext.Provider 
+      value={{ 
+        user, 
+        isAuthenticated: !!user, 
+        isLoading, 
+        setUser, 
+        verifyWallet, 
+        logout 
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
@@ -140,7 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuth must be used within AuthProvider');
+    throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
 }

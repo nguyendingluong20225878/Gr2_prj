@@ -1,57 +1,37 @@
 import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
-import User from '@/models/User';
+import UserModel from '@/models/User';
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { 
-      email, walletAddress, name, 
-      tradeStyle, totalAssetUsd, cryptoInvestmentUsd, 
-      riskTolerance, image 
-    } = body;
-
-    if (!walletAddress) {
-      return NextResponse.json({ error: 'Wallet address is required' }, { status: 400 });
-    }
-
     await connectDB();
 
-    // Kiểm tra trùng lặp
-    const existing = await User.findOne({ 
-      $or: [{ walletAddress }, { email: email || '' }] 
-    });
-
-    if (existing) {
-      // Nếu trùng wallet thì trả về lỗi, nhưng nếu trùng email (mà email rỗng) thì bỏ qua
-      if (existing.walletAddress === walletAddress) {
-        return NextResponse.json({ error: 'Wallet already registered' }, { status: 409 });
-      }
-      if (email && existing.email === email) {
-        return NextResponse.json({ error: 'Email already registered' }, { status: 409 });
-      }
+    if (!body.walletAddress) {
+      return NextResponse.json({ error: 'Wallet address required' }, { status: 400 });
     }
 
-    // Tạo user mới
-    const newUser = await User.create({
-      email,
-      walletAddress,
-      name: name || '',
-      tradeStyle: tradeStyle || '',
-      totalAssetUsd: totalAssetUsd || 0,
-      cryptoInvestmentUsd: cryptoInvestmentUsd || 0,
-      riskTolerance: riskTolerance || 'medium',
-      image: image || '',
+    const existingUser = await UserModel.findOne({ walletAddress: body.walletAddress });
+    if (existingUser) {
+      return NextResponse.json(existingUser);
+    }
+
+    const newUser = await UserModel.create({
+      walletAddress: body.walletAddress,
+      name: body.name || 'Anonymous',
+      email: body.email || '', 
+      age: body.age || 0, // Thêm dòng này để lưu tuổi
+      riskTolerance: body.riskTolerance || 'medium',
+      tradeStyle: body.tradeStyle || 'swing',
+      totalAssetUsd: Number(body.totalAssetUsd) || 0,
+      cryptoInvestmentUsd: Number(body.cryptoInvestmentUsd) || 0,
       notificationEnabled: true,
+      role: 'user'
     });
 
-    return NextResponse.json({
-      success: true,
-      user: { ...newUser.toObject(), _id: newUser._id.toString() }
-    }, { status: 201 });
-
-  } catch (error) {
-    console.error('Create user error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json(newUser, { status: 201 });
+  } catch (error: any) {
+    console.error('Create User Error:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

@@ -46,7 +46,7 @@ const ProposalSchema = new Schema<ProposalDocument>(
     summary: { type: String, required: true },
     reason: { type: [String], required: true },
     sources: { type: [SourceSchema], default: [] },
-    type: { type: String, enum: ["trade", "stake", "risk", "opportunity"] },
+    type: { type: String, enum: ["trade", "stake", "risk", "opportunity","hold", "buy", "sell"] },
     proposedBy: { type: String, default: "NDL AI" },
     financialImpact: { type: FinancialImpactSchema },
     expiresAt: { type: Date, required: true },

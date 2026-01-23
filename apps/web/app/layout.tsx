@@ -1,11 +1,15 @@
 import type { Metadata } from 'next';
+import { Inter } from 'next/font/google'; // [Mới] Import font chuẩn để tránh lỗi font
 import { WalletContextProvider } from './components/wallet/WalletProvider';
 import { AuthProvider } from './contexts/AuthContext';
 import { Toaster } from './components/ui/sonner';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { WalletDebug } from './components/wallet/WalletDebug'; // [Mới] Import debug tool
+import { WalletDebug } from './components/wallet/WalletDebug';
 import './globals.css';
 import '@solana/wallet-adapter-react-ui/styles.css';
+
+// Cấu hình Font Inter
+const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
   title: 'NDL AI - Crypto Portfolio Manager',
@@ -25,17 +29,19 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark">
-      <body>
+    // [QUAN TRỌNG] Thêm suppressHydrationWarning để chặn lỗi do ví Phantom chèn code
+    <html lang="en" className="dark" suppressHydrationWarning>
+      <body className={`${inter.className} min-h-screen bg-background antialiased`} suppressHydrationWarning>
         <ErrorBoundary>
           <WalletContextProvider>
             <AuthProvider>
-              <div className="dark min-h-screen bg-background font-sans antialiased">
+              <div className="relative flex min-h-screen flex-col">
                 {children}
                 
-                {/* [Mới] Thêm bảng Debug vào đây để nó luôn hiển thị trên mọi trang */}
+                {/* Bảng Debug Wallet */}
                 <WalletDebug />
                 
+                {/* Thông báo Toast */}
                 <Toaster 
                   position="top-right"
                   toastOptions={{

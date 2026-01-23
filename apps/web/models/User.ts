@@ -1,10 +1,10 @@
-// apps/web/models/User.ts
 import mongoose, { Schema, Document, Model } from 'mongoose';
 
 export interface IUser extends Document {
   walletAddress: string;
   email?: string;
   name?: string;
+  age?: number;
   riskTolerance?: string;
   tradeStyle?: string;
   totalAssetUsd?: number;
@@ -16,13 +16,14 @@ export interface IUser extends Document {
   updatedAt: Date;
 }
 
-const UserSchema: Schema = new Schema(
+const UserSchema = new Schema<IUser>(
   {
     walletAddress: { type: String, required: true, unique: true, index: true },
     email: { type: String },
     name: { type: String },
-    riskTolerance: { type: String },
-    tradeStyle: { type: String },
+    age: { type: Number, default: 0 },
+    riskTolerance: { type: String, default: 'medium' },
+    tradeStyle: { type: String, default: 'swing' },
     totalAssetUsd: { type: Number, default: 0 },
     cryptoInvestmentUsd: { type: Number, default: 0 },
     image: { type: String },
@@ -30,11 +31,12 @@ const UserSchema: Schema = new Schema(
     role: { type: String, default: 'user' },
   },
   {
-    timestamps: true, // Tự động tạo createdAt, updatedAt
+    timestamps: true,
+    collection: 'users' // Bắt buộc định nghĩa tên collection rõ ràng
   }
 );
 
-// Ngăn lỗi OverwriteModelError khi compile lại trong Next.js
-const User: Model<IUser> = mongoose.models.User || mongoose.model<IUser>('User', UserSchema);
+// Logic ngăn chặn lỗi "OverwriteModelError" trong Next.js
+const UserModel: Model<IUser> = mongoose.models.User || mongoose.model<IUser>('User', UserSchema);
 
-export default User;
+export default UserModel;

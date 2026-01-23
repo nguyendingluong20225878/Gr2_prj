@@ -2,94 +2,79 @@ import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import mongoose from 'mongoose';
 
+// Import Tables từ Core
+import { perpPositionsTable } from '../../../../../core/shared/src/db/schema/perp_positions';
+import { transactionsTable } from '../../../../../core/shared/src/db/schema/transactions';
+
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
-    const walletAddress = searchParams.get('wallet');
+    const wallet = searchParams.get('wallet');
 
-    if (!walletAddress) {
-      return NextResponse.json({ error: 'Wallet address is required' }, { status: 400 });
-    }
+    if (!wallet) return NextResponse.json({ error: 'Wallet required' }, { status: 400 });
 
     await connectDB();
 
-    // 1. Lấy danh sách trades từ collection "trades"
-    const collection = mongoose.connection.db.collection("trades");
-    const trades = await collection
-      .find({ walletAddress }) 
-      .sort({ executedAt: -1 }) // Mới nhất lên đầu
-      .toArray();
+    // BƯỚC 1: Tìm User ID từ Wallet Address
+    // Chúng ta truy cập trực tiếp collection "users" để lấy ID mà không cần import User Model (tránh lỗi vòng lặp nếu có)
+    const user = await mongoose.connection.db.collection('users').findOne({ walletAddress: wallet });
 
-    // 2. Chuyển đổi dữ liệu & Fix lỗi TypeScript
-    // Sử dụng (t: any) để bypass lỗi kiểm tra kiểu dữ liệu nghiêm ngặt
-    const safeTrades = trades.map((t: any) => ({
-      ...t,
-      _id: t._id.toString(),
-      // Gán giá trị mặc định nếu thiếu trong DB
-      status: t.status || 'OPEN',
-      tokenSymbol: t.tokenSymbol || 'UNKNOWN',
-      tokenName: t.tokenName || 'Unknown Token',
-      
-      // Ép kiểu số để tính toán an toàn
-      currentPrice: Number(t.currentPrice) || 0,
-      entryPrice: Number(t.entryPrice) || 0,
-      amount: Number(t.amount) || 0,
-      
-      // Tính lại usdValue theo giá hiện tại
-      usdValue: (Number(t.amount) || 0) * (Number(t.currentPrice) || 0),
-      
-      profitLoss: Number(t.profitLoss) || 0,
-      profitLossPercent: Number(t.profitLossPercent) || 0,
-      executedAt: t.executedAt || new Date().toISOString(),
-    }));
+    if (!user) {
+      // Nếu chưa có user trong DB thì trả về portfolio rỗng
+      return NextResponse.json({ trades: [], stats: { totalTrades: 0, winRate: 0, totalPnL: 0 } });
+    }
 
-    // 3. Tính toán các chỉ số tổng quan (Stats)
-    let totalValue = 0;
-    let totalInvested = 0;
-    let totalProfit = 0;
-    let winningTrades = 0;
-    let closedTrades = 0;
+    const userId = user._id; // Đây là ObjectId
 
-    safeTrades.forEach(trade => {
-      // Chỉ tính giá trị hiện tại cho các lệnh đang mở (OPEN)
-      if (trade.status === 'OPEN') {
-        totalValue += trade.usdValue;
-        totalInvested += trade.amount * trade.entryPrice;
-      }
-      
-      // Tính P/L tổng (cả lệnh đóng và mở)
-      totalProfit += trade.profitLoss;
+    // BƯỚC 2: Query dữ liệu dùng userId
+    
+    // Lấy vị thế đang mở (Perp Positions)
+    const openPositions = await perpPositionsTable.find({ userId: userId }).lean();
 
-      // Tính Win Rate (chỉ trên các lệnh đã đóng)
-      if (trade.status === 'CLOSED') {
-        closedTrades++;
-        if (trade.profitLoss > 0) {
-          winningTrades++;
-        }
-      }
-    });
+    // Lấy lịch sử giao dịch (Transactions)
+    const history = await transactionsTable.find({ userId: userId })
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .lean();
 
-    const winRate = closedTrades > 0 ? (winningTrades / closedTrades) * 100 : 0;
-    const totalProfitPercent = totalInvested > 0 ? (totalProfit / totalInvested) * 100 : 0;
+    // BƯỚC 3: Mapping dữ liệu sang format Frontend (Trade[])
+    const trades = [
+        // Map Open Positions
+        ...openPositions.map((p: any) => ({
+            _id: p._id.toString(),
+            tokenSymbol: p.tokenAddress || 'UNK', // Nên có logic map address -> symbol nếu cần
+            action: p.positionDirection === 'long' ? 'BUY' : 'SELL',
+            status: 'OPEN',
+            entryPrice: parseFloat(p.entryPrice) || 0,
+            currentPrice: parseFloat(p.entryPrice), // Cần lấy giá realtime nếu có, tạm thời dùng entry
+            amount: parseFloat(p.positionSize) || 0,
+            pnl: 0, // Vị thế mở tạm thời tính PnL = 0 hoặc tính theo markPrice
+            executedAt: p.createdAt || new Date(),
+        })),
+        // Map Transactions (Closed/History)
+        ...history.map((t: any) => ({
+            _id: t._id.toString(),
+            tokenSymbol: t.fromTokenAddress || 'SOL', // Placeholder
+            action: t.transactionType === 'swap' ? 'SWAP' : 'TRADE',
+            status: 'CLOSED',
+            entryPrice: 0,
+            amount: parseFloat(t.amountFrom) || 0,
+            pnl: 0, 
+            executedAt: t.createdAt,
+        }))
+    ];
 
+    // Tính Stats đơn giản
     const stats = {
-      totalValue,
-      totalInvested,
-      totalProfitLoss: totalProfit,
-      totalProfitLossPercent: totalProfitPercent,
-      winRate: parseFloat(winRate.toFixed(2)),
+      totalTrades: trades.length,
+      winRate: 0, 
+      totalPnL: 0
     };
 
-    return NextResponse.json({
-      trades: safeTrades,
-      stats
-    });
+    return NextResponse.json({ trades, stats });
 
   } catch (error) {
     console.error('Portfolio API Error:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch portfolio data' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal Error', details: String(error) }, { status: 500 });
   }
 }

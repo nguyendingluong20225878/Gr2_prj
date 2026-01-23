@@ -4,16 +4,16 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useAuth } from '@/app/contexts/AuthContext';
-import { toast } from 'sonner';
-import { Button } from '@/app/components/ui/button';
-import { Input } from '@/app/components/ui/input';
-import { Label } from '@/app/components/ui/label';
-import { Loader2, User, Mail, Briefcase, DollarSign, TrendingUp } from 'lucide-react';
+// Nếu chưa có sonner, dùng alert mặc định cho đơn giản và chắc chắn chạy được
+// import { toast } from 'sonner'; 
+import { Loader2, Mail, User, Briefcase, DollarSign, TrendingUp, ArrowRight } from 'lucide-react';
 
 export function OnboardingForm() {
   const router = useRouter();
   const { publicKey, connected } = useWallet();
-  const { refreshUser } = useAuth();
+  
+  // SỬA 1: Dùng setUser thay vì refreshUser
+  const { setUser } = useAuth();
   
   const [formData, setFormData] = useState({
     name: '',
@@ -28,7 +28,7 @@ export function OnboardingForm() {
   const [loading, setLoading] = useState(false);
 
   // Redirect if wallet not connected
-  if (!connected) {
+  if (!connected && typeof window !== 'undefined') {
     router.push('/');
     return null;
   }
@@ -37,19 +37,18 @@ export function OnboardingForm() {
     e.preventDefault();
     
     if (!publicKey) {
-      toast.error('Wallet not connected');
+      alert('Wallet not connected');
       return;
     }
 
-    // Validate email
     if (!formData.email) {
-      toast.error('Email is required');
+      alert('Email is required');
       return;
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(formData.email)) {
-      toast.error('Please enter a valid email');
+      alert('Please enter a valid email');
       return;
     }
 
@@ -64,33 +63,33 @@ export function OnboardingForm() {
           email: formData.email,
           name: formData.name,
           age: formData.age ? parseInt(formData.age) : null,
-          tradeStyle: formData.tradeStyle,
+          tradeStyle: formData.tradeStyle || 'swing',
           totalAssetUsd: formData.totalAssetUsd ? parseFloat(formData.totalAssetUsd) : 0,
           cryptoInvestmentUsd: formData.cryptoInvestmentUsd ? parseFloat(formData.cryptoInvestmentUsd) : 0,
           riskTolerance: formData.riskTolerance,
+          notificationEnabled: true
         })
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        toast.error(data.error || 'Failed to create account');
-        return;
+        throw new Error(data.error || 'Failed to create account');
       }
 
-      toast.success('Account created successfully!');
+      console.log("User created:", data);
       
-      // Refresh user data
-      refreshUser();
+      // SỬA 2: Cập nhật trực tiếp User vào Context
+      setUser(data);
 
       // Redirect to dashboard
       setTimeout(() => {
         router.push('/dashboard');
-      }, 1000);
+      }, 500);
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Onboarding error:', error);
-      toast.error('Failed to create account');
+      alert('Failed to create account: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -113,15 +112,15 @@ export function OnboardingForm() {
     <div className="min-h-screen bg-slate-950 relative overflow-hidden flex items-center justify-center py-12 px-4">
       {/* Background */}
       <div className="absolute inset-0 bg-grid-pattern opacity-10" />
-      <div className="absolute inset-0 bg-gradient-to-br from-cyber-purple/20 via-transparent to-cyber-cyan/20" />
+      <div className="absolute inset-0 bg-gradient-to-br from-purple-900/20 via-transparent to-cyan-900/20" />
       
       <div className="relative z-10 w-full max-w-2xl">
-        <div className="glass-card rounded-2xl p-8 md:p-12">
+        <div className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl p-8 md:p-12 shadow-2xl">
           {/* Header */}
           <div className="text-center mb-8">
             <h1 className="text-3xl md:text-4xl font-bold text-slate-100 mb-3">
               Welcome to{' '}
-              <span className="bg-gradient-to-r from-cyber-purple to-cyber-cyan bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-purple-400 to-cyan-400 bg-clip-text text-transparent">
                 NDL AI
               </span>
             </h1>
@@ -131,150 +130,122 @@ export function OnboardingForm() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
+            
             {/* Email - Required */}
             <div>
-              <Label htmlFor="email" className="text-slate-200 flex items-center gap-2">
-                <Mail className="w-4 h-4 text-cyber-cyan" />
+              <label className="text-slate-200 flex items-center gap-2 mb-2 text-sm font-medium">
+                <Mail className="w-4 h-4 text-cyan-400" />
                 Email <span className="text-red-400">*</span>
-              </Label>
-              <Input
-                id="email"
+              </label>
+              <input
                 type="email"
                 placeholder="your@email.com"
                 value={formData.email}
                 onChange={(e) => handleChange('email', e.target.value)}
                 required
-                className="mt-2 bg-slate-900/50 border-slate-700 text-slate-100"
+                className="w-full bg-slate-900/50 border border-slate-700 rounded-lg p-3 text-slate-100 focus:outline-none focus:border-purple-500 transition-colors"
               />
             </div>
 
             {/* Name */}
             <div>
-              <Label htmlFor="name" className="text-slate-200 flex items-center gap-2">
-                <User className="w-4 h-4 text-cyber-purple" />
+              <label className="text-slate-200 flex items-center gap-2 mb-2 text-sm font-medium">
+                <User className="w-4 h-4 text-purple-400" />
                 Name
-              </Label>
-              <Input
-                id="name"
+              </label>
+              <input
                 type="text"
                 placeholder="John Doe"
                 value={formData.name}
                 onChange={(e) => handleChange('name', e.target.value)}
-                className="mt-2 bg-slate-900/50 border-slate-700 text-slate-100"
+                className="w-full bg-slate-900/50 border border-slate-700 rounded-lg p-3 text-slate-100 focus:outline-none focus:border-purple-500 transition-colors"
               />
             </div>
 
-            {/* Age */}
-            <div>
-              <Label htmlFor="age" className="text-slate-200">
-                Age
-              </Label>
-              <Input
-                id="age"
-                type="number"
-                placeholder="25"
-                value={formData.age}
-                onChange={(e) => handleChange('age', e.target.value)}
-                min="18"
-                max="100"
-                className="mt-2 bg-slate-900/50 border-slate-700 text-slate-100"
-              />
+            {/* Age & Trade Style */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-slate-200 mb-2 block text-sm font-medium">Age</label>
+                <input
+                  type="number"
+                  placeholder="25"
+                  value={formData.age}
+                  onChange={(e) => handleChange('age', e.target.value)}
+                  min="18"
+                  className="w-full bg-slate-900/50 border border-slate-700 rounded-lg p-3 text-slate-100 focus:outline-none focus:border-purple-500 transition-colors"
+                />
+              </div>
+              <div>
+                <label className="text-slate-200 flex items-center gap-2 mb-2 text-sm font-medium">
+                  <Briefcase className="w-4 h-4 text-cyan-400" />
+                  Trading Style
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g., Swing Trading"
+                  value={formData.tradeStyle}
+                  onChange={(e) => handleChange('tradeStyle', e.target.value)}
+                  className="w-full bg-slate-900/50 border border-slate-700 rounded-lg p-3 text-slate-100 focus:outline-none focus:border-purple-500 transition-colors"
+                />
+              </div>
             </div>
 
-            {/* Trade Style */}
-            <div>
-              <Label htmlFor="tradeStyle" className="text-slate-200 flex items-center gap-2">
-                <Briefcase className="w-4 h-4 text-cyber-cyan" />
-                Trading Style
-              </Label>
-              <Input
-                id="tradeStyle"
-                type="text"
-                placeholder="e.g., Day Trading, Swing Trading, HODLer"
-                value={formData.tradeStyle}
-                onChange={(e) => handleChange('tradeStyle', e.target.value)}
-                className="mt-2 bg-slate-900/50 border-slate-700 text-slate-100"
-              />
-            </div>
-
-            {/* Total Assets */}
-            <div>
-              <Label htmlFor="totalAssetUsd" className="text-slate-200 flex items-center gap-2">
-                <DollarSign className="w-4 h-4 text-green-400" />
-                Total Assets (USD)
-              </Label>
-              <Input
-                id="totalAssetUsd"
-                type="number"
-                placeholder="10000"
-                value={formData.totalAssetUsd}
-                onChange={(e) => handleChange('totalAssetUsd', e.target.value)}
-                min="0"
-                step="0.01"
-                className="mt-2 bg-slate-900/50 border-slate-700 text-slate-100"
-              />
-            </div>
-
-            {/* Crypto Investment */}
-            <div>
-              <Label htmlFor="cryptoInvestmentUsd" className="text-slate-200 flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-cyber-purple" />
-                Crypto Investment (USD)
-              </Label>
-              <Input
-                id="cryptoInvestmentUsd"
-                type="number"
-                placeholder="5000"
-                value={formData.cryptoInvestmentUsd}
-                onChange={(e) => handleChange('cryptoInvestmentUsd', e.target.value)}
-                min="0"
-                step="0.01"
-                className="mt-2 bg-slate-900/50 border-slate-700 text-slate-100"
-              />
+            {/* Assets */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-slate-200 flex items-center gap-2 mb-2 text-sm font-medium">
+                  <DollarSign className="w-4 h-4 text-green-400" />
+                  Total Assets ($)
+                </label>
+                <input
+                  type="number"
+                  placeholder="10000"
+                  value={formData.totalAssetUsd}
+                  onChange={(e) => handleChange('totalAssetUsd', e.target.value)}
+                  className="w-full bg-slate-900/50 border border-slate-700 rounded-lg p-3 text-slate-100 focus:outline-none focus:border-purple-500 transition-colors"
+                />
+              </div>
+              <div>
+                <label className="text-slate-200 flex items-center gap-2 mb-2 text-sm font-medium">
+                  <TrendingUp className="w-4 h-4 text-purple-400" />
+                  Crypto Investment ($)
+                </label>
+                <input
+                  type="number"
+                  placeholder="5000"
+                  value={formData.cryptoInvestmentUsd}
+                  onChange={(e) => handleChange('cryptoInvestmentUsd', e.target.value)}
+                  className="w-full bg-slate-900/50 border border-slate-700 rounded-lg p-3 text-slate-100 focus:outline-none focus:border-purple-500 transition-colors"
+                />
+              </div>
             </div>
 
             {/* Risk Tolerance */}
             <div>
-              <Label className="text-slate-200 mb-3 block">
-                Risk Tolerance
-              </Label>
-              <div className="space-y-4">
-                <div className="flex justify-between text-sm text-slate-400">
-                  <span className={formData.riskTolerance === 'low' ? 'text-green-400 font-semibold' : ''}>
-                    Conservative
-                  </span>
-                  <span className={formData.riskTolerance === 'medium' ? 'text-yellow-400 font-semibold' : ''}>
-                    Balanced
-                  </span>
-                  <span className={formData.riskTolerance === 'high' ? 'text-red-400 font-semibold' : ''}>
-                    Aggressive
-                  </span>
-                </div>
-                
-                <div className="flex gap-3">
-                  {['low', 'medium', 'high'].map((risk) => (
-                    <button
-                      key={risk}
-                      type="button"
-                      onClick={() => handleChange('riskTolerance', risk)}
-                      className={`flex-1 py-3 px-4 rounded-lg border-2 transition-all ${
-                        formData.riskTolerance === risk
-                          ? 'border-cyber-purple bg-cyber-purple/20 text-slate-100'
-                          : 'border-slate-700 bg-slate-900/50 text-slate-400 hover:border-slate-600'
-                      }`}
-                    >
-                      {getRiskLabel(risk)}
-                    </button>
-                  ))}
-                </div>
+              <label className="text-slate-200 mb-3 block text-sm font-medium">Risk Tolerance</label>
+              <div className="flex gap-3">
+                {['low', 'medium', 'high'].map((risk) => (
+                  <button
+                    key={risk}
+                    type="button"
+                    onClick={() => handleChange('riskTolerance', risk)}
+                    className={`flex-1 py-3 px-2 rounded-lg border transition-all text-sm font-medium ${
+                      formData.riskTolerance === risk
+                        ? 'border-purple-500 bg-purple-500/20 text-white'
+                        : 'border-slate-700 bg-slate-900/50 text-slate-400 hover:border-slate-600'
+                    }`}
+                  >
+                    {getRiskLabel(risk)}
+                  </button>
+                ))}
               </div>
             </div>
 
             {/* Submit Button */}
-            <Button
+            <button
               type="submit"
               disabled={loading || !formData.email}
-              className="w-full bg-gradient-to-r from-cyber-purple to-cyber-cyan hover:opacity-90 text-white font-semibold py-6 text-lg"
+              className="w-full bg-gradient-to-r from-purple-600 to-cyan-600 hover:opacity-90 text-white font-bold py-4 rounded-xl transition-all flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed mt-4"
             >
               {loading ? (
                 <>
@@ -282,9 +253,11 @@ export function OnboardingForm() {
                   Creating Account...
                 </>
               ) : (
-                'Complete Setup'
+                <>
+                 Complete Setup <ArrowRight className="ml-2 w-5 h-5" />
+                </>
               )}
-            </Button>
+            </button>
 
             <p className="text-xs text-slate-500 text-center">
               By continuing, you agree to our Terms of Service and Privacy Policy
