@@ -3,12 +3,12 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 
-// Định nghĩa kiểu dữ liệu cho User
 interface User {
   _id: string;
   walletAddress: string;
   name?: string;
   email?: string;
+  age?: number; // Đã thêm age
   riskTolerance?: string;
   tradeStyle?: string;
   totalAssetUsd?: number;
@@ -22,8 +22,8 @@ interface User {
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
-  isLoading: boolean; // [Mới] Để hiển thị loading spinner
-  setUser: (user: User | null) => void; // [Mới] Để Dev Mode hoạt động
+  isLoading: boolean;
+  setUser: (user: User | null) => void;
   verifyWallet: (address: string) => Promise<void>;
   logout: () => void;
 }
@@ -32,41 +32,41 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(false); // [Mới] State loading
+  const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
 
-  // Hàm xử lý logic đăng nhập/đăng ký
   const verifyWallet = async (address: string) => {
     if (!address) return;
 
     try {
-      setIsLoading(true); // Bắt đầu loading
-      console.log("🔐 Verifying wallet:", address);
-
+      setIsLoading(true);
       const res = await fetch('/api/auth/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ walletAddress: address }),
       });
 
-      if (!res.ok) {
-        throw new Error(`API error: ${res.status}`);
-      }
+      if (!res.ok) throw new Error(`API error: ${res.status}`);
 
       const data = await res.json();
 
-      if (data.exists && data.user) {
-        console.log("✅ User exists, logging in...");
+      // Logic check mới: Kiểm tra user object
+      if (data.user) {
         setUser(data.user);
-        router.push('/dashboard');
+        
+        if (data.requiresOnboarding) {
+          router.push('/onboarding');
+        } else {
+          router.push('/dashboard');
+        }
       } else {
-        console.log("🆕 New user, redirecting to onboarding...");
+        // Trường hợp API trả về requiresOnboarding=true nhưng user=null (User mới tinh chưa tạo record)
         router.push('/onboarding');
       }
     } catch (error) {
       console.error("❌ Verify error:", error);
     } finally {
-      setIsLoading(false); // Kết thúc loading
+      setIsLoading(false);
     }
   };
 
@@ -76,16 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider 
-      value={{ 
-        user, 
-        isAuthenticated: !!user, 
-        isLoading, 
-        setUser, 
-        verifyWallet, 
-        logout 
-      }}
-    >
+    <AuthContext.Provider value={{ user, isAuthenticated: !!user, isLoading, setUser, verifyWallet, logout }}>
       {children}
     </AuthContext.Provider>
   );
@@ -93,8 +84,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
+  if (context === undefined) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 }

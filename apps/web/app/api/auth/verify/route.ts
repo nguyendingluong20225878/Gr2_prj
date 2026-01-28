@@ -16,9 +16,12 @@ export async function POST(req: Request) {
     const existingUser = await User.findOne({ walletAddress }).lean();
 
     if (existingUser) {
+      // Kiểm tra xem user đã hoàn thành onboarding chưa (đã có name và riskTolerance)
+      const hasCompletedOnboarding = !!(existingUser.riskTolerance && existingUser.name);
+
       return NextResponse.json({
         user: { ...existingUser, _id: existingUser._id.toString() },
-        requiresOnboarding: !existingUser.riskTolerance // Nếu chưa có khẩu vị rủi ro -> cần onboarding
+        requiresOnboarding: !hasCompletedOnboarding // Nếu đã có thông tin -> false (bỏ qua onboarding)
       });
     }
 
