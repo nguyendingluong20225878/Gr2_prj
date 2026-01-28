@@ -1,62 +1,59 @@
 import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import mongoose from 'mongoose';
-import { ProposalModel } from '../../../../../../core/proposal-generator/src/db/schema/proposals';
+import { ProposalModel as RawProposalModel } from '../../../../../../core/proposal-generator/src/db/schema/proposals';
+
+const ProposalModel = RawProposalModel as mongoose.Model<any>;
 
 export async function GET(req: Request, { params }: { params: { id: string } }) {
   try {
     await connectDB();
-    const id = params.id;
+    const { id } = params;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
+      return NextResponse.json({ error: 'Invalid ID format' }, { status: 400 });
     }
 
-    // FIX LỖI TYPESCRIPT: Query object ép kiểu any
-    const query: any = { _id: new mongoose.Types.ObjectId(id) };
-
-    const p: any = await ProposalModel.findOne(query).lean();
+    // Tìm theo ID chính, nếu không thấy thử tìm theo triggerSignalId (fallback)
+    let p = await ProposalModel.findById(id).lean();
     
     if (!p) {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+      p = await ProposalModel.findOne({ 
+        $or: [
+          { triggerSignalId: new mongoose.Types.ObjectId(id) },
+          { signalId: id }
+        ] 
+      }).lean();
     }
     
-    // --- MAPPING LOGIC ---
-    const extractedSymbol = p.title ? p.title.split(' ')[0].toUpperCase() : 'UNK';
-    
-    let action = 'HOLD';
-    const typeLower = p.type?.toLowerCase() || '';
-    const titleLower = p.title?.toLowerCase() || '';
-    if (typeLower === 'trade' || typeLower === 'opportunity') {
-       action = (titleLower.includes('short') || titleLower.includes('sell')) ? 'SELL' : 'BUY';
+    if (!p) {
+      return NextResponse.json({ error: 'Proposal not found' }, { status: 404 });
     }
 
-    const percentChange = p.financialImpact?.percentChange || 0;
-    const calculatedConfidence = percentChange ? Math.min(Math.abs(percentChange) * 5 + 50, 98) : 85;
-
+    // Chuẩn hóa dữ liệu trả về
     const safeProposal = {
-      ...p,
       _id: p._id.toString(),
-      tokenSymbol: extractedSymbol,
-      tokenName: p.title,
-      action: action,
-      confidence: Math.round(calculatedConfidence),
-      sentimentType: percentChange >= 0 ? 'positive' : 'negative',
-      sentimentScore: percentChange >= 0 ? 70 : -70,
-      
+      signalId: p.signalId || p.triggerSignalId || p.triggerEventId,
+      tokenSymbol: p.tokenSymbol || (p.title ? p.title.split(' ')[0] : 'TOKEN'),
+      tokenName: p.tokenName || p.title,
+      action: p.action || (p.title?.toLowerCase().includes('sell') ? 'SELL' : 'BUY'),
       financialImpact: {
         currentValue: p.financialImpact?.currentValue || 0,
         projectedValue: p.financialImpact?.projectedValue || 0,
-        riskLevel: p.financialImpact?.riskLevel || 'MEDIUM',
-        percentChange: percentChange,
+        riskLevel: (p.financialImpact?.riskLevel || 'MEDIUM').toUpperCase(),
+        percentChange: p.financialImpact?.percentChange || 0,
       },
-
-      sources: p.sources?.map((s: any) => s.url).filter(Boolean) || [],
+      summary: p.summary,
+      reason: p.reason || [],
+      confidence: p.confidence ? (p.confidence <= 1 ? Math.round(p.confidence * 100) : p.confidence) : 85,
+      expiresAt: p.expiresAt,
+      createdAt: p.createdAt,
+      sentimentType: (p.financialImpact?.percentChange || 0) >= 0 ? 'positive' : 'negative'
     };
 
     return NextResponse.json(safeProposal);
-  } catch (error) {
-    console.error('Detail API Error:', error);
-    return NextResponse.json({ error: 'Internal Error' }, { status: 500 });
+  } catch (error: any) {
+    console.error('💥 API Error:', error.message);
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }

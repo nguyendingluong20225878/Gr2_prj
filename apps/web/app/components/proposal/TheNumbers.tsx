@@ -1,4 +1,4 @@
-import { TrendingUp, DollarSign } from 'lucide-react';
+import { TrendingUp, DollarSign, Wallet } from 'lucide-react';
 
 interface TheNumbersProps {
   currentValue: number;
@@ -10,66 +10,67 @@ interface TheNumbersProps {
 export function TheNumbers({ currentValue, projectedValue, percentChange, tokenSymbol }: TheNumbersProps) {
   const roi = projectedValue - currentValue;
   const roiPercent = percentChange !== undefined ? percentChange : (currentValue !== 0 ? (roi / currentValue) * 100 : 0);
-  const isPositive = roiPercent > 0;
+  const isPositive = roiPercent >= 0;
 
   const formatCurrency = (num: number) => {
-    if (num === undefined || num === null) return '$0.00';
-    if (num >= 1_000_000) return `$${(num / 1_000_000).toFixed(2)}M`;
-    if (num >= 1_000) return `$${(num / 1_000).toFixed(2)}K`;
-    return `$${num.toFixed(2)}`;
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(num);
   };
 
-  const maxValue = Math.max(currentValue, projectedValue) || 1;
-  const currentWidthPercent = Math.min((currentValue / maxValue) * 100, 100);
-  const projectedWidthPercent = Math.min((projectedValue / maxValue) * 100, 100);
-
   return (
-    <div className="glass-card rounded-xl p-6 border border-purple-400/30">
-      <div className="flex items-center gap-2 mb-6">
-        <DollarSign className="w-6 h-6 text-purple-400" />
-        <h2 className="text-2xl font-bold gradient-text">The Numbers</h2>
-      </div>
-
-      <p className="text-sm text-slate-400 mb-8">
-        Financial analysis for {tokenSymbol} based on AI prediction
-      </p>
-
-      {/* ROI Display */}
-      <div className="bg-slate-900/50 border-2 border-cyber-cyan/30 rounded-xl p-6 mb-6 relative overflow-hidden">
-        <div className={`absolute top-0 right-0 w-32 h-32 ${isPositive ? 'bg-green-500/20' : 'bg-red-500/20'} blur-3xl`} />
-        <div className="relative text-center">
-          <p className="text-sm text-slate-400 mb-2">Expected ROI</p>
-          <div className="flex items-baseline justify-center gap-3">
-            <p className={`text-5xl font-bold font-mono ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
-              {isPositive ? '+' : ''}{roiPercent.toFixed(2)}%
-            </p>
-            <TrendingUp className={`w-8 h-8 ${isPositive ? 'text-green-400' : 'text-red-400'}`} />
-          </div>
-          <p className={`text-xl font-semibold mt-2 ${isPositive ? 'text-green-400/70' : 'text-red-400/70'}`}>
-            {isPositive ? '+' : ''}{formatCurrency(roi)}
+    <div className="glass-card rounded-xl p-6 border border-purple-400/30 bg-slate-950/50">
+      <div className="flex justify-between items-start mb-8">
+        <div>
+          <h2 className="text-2xl font-bold gradient-text flex items-center gap-2">
+            <DollarSign className="w-6 h-6 text-purple-400" /> The Numbers
+          </h2>
+          <p className="text-xs text-slate-500 uppercase mt-1">Personalized Financial Impact</p>
+        </div>
+        <div className={`text-right ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
+          <p className="text-4xl font-black font-mono leading-none tracking-tight">
+            {isPositive ? '+' : ''}{roiPercent.toFixed(2)}%
           </p>
+          <div className="flex items-center justify-end gap-1 mt-1">
+             <TrendingUp className={`w-3 h-3 ${isPositive ? '' : 'rotate-180'}`} />
+             <p className="text-[10px] uppercase font-bold tracking-widest">Est. ROI</p>
+          </div>
         </div>
       </div>
 
-      {/* Comparison Bars */}
-      <div className="space-y-6">
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-slate-400">Current Value</span>
-            <span className="text-lg font-bold text-slate-200">{formatCurrency(currentValue)}</span>
-          </div>
-          <div className="h-4 bg-slate-800 rounded-full overflow-hidden relative">
-            <div className="h-full bg-gradient-to-r from-slate-600 to-slate-500 rounded-full" style={{ width: `${currentWidthPercent}%` }} />
-          </div>
+      {/* Cards Display */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        <div className="p-5 bg-slate-900/60 rounded-xl border border-slate-800 relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-3 opacity-10"><Wallet className="w-12 h-12 text-white" /></div>
+          <p className="text-xs text-slate-400 uppercase font-semibold mb-2">Current Allocation</p>
+          <p className="text-2xl font-bold text-white font-mono">{formatCurrency(currentValue)}</p>
         </div>
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-slate-400">Projected Value</span>
-            <span className="text-lg font-bold text-cyber-cyan">{formatCurrency(projectedValue)}</span>
+        
+        <div className={`p-5 rounded-xl border relative overflow-hidden ${isPositive ? 'bg-green-500/5 border-green-500/20' : 'bg-red-500/5 border-red-500/20'}`}>
+          <div className={`absolute top-0 right-0 p-3 opacity-10 ${isPositive ? 'text-green-500' : 'text-red-500'}`}>
+            <TrendingUp className="w-12 h-12" />
           </div>
-          <div className="h-4 bg-slate-800 rounded-full overflow-hidden relative">
-            <div className="h-full bg-gradient-to-r from-cyan-500 to-purple-500 rounded-full animate-pulse" style={{ width: `${projectedWidthPercent}%` }} />
-          </div>
+          <p className={`text-xs uppercase font-semibold mb-2 ${isPositive ? 'text-green-500/70' : 'text-red-500/70'}`}>
+            Projected Value
+          </p>
+          <p className={`text-2xl font-bold font-mono ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
+            {formatCurrency(projectedValue)}
+          </p>
+          <p className="text-xs text-slate-500 mt-1">Based on AI prediction</p>
+        </div>
+      </div>
+
+      {/* Progress Bar Visualization */}
+      <div className="space-y-2">
+        <div className="flex justify-between text-[10px] uppercase font-bold text-slate-500 px-1">
+          <span>Current</span>
+          <span>Target (+{formatCurrency(roi)})</span>
+        </div>
+        <div className="h-3 bg-slate-800 rounded-full overflow-hidden flex p-0.5 border border-slate-700">
+          {/* Base Bar */}
+          <div className="h-full bg-slate-500 rounded-full w-full" style={{ width: '100%' }}></div>
+          {/* Gain Bar */}
+          {isPositive && (
+             <div className="h-full bg-gradient-to-r from-green-500 to-emerald-400 rounded-full animate-pulse ml-1" style={{ width: `${Math.min(Math.abs(roiPercent), 50)}%` }} />
+          )}
         </div>
       </div>
     </div>

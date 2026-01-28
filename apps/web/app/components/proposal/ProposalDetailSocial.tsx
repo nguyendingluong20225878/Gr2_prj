@@ -4,23 +4,24 @@ import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { 
-  ArrowLeft, ArrowUpRight, ArrowDownRight,
-  Loader2, MinusCircle 
+  ArrowLeft, 
+  Loader2, 
+  Share2, 
+  ExternalLink,
+  Zap
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
-import { Badge } from '@/app/components/ui/badge';
-import { Skeleton } from '@/app/components/ui/skeleton';
-import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
+import { toast } from 'sonner';
 
+// Import các component con
 import { TheNumbers } from './TheNumbers';
 import { TheLogic } from './TheLogic';
 import { TheEvidence } from './TheEvidence';
 import { RiskSimulation } from './RiskSimulation';
 
-// ✅ THÊM LẠI INTERFACE NÀY
 interface ProposalDetailSocialProps {
-  onBack?: () => void; // Cho phép component cha tùy chỉnh hành động Back
+  onBack?: () => void;
 }
 
 export function ProposalDetailSocial({ onBack }: ProposalDetailSocialProps) {
@@ -29,154 +30,209 @@ export function ProposalDetailSocial({ onBack }: ProposalDetailSocialProps) {
   const { connected } = useWallet();
   
   const [proposal, setProposal] = useState<any>(null);
+  const [signal, setSignal] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [amount, setAmount] = useState(0);
   const [executing, setExecuting] = useState(false);
 
   useEffect(() => {
-    if (params?.id) {
+    async function fetchData() {
+      if (!params?.id) return;
+      
       setLoading(true);
-      fetch(`/api/proposals/${params.id}`)
-        .then(res => {
-            if (!res.ok) throw new Error("API Error");
-            return res.json();
-        })
-        .then(data => {
-            if (data.error) throw new Error(data.error);
-            setProposal(data);
-        })
-        .catch(err => {
-            console.error("Fetch error:", err);
-            toast.error("Failed to load proposal details");
-        })
-        .finally(() => setLoading(false));
-    }
-  }, [params?.id]);
+      try {
+        // Bước 1: Lấy dữ liệu Proposal (Dữ liệu đã cá nhân hóa cho User)
+        const propRes = await fetch(`/api/proposals/${params.id}`);
+        
+        if (!propRes.ok) {
+          if (propRes.status === 404) throw new Error('Không tìm thấy đề xuất (404)');
+          throw new Error('Lỗi kết nối đến máy chủ');
+        }
 
-  // ✅ Logic Back: Ưu tiên onBack từ Props, nếu không có thì mặc định về Dashboard
+        const propData = await propRes.json();
+        setProposal(propData);
+
+        // Bước 2: Lấy dữ liệu Signal gốc (Bằng chứng thị trường)
+        // Dùng signalId hoặc triggerEventId từ proposal trả về
+        const signalId = propData.signalId || propData.triggerEventId;
+        
+        if (signalId) {
+          const sigRes = await fetch(`/api/signals/${signalId}`);
+          if (sigRes.ok) {
+            const sigData = await sigRes.json();
+            setSignal(sigData);
+          }
+        }
+      } catch (error: any) {
+        console.error("Error fetching details:", error);
+        toast.error(error.message || "Không thể tải dữ liệu.");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchData();
+  }, [params.id]);
+
   const handleBack = () => {
-    if (onBack) {
-      onBack();
-    } else {
-      router.push('/dashboard');
-    }
-  };
-
-  const handleExecuteTrade = async () => {
-    if (!connected) return toast.error('Please connect wallet');
-    setExecuting(true);
-    // Fake logic trade
-    setTimeout(() => {
-        setExecuting(false);
-        toast.success('Trade Executed (Simulation)');
-    }, 2000);
+    if (onBack) onBack();
+    else router.back();
   };
 
   if (loading) {
     return (
-      <div className="space-y-6 container mx-auto p-4">
-        <Skeleton className="h-12 w-32" />
-        <div className="glass-card rounded-xl p-8 h-[500px] flex items-center justify-center">
-            <Loader2 className="animate-spin w-10 h-10 text-purple-500"/>
-        </div>
+      <div className="flex flex-col items-center justify-center min-h-[450px] space-y-4">
+        <Loader2 className="w-12 h-12 text-cyan-400 animate-spin" />
+        <p className="text-slate-400 font-medium animate-pulse">
+          Đang phân tích dữ liệu thị trường và danh mục của bạn...
+        </p>
       </div>
     );
   }
 
-  if (!proposal) return <div className="text-center p-20">Proposal not found.</div>;
-
-  const isBuy = proposal.action === 'BUY';
-  const isHold = proposal.action === 'HOLD';
-  
-  const actionColor = isBuy 
-    ? 'text-green-400 border-green-500 bg-green-500/10' 
-    : isHold 
-      ? 'text-slate-300 border-slate-500 bg-slate-500/10' 
-      : 'text-red-400 border-red-500 bg-red-500/10';
+  if (!proposal) {
+    return (
+      <div className="p-12 text-center glass-card rounded-xl border-red-500/30">
+        <p className="text-red-400 font-bold text-lg mb-4">Lỗi: Không tìm thấy dữ liệu đề xuất</p>
+        <Button onClick={handleBack} variant="outline" className="border-white/10">
+          Quay lại Dashboard
+        </Button>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6 container mx-auto p-4 animate-in fade-in">
-      {/* Back Button */}
-      <Button variant="ghost" onClick={handleBack} className="gap-2 hover:bg-white/5">
-        <ArrowLeft className="w-4 h-4" /> Back
-      </Button>
-
-      {/* Header Card */}
-      <div className="glass-card rounded-xl p-8 neon-border">
-        <div className="flex flex-col md:flex-row justify-between gap-6">
-          <div>
-            <div className="flex items-center gap-3 mb-2">
-              <h1 className="text-4xl font-bold gradient-text">{proposal.tokenSymbol}</h1>
-              <Badge className={`text-lg px-4 py-1 border-2 ${actionColor}`}>
-                {isBuy ? <><ArrowUpRight className="w-5 mr-1" /> BUY</> : 
-                 isHold ? <><MinusCircle className="w-5 mr-1" /> HOLD</> : 
-                 <><ArrowDownRight className="w-5 mr-1" /> SELL</>}
-              </Badge>
-            </div>
-            <p className="text-slate-400 text-lg max-w-2xl">{proposal.title}</p>
+    <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 max-w-5xl mx-auto pb-24 px-4">
+      {/* Navigation Header */}
+      <div className="flex items-center justify-between mb-8">
+        <Button 
+          variant="ghost" 
+          onClick={handleBack} 
+          className="text-slate-400 hover:text-white hover:bg-white/5 gap-2 pl-0 transition-all"
+        >
+          <ArrowLeft className="w-5 h-5" /> Quay lại
+        </Button>
+        
+        <div className="flex items-center gap-3">
+          <div className="hidden md:block text-right mr-2">
+            <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Status</p>
+            <p className="text-xs text-cyan-400 font-mono">{proposal.status?.toUpperCase() || 'ACTIVE'}</p>
           </div>
-          
-          <div className="flex gap-4">
-             <div className="text-center bg-black/40 p-4 rounded-xl min-w-[120px] border border-white/5">
-                <div className="text-xs text-slate-400 mb-1">Confidence</div>
-                <div className="text-3xl font-bold text-green-400">{proposal.confidence}%</div>
-             </div>
-          </div>
+          <Button variant="outline" size="icon" className="border-white/10 bg-black/20 text-slate-400 hover:text-white">
+            <Share2 className="w-4 h-4" />
+          </Button>
         </div>
       </div>
 
-      {/* Tabs */}
-      <Tabs defaultValue="numbers" className="space-y-6">
-        <TabsList className="glass-card p-1 w-full grid grid-cols-4">
-          <TabsTrigger value="numbers">Numbers</TabsTrigger>
-          <TabsTrigger value="logic">Logic</TabsTrigger>
-          <TabsTrigger value="evidence">Evidence</TabsTrigger>
-          <TabsTrigger value="execute">Execute</TabsTrigger>
+      {/* Main Identity Section */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
+        <div className="space-y-2">
+          <div className="flex items-center gap-3">
+             <div className="w-14 h-14 rounded-full bg-gradient-purple-cyan flex items-center justify-center shadow-[0_0_20px_rgba(34,211,238,0.3)]">
+                <span className="text-white font-black text-xl">{proposal.tokenSymbol?.slice(0, 2)}</span>
+             </div>
+             <div>
+                <h1 className="text-4xl font-black uppercase tracking-tighter text-white">
+                  {proposal.tokenSymbol} <span className="text-slate-500 text-2xl font-light">/ USDC</span>
+                </h1>
+                <p className="text-slate-400 text-sm font-medium">{proposal.tokenName || 'AI Generated Proposal'}</p>
+             </div>
+          </div>
+        </div>
+        
+        <div className={`flex items-center gap-4 px-6 py-3 rounded-2xl border-2 shadow-lg transition-all duration-500 ${
+          proposal.action === 'BUY' 
+          ? 'bg-green-500/10 border-green-500/40 text-green-400 shadow-green-500/10' 
+          : 'bg-red-500/10 border-red-500/40 text-red-400 shadow-red-500/10'
+        }`}>
+          <Zap className={`w-6 h-6 ${proposal.action === 'BUY' ? 'fill-green-400' : 'fill-red-400'}`} />
+          <span className="text-2xl font-black tracking-widest italic uppercase">
+            {proposal.action || 'HOLD'}
+          </span>
+        </div>
+      </div>
+
+      {/* Interactive Tabs Section */}
+      <Tabs defaultValue="numbers" className="w-full">
+        <TabsList className="grid grid-cols-4 w-full bg-slate-900/80 border border-white/5 p-1.5 mb-10 rounded-2xl h-auto shadow-2xl backdrop-blur-md">
+          <TabsTrigger value="numbers" className="py-3.5 rounded-xl data-[state=active]:bg-gradient-purple-cyan data-[state=active]:text-white data-[state=active]:shadow-lg transition-all font-bold text-xs md:text-sm">
+            THE NUMBERS
+          </TabsTrigger>
+          <TabsTrigger value="logic" className="py-3.5 rounded-xl data-[state=active]:bg-gradient-purple-cyan data-[state=active]:text-white data-[state=active]:shadow-lg transition-all font-bold text-xs md:text-sm">
+            THE LOGIC
+          </TabsTrigger>
+          <TabsTrigger value="evidence" className="py-3.5 rounded-xl data-[state=active]:bg-gradient-purple-cyan data-[state=active]:text-white data-[state=active]:shadow-lg transition-all font-bold text-xs md:text-sm">
+            THE EVIDENCE
+          </TabsTrigger>
+          <TabsTrigger value="execute" className="py-3.5 rounded-xl data-[state=active]:bg-gradient-to-r from-amber-500 to-orange-600 data-[state=active]:text-white data-[state=active]:shadow-lg transition-all font-black text-xs md:text-sm">
+            EXECUTE
+          </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="numbers">
+        {/* Tab 1: Dữ liệu tài chính (Từ Proposal) */}
+        <TabsContent value="numbers" className="mt-0 focus-visible:outline-none">
           <TheNumbers 
-            currentValue={proposal.financialImpact.currentValue} 
-            projectedValue={proposal.financialImpact.projectedValue} 
-            percentChange={proposal.financialImpact.percentChange} 
-            tokenSymbol={proposal.tokenSymbol} 
+            currentValue={proposal.financialImpact?.currentValue || 0}
+            projectedValue={proposal.financialImpact?.projectedValue || 0}
+            percentChange={proposal.financialImpact?.percentChange || 0}
+            tokenSymbol={proposal.tokenSymbol}
           />
         </TabsContent>
 
-        <TabsContent value="logic">
+        {/* Tab 2: Logic AI (Từ Proposal) */}
+        <TabsContent value="logic" className="mt-0 focus-visible:outline-none">
           <TheLogic 
-            reason={proposal.reason} 
-            rationaleSummary={proposal.summary} 
-            confidence={proposal.confidence} 
+            reason={proposal.reason || []} 
+            rationaleSummary={proposal.summary || ''} 
+            confidence={proposal.confidence || 0} 
           />
         </TabsContent>
 
-        <TabsContent value="evidence">
+        {/* Tab 3: Bằng chứng thị trường (Từ Signal API) */}
+        <TabsContent value="evidence" className="mt-0 focus-visible:outline-none">
           <TheEvidence 
-            sources={proposal.sources} 
+            signalData={signal} 
             tokenSymbol={proposal.tokenSymbol} 
-            triggerEventId={proposal._id} 
           />
         </TabsContent>
 
-        <TabsContent value="execute">
-          <div className="space-y-4">
-            <RiskSimulation 
-              targetPrice={proposal.financialImpact.projectedValue}
-              currentPrice={proposal.financialImpact.currentValue}
-              potentialReturn={proposal.financialImpact.percentChange}
-              suggestedAmount={100}
-              onAmountChange={setAmount}
-            />
-            <div className="glass-card p-6 border border-white/10">
-                <Button 
-                  onClick={handleExecuteTrade} 
-                  disabled={executing || isHold} 
-                  className="w-full py-6 text-lg bg-gradient-purple-cyan font-bold shadow-lg shadow-cyan-500/20"
-                >
-                  {executing ? <Loader2 className="animate-spin" /> : 
-                   isHold ? 'Action Paused (HOLD)' : 'Execute Trade Now'}
-                </Button>
+        {/* Tab 4: Thực thi & Rủi ro (Từ Proposal) */}
+        <TabsContent value="execute" className="mt-0 focus-visible:outline-none">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="lg:col-span-2">
+              <RiskSimulation 
+                targetPrice={proposal.financialImpact?.projectedValue || 0}
+                currentPrice={proposal.financialImpact?.currentValue || 0}
+                potentialReturn={proposal.financialImpact?.percentChange || 0}
+                suggestedAmount={100}
+                action={proposal.action}
+              />
+            </div>
+            
+            {/* Sidebar Execution Status */}
+            <div className="space-y-6">
+              <div className="glass-card p-6 border border-white/5 rounded-2xl bg-slate-900/40">
+                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></div>
+                  Wallet Status
+                </h4>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-slate-300">Connected</span>
+                  <span className={`text-xs font-bold ${connected ? 'text-green-400' : 'text-red-400'}`}>
+                    {connected ? 'YES' : 'NO'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-slate-300">Risk Profile</span>
+                  <span className="text-xs font-bold text-amber-400">{proposal.financialImpact?.riskLevel || 'MEDIUM'}</span>
+                </div>
+              </div>
+
+              <div className="p-1 rounded-2xl bg-gradient-to-r from-purple-500 via-cyan-500 to-purple-500">
+                <div className="bg-slate-950 rounded-[14px] p-5">
+                   <p className="text-[10px] text-slate-500 font-bold uppercase mb-2">Strategy ID</p>
+                   <p className="text-xs font-mono text-slate-300 truncate">{proposal._id}</p>
+                </div>
+              </div>
             </div>
           </div>
         </TabsContent>

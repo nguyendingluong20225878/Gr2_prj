@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useSignals } from '@/lib/hooks/useSignals';
-import { ProposalCardSocial } from './ProposalCardSocial'; 
+import { ProposalCardSocial } from './SignalCardSocial'; 
 import { Sparkles, TrendingUp, AlertCircle, Activity, ShieldAlert } from 'lucide-react';
 import { Skeleton } from '@/app/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
