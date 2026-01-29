@@ -3,7 +3,7 @@ import { parser, generateProposalPromptText } from "../prompts/proposalGeneratio
 import { getProposalChatModel } from "../utils/model";
 import { proposalGeneratorState } from "../utils/state";
 
-// Khởi tạo model (sẽ dùng Gemini Direct API đã viết ở model.ts)
+// Khởi tạo model (Gemini qua REST API)
 const modelInstance = getProposalChatModel();
 
 export const proposalGenerationNode = async (
@@ -13,7 +13,10 @@ export const proposalGenerationNode = async (
   const userId = options.configurable?.userId;
   const signalId = options.configurable?.signalId;
 
-  const { signal, user, tokenPrices, latestTweets, userBalance } = state;
+  // === FIX LỖI 'UNKNOWN' TẠI ĐÂY ===
+  // Ép kiểu signal sang any để TypeScript không báo lỗi khi truy cập ._id
+  const signal = state.signal as any;
+  const { user, tokenPrices, latestTweets, userBalance, tokenDetail } = state;
 
   // 1. Kiểm tra dữ liệu đầu vào
   if (!signal || !user || !tokenPrices || !userBalance) {
@@ -24,22 +27,23 @@ export const proposalGenerationNode = async (
     throw new Error("AI Model not configured. Please check GOOGLE_API_KEY.");
   }
 
-  // 2. Tạo Prompt Text
+  // 2. Tạo Prompt Text (đã bao gồm thông tin TokenDetail)
   const inputText = generateProposalPromptText({
     signal,
     tokenPrices,
     userBalance,
-    latestTweets
+    latestTweets,
+    tokenDetail
   });
 
-  // 3. Gọi Model
-  console.log(`[Proposal Gen] Generating proposal for ${signal.tokenSymbol || "Unknown"}...`);
+  // 3. Gọi Model Gemini
+  console.log(`[Proposal Gen] Generating proposal for ${tokenDetail?.symbol || "Unknown"}...`);
   const response = await modelInstance.invoke(inputText);
   
-  // 4. Parse kết quả với xử lý lỗi mạnh mẽ
+  // 4. Parse kết quả JSON
   let result;
   try {
-    // Dùng hàm .parse mới viết ở file prompt
+    // Dùng hàm .parse mạnh mẽ đã viết ở prompts/proposalGeneration.ts
     result = await parser.parse(response.content);
   } catch (err) {
     console.error("[Proposal Gen] Error parsing AI response.");
@@ -50,8 +54,7 @@ export const proposalGenerationNode = async (
     throw new Error("AI returned a response but 'proposal' key is missing.");
   }
 
-  // 5. Chuẩn hóa dữ liệu (Data Normalization)
-  // Đảm bảo các giá trị tài chính là Number để tránh lỗi Schema DB
+  // 5. Chuẩn hóa dữ liệu tài chính
   const proposal = result.proposal;
   if (proposal.financialImpact) {
     proposal.financialImpact.currentValue = Number(proposal.financialImpact.currentValue) || 0;
@@ -59,19 +62,21 @@ export const proposalGenerationNode = async (
     proposal.financialImpact.percentChange = Number(proposal.financialImpact.percentChange) || 0;
   }
 
-  // Đảm bảo confidence là số từ 0.0 - 1.0
+  // Chuẩn hóa confidence về 0.0 - 1.0
   if (proposal.confidence > 1) proposal.confidence = proposal.confidence / 100;
 
-  // 6. Gắn Metadata & Hoàn thiện
+  // 6. Gắn Metadata & Hoàn thiện object để lưu DB
   const finalProposal = {
     ...proposal,
     userId,
+    // Truy cập _id không còn bị lỗi unknown
     triggerEventId: signal._id || signalId,
     tokenAddress: signal.tokenAddress,
+    proposedBy: "NDL AI",
     status: "pending",
     createdAt: new Date(),
     updatedAt: new Date(),
-    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) // Hết hạn sau 24h
+    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000)
   };
 
   console.log(`[Proposal Gen] ✅ Success! Created title: ${finalProposal.title}`);

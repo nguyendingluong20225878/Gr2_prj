@@ -1,11 +1,7 @@
-
 import mongoose, { Connection } from "mongoose";
 
-const MONGODB_URI = process.env.MONGODB_URI ?? process.env.DATABASE_URL;
-
-if (!MONGODB_URI) {
-  throw new Error("connection.ts: MONGODB_URI (or DATABASE_URL) is not set");
-}
+// Hàm lấy URI từ biến môi trường
+const getUri = () => process.env.MONGODB_URI ?? process.env.DATABASE_URL;
 
 type GlobalWithMongoose = typeof globalThis & {
   __mongooseConnection?: {
@@ -20,7 +16,16 @@ if (!globalWithMongoose.__mongooseConnection) {
   globalWithMongoose.__mongooseConnection = { conn: null, promise: null };
 }
 
+/**
+ * Kết nối tới MongoDB một cách an toàn
+ */
 export async function connectToDatabase(): Promise<Connection> {
+  const uri = getUri();
+  
+  if (!uri) {
+    throw new Error("connection.ts: MONGODB_URI (hoặc DATABASE_URL) chưa được thiết lập trong biến môi trường.");
+  }
+
   if (globalWithMongoose.__mongooseConnection?.conn) {
     return globalWithMongoose.__mongooseConnection.conn;
   }
@@ -29,9 +34,9 @@ export async function connectToDatabase(): Promise<Connection> {
     mongoose.set("strictQuery", true);
 
     globalWithMongoose.__mongooseConnection!.promise = mongoose
-      .connect(MONGODB_URI!, { // FIX: Thêm "!" để ép kiểu string non-null
+      .connect(uri, { 
         autoIndex: true,
-        serverSelectionTimeoutMS: 10_000,
+        serverSelectionTimeoutMS: 10000,
       })
       .then((mongooseInstance) => mongooseInstance.connection);
   }
