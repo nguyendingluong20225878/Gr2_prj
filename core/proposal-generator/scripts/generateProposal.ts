@@ -1,113 +1,106 @@
 // core/proposal-generator/scripts/generateProposal.ts
-import { config } from "dotenv";
-import mongoose from "mongoose";
+import dotenv from "dotenv";
 import path from "path";
+import mongoose from "mongoose"; // Đây là instance mongoose CỤC BỘ của proposal-generator
 
-// 1. Load biến môi trường từ file .env của proposal-generator
-config({ path: path.resolve(__dirname, "../.env") });
+// 1. Load biến môi trường và Debug đường dẫn
+// Sử dụng process.cwd() để đảm bảo tìm đúng file .env ngay tại thư mục chạy lệnh
+const envPath = path.resolve(process.cwd(), ".env");
+console.log(`[Script] Loading .env from: ${envPath}`);
+const envConfig = dotenv.config({ path: envPath });
 
-// Đảm bảo process.env có MONGODB_URI để các module shared có thể đọc được
-if (!process.env.MONGODB_URI) {
-  process.env.MONGODB_URI = "mongodb://localhost:27017/gr2_prj";
+if (envConfig.error) {
+  console.warn(`⚠️ Warning: Could not find .env file at ${envPath}`);
 }
 
-const MONGODB_URI = process.env.MONGODB_URI;
+// 2. Import các module sau khi đã load Env
+import { connectToDatabase as connectShared } from "../../shared/src/db/connection";
+import { usersTable } from "../../shared/src/db/schema/users";
+import { signalsTable } from "../../shared/src/db/schema/signals";
+import { ProposalModel } from "../src/db/schema/proposals"; 
+import { createProposalWorkflow } from "../src/index";
 
-// 2. ĐỊNH NGHĨA SCHEMAS (Đã sửa để khớp với core/shared/src/db/schema/proposals.ts)
-const UserSchema = new mongoose.Schema({
-  walletAddress: String,
-  riskTolerance: String,
-  totalAssetUsd: Number,
-  balances: Array 
-});
-
-const SignalSchema = new mongoose.Schema({
-  tokenAddress: String,
-  suggestionType: String,
-  expiresAt: Date,
-  createdAt: Date
-});
-
-const ProposalSchema = new mongoose.Schema({
-  userId: { type: String, required: true }, // Map theo shared schema (String)
-  triggerEventId: { type: String, required: true }, // Sửa từ triggerSignalId -> triggerEventId
-  
-  tokenSymbol: String,
-  tokenName: String,
-  type: { type: String, enum: ["trade", "stake", "risk", "opportunity", "hold", "buy", "sell"] },
-  title: String,
-  summary: String,
-  
-  financialImpact: {
-    currentValue: Number,
-    projectedValue: Number,
-    percentChange: Number,
-    timeFrame: String,
-    riskLevel: String,
-  },
-  
-  reason: [String], 
-  sources: [{ name: String, url: String }],
-  confidence: Number,
-  proposedBy: { type: String, default: "NDL AI" },
-  status: { type: String, default: 'pending' }, // Dashboard thường dùng 'pending' hoặc 'ACTIVE'
-  createdAt: { type: Date, default: Date.now },
-  expiresAt: { type: Date, required: true },
-}, { timestamps: true });
-
-const UserModel = mongoose.models.User || mongoose.model("User", UserSchema);
-const SignalModel = mongoose.models.Signal || mongoose.model("Signal", SignalSchema);
-const ProposalModel = mongoose.models.Proposal || mongoose.model("Proposal", ProposalSchema);
-
-const main = async () => {
+async function main() {
   try {
-    console.log("🔌 Connecting to MongoDB...");
-    await mongoose.connect(MONGODB_URI);
-    console.log("✅ DB Connected.");
-
-    const signal = await SignalModel.findOne().sort({ createdAt: -1 });
-    if (!signal) {
-      console.error("❌ No signals found.");
+    // Kiểm tra API Key
+    if (!process.env.GOOGLE_API_KEY) {
+      console.error("\n❌ FATAL ERROR: GOOGLE_API_KEY is missing or empty.");
+      console.error("👉 Please open file .env and fill in your API Key: GOOGLE_API_KEY=AIzaSy...");
       process.exit(1);
     }
 
-    const users = await UserModel.find({});
-    console.log(`👥 Found ${users.length} Users. Starting generation...`);
+    const mongoUri = process.env.MONGODB_URI || process.env.DATABASE_URL;
+    if (!mongoUri) {
+      console.error("❌ MONGODB_URI is missing in .env");
+      process.exit(1);
+    }
 
-    const { initProposalGeneratorGraph } = await import("../src/index");
+    console.log("🔌 Connecting to Databases...");
+
+    // === BƯỚC QUAN TRỌNG NHẤT ĐỂ SỬA LỖI TIMEOUT ===
+    // 1. Kết nối Shared Mongoose (để dùng usersTable, signalsTable)
+    await connectShared();
+    console.log("✅ Shared DB Connected (Users/Signals).");
+
+    // 2. Kết nối Local Mongoose (để dùng ProposalModel)
+    // Phải kết nối lại cái này vì ProposalModel dùng instance mongoose khác với Shared
+    if (mongoose.connection.readyState === 0) {
+      await mongoose.connect(mongoUri);
+      console.log("✅ Local DB Connected (Proposals).");
+    }
+    // ===============================================
+
+    // Lấy dữ liệu
+    const users = await usersTable.find().lean();
+    const activeSignals = await signalsTable.find({
+      expiresAt: { $gt: new Date() }
+    }).lean();
+
+    console.log(`\n👥 Found ${users.length} Users and ${activeSignals.length} Active Signals.`);
+
+    const workflow = createProposalWorkflow();
 
     for (const user of users) {
-      try {
-        const { graph, config: graphConfig } = await initProposalGeneratorGraph(signal._id.toString(), user._id.toString());
-        const result = await graph.invoke({}, graphConfig);
-        
-        const aiProposal = result.proposal;
-        if (aiProposal) {
-          // Xóa proposal cũ để tránh trùng lặp
-          await ProposalModel.deleteMany({ userId: user._id.toString(), triggerEventId: signal._id.toString() });
+      const userId = (user as any)._id.toString();
 
-          // Lưu theo đúng định dạng core (Shared Schema)
-          const finalProposalData = {
-            ...aiProposal,
-            userId: user._id.toString(),
-            triggerEventId: signal._id.toString(),
-            status: aiProposal.status || 'pending',
-            expiresAt: signal.expiresAt || new Date(Date.now() + 48 * 60 * 60 * 1000)
-          };
+      // Dùng ProposalModel để lọc trùng (Lúc này đã có kết nối nên sẽ không bị timeout)
+      const processedIds = await ProposalModel.find({ userId }).distinct("triggerEventId");
 
-          await ProposalModel.create(finalProposalData);
-          console.log(`✅ [SUCCESS] Proposal saved for user ${user._id}: ${aiProposal.title}`);
+      const newSignals = activeSignals.filter(
+        (sig: any) => !processedIds.includes(sig._id.toString())
+      );
+
+      if (newSignals.length === 0) {
+        console.log(`[Script] User ${userId}: No new signals.`);
+        continue;
+      }
+
+      console.log(`[Script] User ${userId}: Processing ${newSignals.length} new signals...`);
+
+      for (const signal of newSignals) {
+        try {
+          const signalId = (signal as any)._id.toString();
+          
+          await workflow.invoke(
+            {}, 
+            { configurable: { userId, signalId } }
+          );
+
+          console.log(`✅ [DONE] Proposal created for Signal ${signalId}`);
+        } catch (err: any) {
+          console.error(`❌ [ERROR] Signal ${(signal as any)._id}:`, err.message);
         }
-      } catch (err: any) {
-        console.error(`❌ [ERROR] User ${user._id}:`, err.message);
       }
     }
+
   } catch (error) {
-    console.error("❌ Fatal Error:", error);
+    console.error("\n❌ Fatal Error:", error);
   } finally {
-    await mongoose.disconnect();
+    // Ngắt kết nối cả 2 instance khi xong
+    await mongoose.disconnect(); 
+    // Nếu connectShared có hàm disconnect riêng thì gọi thêm, nhưng thường mongoose.disconnect() là đủ
     process.exit(0);
   }
-};
+}
 
 main();

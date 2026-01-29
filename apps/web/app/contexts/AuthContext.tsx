@@ -3,6 +3,14 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 
+// Định nghĩa cấu trúc số dư token
+interface UserBalance {
+  tokenAddress: string;
+  balance: string;
+  updatedAt: Date | string;
+}
+
+// Cập nhật Interface User có thêm balances
 interface User {
   _id: string;
   walletAddress: string;
@@ -15,6 +23,7 @@ interface User {
   cryptoInvestmentUsd?: number;
   image?: string;
   notificationEnabled?: boolean;
+  balances?: UserBalance[]; // Thêm trường này
   createdAt?: Date | string;
   updatedAt?: Date | string;
 }
@@ -37,7 +46,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const verifyWallet = async (address: string) => {
     if (!address) return;
-
     try {
       setIsLoading(true);
       const res = await fetch('/api/auth/verify', {
@@ -45,22 +53,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ walletAddress: address }),
       });
-
-      if (!res.ok) throw new Error(`API error: ${res.status}`);
-
       const data = await res.json();
-
       if (data.user) {
         setUser(data.user);
-        // SỬA: Nếu đã có user trong DB, đi thẳng tới Dashboard
-        // Bỏ qua check data.requiresOnboarding nếu user đã tồn tại
         router.push('/dashboard');
       } else {
-        // Chỉ vào onboarding nếu chưa có user
         router.push('/onboarding');
       }
     } catch (error) {
-      console.error("❌ Verify error:", error);
+      console.error("Lỗi xác thực ví:", error);
     } finally {
       setIsLoading(false);
     }

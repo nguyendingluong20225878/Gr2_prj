@@ -1,5 +1,12 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
 
+// Interface cho mảng balances
+interface IUserBalance {
+  tokenAddress: string;
+  balance: string;
+  updatedAt: Date;
+}
+
 export interface IUser extends Document {
   walletAddress: string;
   email?: string;
@@ -12,6 +19,7 @@ export interface IUser extends Document {
   image?: string;
   notificationEnabled: boolean;
   role: string;
+  balances: IUserBalance[]; // Khai báo cho TypeScript
   createdAt: Date;
   updatedAt: Date;
 }
@@ -29,14 +37,22 @@ const UserSchema = new Schema<IUser>(
     image: { type: String },
     notificationEnabled: { type: Boolean, default: true },
     role: { type: String, default: 'user' },
+    // Cấu trúc lưu trữ mảng balances trong MongoDB
+    balances: {
+      type: [{
+        tokenAddress: String,
+        balance: String,
+        updatedAt: { type: Date, default: Date.now }
+      }],
+      default: []
+    }
   },
   {
     timestamps: true,
-    collection: 'users' // Bắt buộc định nghĩa tên collection rõ ràng
+    collection: 'users'
   }
 );
 
-// Logic ngăn chặn lỗi "OverwriteModelError" trong Next.js
 const UserModel: Model<IUser> = mongoose.models.User || mongoose.model<IUser>('User', UserSchema);
 
 export default UserModel;

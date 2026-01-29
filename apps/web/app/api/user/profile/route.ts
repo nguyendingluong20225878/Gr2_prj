@@ -1,47 +1,45 @@
-import { NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import User from '@/models/User';
+import { NextRequest, NextResponse } from 'next/server';
+import { connectToDatabase } from '../../../../../../core/shared/src/db/connection';
+import { usersTable } from '../../../../../../core/shared/src/db/schema/users';
 
-// GET Profile
-export async function GET(req: Request) {
-  try {
-    const { searchParams } = new URL(req.url);
-    const walletAddress = searchParams.get('wallet');
-
-    if (!walletAddress) {
-      return NextResponse.json({ error: 'Wallet address required' }, { status: 400 });
-    }
-
-    await connectDB();
-
-    const user = await User.findOne({ walletAddress }).lean();
-
-    if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
-    }
-
-    return NextResponse.json({ ...user, _id: user._id.toString() });
-
-  } catch (error) {
-    console.error('Profile fetch error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-  }
-}
-
-// PATCH Update Profile
-export async function PATCH(req: Request) {
+export async function PATCH(req: NextRequest) {
   try {
     const body = await req.json();
-    const { walletAddress, ...updateData } = body;
+    const { 
+      walletAddress, 
+      name, 
+      email, 
+      age, 
+      riskTolerance, 
+      tradeStyle, 
+      notificationEnabled,
+      balances // Nhận mảng balances từ client gửi về
+    } = body;
 
     if (!walletAddress) {
-      return NextResponse.json({ error: 'Wallet required' }, { status: 400 });
+      return NextResponse.json({ error: 'Wallet address is required' }, { status: 400 });
     }
 
-    await connectDB();
+    await connectToDatabase();
 
-    const updatedUser = await User.findOneAndUpdate(
-      { walletAddress },
+    // Xây dựng object update
+    const updateData: any = {
+      name,
+      email,
+      age,
+      riskTolerance,
+      tradeStyle,
+      notificationEnabled,
+    };
+
+    // Chỉ cập nhật balances nếu có dữ liệu gửi lên
+    if (balances && Array.isArray(balances)) {
+      updateData.balances = balances;
+    }
+
+    // Sử dụng findOneAndUpdate để cập nhật User
+    const updatedUser = await usersTable.findOneAndUpdate(
+      { walletAddress: walletAddress },
       { $set: updateData },
       { new: true, runValidators: true }
     ).lean();
@@ -51,12 +49,12 @@ export async function PATCH(req: Request) {
     }
 
     return NextResponse.json({ 
-      success: true, 
-      user: { ...updatedUser, _id: updatedUser._id.toString() } 
+      message: 'Profile updated successfully', 
+      user: updatedUser 
     });
 
-  } catch (error) {
-    console.error('Update profile error:', error);
-    return NextResponse.json({ error: 'Update failed' }, { status: 500 });
+  } catch (error: any) {
+    console.error('[API Profile PATCH] Error:', error);
+    return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
   }
 }

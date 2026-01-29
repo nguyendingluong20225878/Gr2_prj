@@ -102,7 +102,18 @@ async function callGeminiDirectly(promptText: string): Promise<string> {
 
   throw new Error("Failed to call Gemini API after multiple retries.");
 }
+export function mapTweetsToSources(tweets: any[]): { label: string; url: string }[] {
+  return tweets.map(tweet => {
+    // Ưu tiên lấy username từ author object hoặc trường username trực tiếp
+    const username = tweet.author?.username || tweet.username || 'i';
+    const tweetId = tweet.tweetId || tweet.id;
 
+    return {
+      label: `Twitter (@${username})`,
+      url: `https://x.com/${username}/status/${tweetId}`
+    };
+  });
+}
 export async function detectSignalWithLlm(params: DetectorParams): Promise<LlmSignalResponse> {
   const { formattedTweets, knownTokens } = params;
 

@@ -3,8 +3,8 @@ import { parser, generateProposalPromptText } from "../prompts/proposalGeneratio
 import { getProposalChatModel } from "../utils/model";
 import { proposalGeneratorState } from "../utils/state";
 
-// Khởi tạo model (Gemini qua REST API)
-const modelInstance = getProposalChatModel();
+// XÓA DÒNG NÀY: const modelInstance = getProposalChatModel();
+// Vì gọi ở đây sẽ chạy trước khi .env được load
 
 export const proposalGenerationNode = async (
   state: typeof proposalGeneratorState.State,
@@ -13,21 +13,24 @@ export const proposalGenerationNode = async (
   const userId = options.configurable?.userId;
   const signalId = options.configurable?.signalId;
 
-  // === FIX LỖI 'UNKNOWN' TẠI ĐÂY ===
+  // === KHỞI TẠO MODEL TẠI ĐÂY (LAZY LOAD) ===
+  // Lúc này dotenv trong script generateProposal.ts đã chạy xong, nên sẽ nhận được Key
+  const modelInstance = getProposalChatModel();
+
+  if (!modelInstance) {
+    throw new Error("AI Model not configured. GOOGLE_API_KEY missing in .env");
+  }
+
   // Ép kiểu signal sang any để TypeScript không báo lỗi khi truy cập ._id
   const signal = state.signal as any;
   const { user, tokenPrices, latestTweets, userBalance, tokenDetail } = state;
 
   // 1. Kiểm tra dữ liệu đầu vào
-  if (!signal || !user || !tokenPrices || !userBalance) {
+  if (!signal || !user) {
     throw new Error("Required data missing in state.");
   }
 
-  if (!modelInstance) {
-    throw new Error("AI Model not configured. Please check GOOGLE_API_KEY.");
-  }
-
-  // 2. Tạo Prompt Text (đã bao gồm thông tin TokenDetail)
+  // 2. Tạo Prompt Text
   const inputText = generateProposalPromptText({
     signal,
     tokenPrices,
@@ -43,7 +46,6 @@ export const proposalGenerationNode = async (
   // 4. Parse kết quả JSON
   let result;
   try {
-    // Dùng hàm .parse mạnh mẽ đã viết ở prompts/proposalGeneration.ts
     result = await parser.parse(response.content);
   } catch (err) {
     console.error("[Proposal Gen] Error parsing AI response.");
@@ -54,29 +56,42 @@ export const proposalGenerationNode = async (
     throw new Error("AI returned a response but 'proposal' key is missing.");
   }
 
-  // 5. Chuẩn hóa dữ liệu tài chính
-  const proposal = result.proposal;
-  if (proposal.financialImpact) {
-    proposal.financialImpact.currentValue = Number(proposal.financialImpact.currentValue) || 0;
-    proposal.financialImpact.projectedValue = Number(proposal.financialImpact.projectedValue) || 0;
-    proposal.financialImpact.percentChange = Number(proposal.financialImpact.percentChange) || 0;
-  }
+  const aiProposal = result.proposal;
 
-  // Chuẩn hóa confidence về 0.0 - 1.0
-  if (proposal.confidence > 1) proposal.confidence = proposal.confidence / 100;
-
-  // 6. Gắn Metadata & Hoàn thiện object để lưu DB
+  // === CHUẨN HÓA DATA THEO MẪU YÊU CẦU ===
   const finalProposal = {
-    ...proposal,
+    title: aiProposal.title,
+    summary: aiProposal.summary,
+    
+    // Đảm bảo reason luôn là mảng string
+    reason: Array.isArray(aiProposal.reasons) ? aiProposal.reasons : 
+            Array.isArray(aiProposal.reason) ? aiProposal.reason : 
+            [signal.rationaleSummary].filter(Boolean),
+            
+    // Sources: Ưu tiên lấy từ AI, nếu không có thì lấy từ Signal gốc
+    sources: (aiProposal.sources && aiProposal.sources.length > 0)
+            ? aiProposal.sources
+            : signal.sources?.map((s: any) => ({ name: s.label, url: s.url })) || [],
+            
+    type: aiProposal.type || signal.suggestionType || "trade",
+    proposedBy: "NDL AI",
+    
+    financialImpact: {
+      currentValue: Number(aiProposal.financialImpact?.currentValue) || 0,
+      projectedValue: Number(aiProposal.financialImpact?.projectedValue) || 0,
+      riskLevel: aiProposal.financialImpact?.riskLevel || "Medium"
+    },
+    
+    confidence: aiProposal.confidence || signal.confidence,
+    status: "pending",
+    
+    // Các trường Metadata
     userId,
-    // Truy cập _id không còn bị lỗi unknown
     triggerEventId: signal._id || signalId,
     tokenAddress: signal.tokenAddress,
-    proposedBy: "NDL AI",
-    status: "pending",
     createdAt: new Date(),
     updatedAt: new Date(),
-    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000)
+    expiresAt: signal.expiresAt || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
   };
 
   console.log(`[Proposal Gen] ✅ Success! Created title: ${finalProposal.title}`);

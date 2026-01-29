@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import mongoose from 'mongoose';
+// Import Schema từ Core
 import { ProposalModel as RawProposalModel } from '../../../../../../core/proposal-generator/src/db/schema/proposals';
 
 const ProposalModel = RawProposalModel as mongoose.Model<any>;
@@ -14,12 +15,14 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       return NextResponse.json({ error: 'Invalid ID format' }, { status: 400 });
     }
 
-    // Tìm theo ID chính, nếu không thấy thử tìm theo triggerSignalId (fallback)
+    // 1. Tìm theo ID chính
     let p = await ProposalModel.findById(id).lean();
     
+    // 2. Fallback: Tìm theo ID của Signal gốc (triggerEventId)
     if (!p) {
       p = await ProposalModel.findOne({ 
         $or: [
+          { triggerEventId: id },
           { triggerSignalId: new mongoose.Types.ObjectId(id) },
           { signalId: id }
         ] 
@@ -30,13 +33,39 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       return NextResponse.json({ error: 'Proposal not found' }, { status: 404 });
     }
 
+    // --- LOGIC XÁC ĐỊNH ACTION (Đã sửa lỗi màu sắc) ---
+    let finalAction = 'HOLD'; // Mặc định an toàn là HOLD (Màu Tím)
+
+    // Ưu tiên 1: Lấy trực tiếp từ trường 'type' trong DB (đã có trong Schema)
+    if (p.type) {
+      finalAction = p.type.toUpperCase();
+    } 
+    // Ưu tiên 2: Lấy từ trường 'action' (nếu có - legacy)
+    else if (p.action) {
+      finalAction = p.action.toUpperCase();
+    }
+    // Ưu tiên 3: Đoán từ tiêu đề (Fallback thông minh hơn)
+    else {
+      const title = p.title?.toLowerCase() || '';
+      if (title.includes('sell') || title.includes('close')) {
+        finalAction = 'SELL';
+      } else if (title.includes('buy') || title.includes('long') || title.includes('initiate') || title.includes('increase')) {
+        finalAction = 'BUY';
+      } else {
+        finalAction = 'HOLD';
+      }
+    }
+
     // Chuẩn hóa dữ liệu trả về
     const safeProposal = {
       _id: p._id.toString(),
-      signalId: p.signalId || p.triggerSignalId || p.triggerEventId,
+      signalId: p.triggerEventId || p.triggerSignalId || p.signalId,
       tokenSymbol: p.tokenSymbol || (p.title ? p.title.split(' ')[0] : 'TOKEN'),
       tokenName: p.tokenName || p.title,
-      action: p.action || (p.title?.toLowerCase().includes('sell') ? 'SELL' : 'BUY'),
+      
+      // Sử dụng action đã tính toán kỹ ở trên
+      action: finalAction,
+      
       financialImpact: {
         currentValue: p.financialImpact?.currentValue || 0,
         projectedValue: p.financialImpact?.projectedValue || 0,
@@ -45,9 +74,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       },
       summary: p.summary,
       reason: p.reason || [],
-      // SỬA: Thêm sources để TheEvidence hiển thị
       sources: p.sources || [],
-      // SỬA: Logic confidence giữ nguyên nhưng giờ Schema đã có field này nên sẽ lấy được giá trị từ DB
       confidence: p.confidence ? (p.confidence <= 1 ? Math.round(p.confidence * 100) : p.confidence) : 85,
       expiresAt: p.expiresAt,
       createdAt: p.createdAt,

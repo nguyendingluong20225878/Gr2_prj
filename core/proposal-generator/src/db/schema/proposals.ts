@@ -119,3 +119,5 @@ const ProposalSchema = new Schema<ProposalDocument>(
 export const ProposalModel =
   mongoose.models.Proposal ||
   mongoose.model<ProposalDocument>("Proposal", ProposalSchema);
+
+
