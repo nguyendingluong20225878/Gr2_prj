@@ -22,6 +22,7 @@ export interface ProposalDocument extends Document {
     timeFrame?: string;
     riskLevel?: string;
   };
+  confidence?: number; // Đã thêm
   expiresAt: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -80,7 +81,7 @@ const ProposalSchema = new Schema<ProposalDocument>(
 
     type: {
       type: String,
-      enum: ["trade", "stake", "risk", "opportunity"],
+      enum: ["trade", "stake", "risk", "opportunity", "hold", "buy", "sell"],
     },
 
     proposedBy: {
@@ -90,6 +91,11 @@ const ProposalSchema = new Schema<ProposalDocument>(
 
     financialImpact: {
       type: FinancialImpactSchema,
+    },
+
+    // QUAN TRỌNG: Thêm trường confidence vào đây để Mongoose cho phép lưu
+    confidence: {
+      type: Number,
     },
 
     expiresAt: {

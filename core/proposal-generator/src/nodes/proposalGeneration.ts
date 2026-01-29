@@ -1,10 +1,10 @@
 import { LangGraphRunnableConfig } from "@langchain/langgraph";
-// Import hàm tạo prompt vừa viết
 import { parser, generateProposalPromptText } from "../prompts/proposalGeneration";
 import { getProposalChatModel } from "../utils/model";
 import { proposalGeneratorState } from "../utils/state";
 
-const modelInstance = getProposalChatModel("gpt-4o-mini");
+// Khởi tạo model (sẽ dùng Gemini Direct API đã viết ở model.ts)
+const modelInstance = getProposalChatModel();
 
 export const proposalGenerationNode = async (
   state: typeof proposalGeneratorState.State,
@@ -20,9 +20,11 @@ export const proposalGenerationNode = async (
     throw new Error("Required data missing in state.");
   }
 
-  if (!modelInstance) throw new Error("AI Model not configured.");
+  if (!modelInstance) {
+    throw new Error("AI Model not configured. Please check GOOGLE_API_KEY.");
+  }
 
-  // 2. Tạo Prompt (Gọi hàm từ file prompts)
+  // 2. Tạo Prompt Text
   const inputText = generateProposalPromptText({
     signal,
     tokenPrices,
@@ -31,27 +33,48 @@ export const proposalGenerationNode = async (
   });
 
   // 3. Gọi Model
-  console.log(`[Proposal Gen] Generating proposal for ${signal.tokenAddress}...`);
+  console.log(`[Proposal Gen] Generating proposal for ${signal.tokenSymbol || "Unknown"}...`);
   const response = await modelInstance.invoke(inputText);
   
-  // 4. Parse kết quả
-  // KHÔNG CẦN try/catch xử lý markdown ở đây nữa vì parser đã làm rồi
-  const result = await parser.invoke(response);
-
-  if (!result || !result.proposal) {
-    throw new Error("Failed to generate a valid proposal object.");
+  // 4. Parse kết quả với xử lý lỗi mạnh mẽ
+  let result;
+  try {
+    // Dùng hàm .parse mới viết ở file prompt
+    result = await parser.parse(response.content);
+  } catch (err) {
+    console.error("[Proposal Gen] Error parsing AI response.");
+    throw err;
   }
 
-  // 5. Gắn Metadata & Hoàn thiện
+  if (!result || !result.proposal) {
+    throw new Error("AI returned a response but 'proposal' key is missing.");
+  }
+
+  // 5. Chuẩn hóa dữ liệu (Data Normalization)
+  // Đảm bảo các giá trị tài chính là Number để tránh lỗi Schema DB
+  const proposal = result.proposal;
+  if (proposal.financialImpact) {
+    proposal.financialImpact.currentValue = Number(proposal.financialImpact.currentValue) || 0;
+    proposal.financialImpact.projectedValue = Number(proposal.financialImpact.projectedValue) || 0;
+    proposal.financialImpact.percentChange = Number(proposal.financialImpact.percentChange) || 0;
+  }
+
+  // Đảm bảo confidence là số từ 0.0 - 1.0
+  if (proposal.confidence > 1) proposal.confidence = proposal.confidence / 100;
+
+  // 6. Gắn Metadata & Hoàn thiện
   const finalProposal = {
-    ...result.proposal,
+    ...proposal,
     userId,
     triggerEventId: signal._id || signalId,
     tokenAddress: signal.tokenAddress,
     status: "pending",
     createdAt: new Date(),
-    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000)
+    updatedAt: new Date(),
+    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) // Hết hạn sau 24h
   };
+
+  console.log(`[Proposal Gen] ✅ Success! Created title: ${finalProposal.title}`);
 
   return {
     proposal: finalProposal,

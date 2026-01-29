@@ -1,5 +1,4 @@
 import { StructuredOutputParser } from "@langchain/core/output_parsers";
-import { ChatOpenAI } from "@langchain/openai";
 import { 
   MultiSignalResponseSchema, 
   LlmSignalResponse 
@@ -7,24 +6,113 @@ import {
 import { buildKnownTokensBlock, signalPromptTemplate } from "./prompt";
 import { DetectorParams } from "./types";
 
+/**
+ * Hàm chờ (Sleep)
+ */
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Hàm gọi trực tiếp Google Gemini qua REST API
+ * - Tích hợp Retry (429)
+ * - Tích hợp JSON Mode (Fix lỗi cú pháp)
+ * - Tắt Safety Filter (Fix lỗi bị cắt nội dung Crypto)
+ */
+async function callGeminiDirectly(promptText: string): Promise<string> {
+  const apiKey = process.env.GOOGLE_API_KEY;
+  if (!apiKey) throw new Error("GOOGLE_API_KEY is missing in .env");
+
+  // Dùng model flash-latest để có hiệu năng tốt nhất
+  const modelName = "gemini-flash-latest"; 
+  
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+
+  const maxRetries = 3; 
+  let attempt = 0;
+
+  while (attempt < maxRetries) {
+    attempt++;
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: promptText }] }],
+          // 1. Cấu hình sinh nội dung: Bắt buộc JSON
+          generationConfig: {
+            temperature: 0.1, // Giảm temperature để output ổn định hơn
+            maxOutputTokens: 8192, // Tăng max tokens
+            responseMimeType: "application/json" // QUAN TRỌNG: Ép kiểu trả về JSON
+          },
+          // 2. Tắt bộ lọc an toàn (Để tránh bị chặn khi nói về Crypto)
+          safetySettings: [
+            { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
+          ]
+        })
+      });
+
+      // 1. Nếu thành công (200 OK)
+      if (response.ok) {
+        const data = await response.json();
+        const candidate = data?.candidates?.[0];
+        const text = candidate?.content?.parts?.[0]?.text;
+
+        // Check lý do dừng (nếu bị filter)
+        if (candidate?.finishReason && candidate.finishReason !== "STOP") {
+            console.warn(`[Gemini Warning] Finish Reason: ${candidate.finishReason}`);
+        }
+
+        if (!text) throw new Error("Gemini returned empty response (Check Safety Filters).");
+        return text;
+      }
+
+      // 2. Nếu lỗi Rate Limit (429) -> Chờ và Thử lại
+      if (response.status === 429) {
+        console.warn(`⚠️  Gemini quá tải (429). Đang chờ 60s để thử lại (Lần ${attempt}/${maxRetries})...`);
+        await sleep(60000); 
+        continue; 
+      }
+
+      // 3. Nếu lỗi 404/400
+      if (response.status === 404 || response.status === 400) {
+        const errorText = await response.text();
+        throw new Error(`Gemini Model Error ${response.status} (${modelName}): ${errorText}`);
+      }
+
+      // 4. Các lỗi khác
+      const errorText = await response.text();
+      console.warn(`⚠️  Gemini lỗi ${response.status}. Thử lại sau 5s...`);
+      await sleep(5000);
+      
+      if (attempt === maxRetries) {
+         throw new Error(`Gemini API Error ${response.status}: ${errorText}`);
+      }
+
+    } catch (error: any) {
+      if (attempt < maxRetries && (error.message.includes("fetch") || error.message.includes("network"))) {
+        console.warn(`Lỗi kết nối. Thử lại sau 5s...`);
+        await sleep(5000);
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  throw new Error("Failed to call Gemini API after multiple retries.");
+}
+
 export async function detectSignalWithLlm(params: DetectorParams): Promise<LlmSignalResponse> {
   const { formattedTweets, knownTokens } = params;
 
-  // 1. Cấu hình Model
-  const model = new ChatOpenAI({
-    modelName: "gpt-4o-mini", 
-    temperature: 0,
-    openAIApiKey: process.env.OPENAI_API_KEY,
-  });
-
-  // 2. Parser: Dùng Schema mới (Array)
+  // 1. Parser
   const parser = StructuredOutputParser.fromZodSchema(MultiSignalResponseSchema);
   const formatInstructions = parser.getFormatInstructions();
 
-  // 3. Chuẩn bị dữ liệu
+  // 2. Chuẩn bị dữ liệu
   const knownTokensBlock = buildKnownTokensBlock(knownTokens);
   
-  // Rút gọn tweet để tiết kiệm token
   const slimTweets = formattedTweets.map(t => ({
       id: t.id,
       text: t.text,
@@ -32,31 +120,26 @@ export async function detectSignalWithLlm(params: DetectorParams): Promise<LlmSi
       time: t.time
   }));
 
-  // 4. Call AI
   try {
     console.log(`[Detector] Aggregating ${formattedTweets.length} tweets for ${knownTokens.length} tokens...`);
     
-    // Format template
-    const prompt = await signalPromptTemplate.format({
+    // 3. Format Prompt
+    const promptContent = await signalPromptTemplate.format({
       knownTokensBlock: knownTokensBlock,
       formattedTweets: JSON.stringify(slimTweets, null, 2),
       formatInstructions: formatInstructions, 
     });
 
-    // Gọi model
-    const response = await model.invoke(prompt);
+    // 4. GỌI API
+    const rawResponseText = await callGeminiDirectly(promptContent);
 
-    // 5. Parse kết quả
-    let contentString = typeof response.content === 'string' ? response.content : JSON.stringify(response.content);
-    
-    // === FIX LỖI PARSE ===
-    // Gỡ bỏ các ký tự markdown ```json và ``` nếu AI lỡ thêm vào
-    contentString = contentString.replace(/```json/g, "").replace(/```/g, "").trim();
-    // =====================
+    // 5. Clean & Parse JSON
+    // Vì đã bật responseMimeType: "application/json", Gemini sẽ trả về JSON thuần.
+    // Tuy nhiên, ta vẫn nên clean nhẹ để chắc chắn.
+    let contentString = rawResponseText.replace(/^```json\s*/, "").replace(/\s*```$/, "").trim();
 
     const parsedResult = await parser.parse(contentString);
     
-    // Lọc kết quả: Chỉ lấy những signalDetected = true
     const validSignals = parsedResult.signals.filter(s => s.signalDetected);
 
     console.log(`[Detector] AI Identified ${validSignals.length} valid signals.`);
@@ -66,7 +149,6 @@ export async function detectSignalWithLlm(params: DetectorParams): Promise<LlmSi
 
   } catch (error) {
     console.error("[Detector] Error during LLM aggregation:", error);
-    // Trả về mảng rỗng để không crash
     return { signals: [] };
   }
 }

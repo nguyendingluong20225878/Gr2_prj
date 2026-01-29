@@ -8,7 +8,7 @@ interface User {
   walletAddress: string;
   name?: string;
   email?: string;
-  age?: number; // Đã thêm age
+  age?: number;
   riskTolerance?: string;
   tradeStyle?: string;
   totalAssetUsd?: number;
@@ -50,17 +50,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const data = await res.json();
 
-      // Logic check mới: Kiểm tra user object
       if (data.user) {
         setUser(data.user);
-        
-        if (data.requiresOnboarding) {
-          router.push('/onboarding');
-        } else {
-          router.push('/dashboard');
-        }
+        // SỬA: Nếu đã có user trong DB, đi thẳng tới Dashboard
+        // Bỏ qua check data.requiresOnboarding nếu user đã tồn tại
+        router.push('/dashboard');
       } else {
-        // Trường hợp API trả về requiresOnboarding=true nhưng user=null (User mới tinh chưa tạo record)
+        // Chỉ vào onboarding nếu chưa có user
         router.push('/onboarding');
       }
     } catch (error) {

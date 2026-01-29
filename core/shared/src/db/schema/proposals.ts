@@ -16,6 +16,7 @@ export interface ProposalDocument extends Document {
     timeFrame?: string;
     riskLevel?: string;
   };
+  confidence?: number; // Đã thêm interface
   expiresAt: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -49,13 +50,14 @@ const ProposalSchema = new Schema<ProposalDocument>(
     type: { type: String, enum: ["trade", "stake", "risk", "opportunity","hold", "buy", "sell"] },
     proposedBy: { type: String, default: "NDL AI" },
     financialImpact: { type: FinancialImpactSchema },
+    // SỬA: Thêm trường confidence vào Schema
+    confidence: { type: Number }, 
     expiresAt: { type: Date, required: true },
     status: { type: String, default: "pending" },
   },
   { timestamps: true }
 );
 
-// SỬA TẠI ĐÂY: Hàm lấy Model an toàn
 export function getProposalModel(): Model<ProposalDocument> {
   return mongoose.models.Proposal || mongoose.model<ProposalDocument>("Proposal", ProposalSchema);
 }

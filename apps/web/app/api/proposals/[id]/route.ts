@@ -45,6 +45,9 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       },
       summary: p.summary,
       reason: p.reason || [],
+      // SỬA: Thêm sources để TheEvidence hiển thị
+      sources: p.sources || [],
+      // SỬA: Logic confidence giữ nguyên nhưng giờ Schema đã có field này nên sẽ lấy được giá trị từ DB
       confidence: p.confidence ? (p.confidence <= 1 ? Math.round(p.confidence * 100) : p.confidence) : 85,
       expiresAt: p.expiresAt,
       createdAt: p.createdAt,
