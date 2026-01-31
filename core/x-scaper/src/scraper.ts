@@ -39,6 +39,8 @@ interface Tweet {
   time: string; // ISO String
   data: string;
   url: string;
+  // Bổ sung username để lưu trữ nếu có thể extract
+  username?: string; 
   replyCount: number | null;
   retweetCount: number | null;
   likeCount: number | null;
@@ -210,15 +212,12 @@ export class XScraper {
               if (tweetDate <= cutoffDate) {
                 consecutiveOldTweets++;
                 // Nếu gặp 2 tweet cũ liên tiếp, ta tin rằng đã đến vùng dữ liệu cũ
-                // (2 để tránh trường hợp tweet đầu tiên là Pinned Tweet rất cũ)
                 if (consecutiveOldTweets >= 2) {
                    this.logger.info("extractTweets", "Đã gặp tweet cũ hơn lần cập nhật trước -> Dừng cào.");
                    // Break khỏi vòng lặp for, và return luôn
                    return Array.from(tweetsMap.values());
                 }
-                // Nếu mới gặp 1 tweet cũ (có thể là pinned), ta chưa add vào map vội, hoặc add cũng được nhưng chưa dừng.
               } else {
-                // Nếu gặp tweet mới hơn cutoff -> Reset biến đếm cũ
                 consecutiveOldTweets = 0;
               }
             }
@@ -238,12 +237,20 @@ export class XScraper {
                likeCount = parseEngagementCount(t);
             } catch {}
 
-            // -- Lấy URL --
+            // -- Lấy URL & Extract Username --
             let tweetUrl = "unknown";
+            let derivedUsername: string | undefined = undefined;
+
             try {
                 const linkElem = await el.findElement(By.css(TWEET_LINK_SELECTOR));
                 const href = await linkElem.getAttribute("href");
-                if (href) tweetUrl = href.startsWith("http") ? href : `https://x.com${href}`;
+                if (href) {
+                    tweetUrl = href.startsWith("http") ? href : `https://x.com${href}`;
+                    
+                    // Regex extract username: https://x.com/USERNAME/status/...
+                    const match = tweetUrl.match(/x\.com\/([^\/]+)\/status/);
+                    if (match) derivedUsername = match[1];
+                }
             } catch {}
 
             // Chỉ lưu nếu tweet URL chưa tồn tại trong Map (tránh trùng do scroll)
@@ -255,6 +262,7 @@ export class XScraper {
                 time: tweetTimeStr,
                 data: text.trim(),
                 url: tweetUrl,
+                username: derivedUsername, // Lưu username lấy được
                 replyCount,
                 retweetCount,
                 likeCount,
@@ -348,7 +356,6 @@ export class XScraper {
 
     for (const acc of accounts) {
       // Truyền lastTweetUpdatedAt vào làm mốc thời gian chặn
-      // acc.lastTweetUpdatedAt lấy từ DB (trong db.ts bạn đã map nó rồi)
       const lastUpdate = acc.lastTweetUpdatedAt ? new Date(acc.lastTweetUpdatedAt) : null;
       
       // Pass 'false' để không đóng driver sau mỗi acc

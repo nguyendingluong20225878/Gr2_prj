@@ -6,6 +6,7 @@ import { LlmSignalResponse } from "./types";
  * - Map 'reason' -> 'rationaleSummary' (Schema Shared yêu cầu)
  * - Map 'reason' -> 'reasoning' (Schema Local yêu cầu - giữ cả 2 cho an toàn)
  * - Thêm strength, sentimentScore
+ * - Ưu tiên sources đã được enrich từ detector
  */
 export function mapLlmResponseToSignalInsert(resp: any) {
   const detectedAt = new Date();
@@ -41,12 +42,20 @@ export function mapLlmResponseToSignalInsert(resp: any) {
   // Lấy lý do từ AI
   const rawReason = (resp.reason || "").slice(0, 5000); 
   
-  // Tạo sources từ relatedTweetIds
   const relatedTweetIds = Array.isArray(resp.relatedTweetIds) ? resp.relatedTweetIds : [];
-  const sources = relatedTweetIds.map((id: string) => ({
-      label: "Twitter/X",
-      url: `https://x.com/i/web/status/${id}`
-  }));
+
+  // === FIX: Ưu tiên lấy sources từ resp (đã được detector xử lý) ===
+  let sources = [];
+  if (resp.sources && Array.isArray(resp.sources) && resp.sources.length > 0) {
+      sources = resp.sources;
+  } else {
+      // Fallback cũ (chỉ chạy nếu detector không truyền sources)
+      sources = relatedTweetIds.map((id: string) => ({
+          label: "Twitter/X",
+          url: `https://x.com/i/web/status/${id}`
+      }));
+  }
+  // ===============================================================
 
   const expiresAt = new Date(detectedAt.getTime() + 7 * 24 * 60 * 60 * 1000);
 

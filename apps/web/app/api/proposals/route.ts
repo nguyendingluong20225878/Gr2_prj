@@ -9,8 +9,9 @@ export async function GET() {
   try {
     await connectDB();
     
+    // Lấy tất cả các trạng thái hợp lệ
     const query: any = { 
-      status: { $in: ['pending', 'active', 'open', 'trade', 'opportunity', 'ACTIVE'] } 
+      status: { $in: ['pending', 'active', 'open', 'trade', 'opportunity', 'ACTIVE', 'EXECUTED'] } 
     };
 
     const proposals = await ProposalModel.find(query)
@@ -29,8 +30,12 @@ export async function GET() {
         action = 'SELL';
       }
 
-      const percentChange = p.financialImpact?.percentChange || 0;
-      // Chuẩn hóa confidence về dạng 0-100
+      // === FIX ROI: Ưu tiên lấy 'roi' từ DB, fallback sang 'percentChange' ===
+      const roi = p.financialImpact?.roi !== undefined 
+        ? p.financialImpact.roi 
+        : (p.financialImpact?.percentChange || 0);
+
+      // Chuẩn hóa confidence
       let confidence = p.confidence || 85;
       if (confidence <= 1) confidence = Math.round(confidence * 100);
 
@@ -43,15 +48,17 @@ export async function GET() {
           currentValue: p.financialImpact?.currentValue || 0,
           projectedValue: p.financialImpact?.projectedValue || 0,
           riskLevel: (p.financialImpact?.riskLevel || 'MEDIUM').toUpperCase(),
-          percentChange: percentChange,
+          roi: roi, // Trả về trường roi chuẩn
+          percentChange: roi, // Giữ tương thích ngược
         },
         title: p.title,
         summary: p.summary,
         reason: p.reason || [],
         confidence: confidence,
-        sentimentType: percentChange >= 0 ? 'positive' : 'negative',
+        sentimentType: roi >= 0 ? 'positive' : 'negative',
         expiresAt: p.expiresAt || new Date(Date.now() + 86400000), 
         createdAt: p.createdAt,
+        status: p.status || 'pending', // === FIX STATUS: Trả về status thực ===
       };
     });
 

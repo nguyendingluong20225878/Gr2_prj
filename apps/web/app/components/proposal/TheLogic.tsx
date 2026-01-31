@@ -34,7 +34,7 @@ export function TheLogic({ reason = [], rationaleSummary, confidence }: TheLogic
       {/* Executive Summary */}
       <div className="bg-slate-900/50 border border-slate-700 rounded-lg p-5 mb-6 relative">
         <div className="absolute -left-1 top-6 w-1 h-8 bg-purple-500 rounded-r"></div>
-        <p className="text-xs font-bold text-purple-400 mb-2 uppercase tracking-wider">Executive Summary</p>
+        <p className="text-xs font-bold text-purple-400 mb-2 uppercase tracking-wider">Summary</p>
         <p className="text-sm text-slate-300 leading-relaxed italic">
           "{rationaleSummary || 'AI did not provide a specific summary for this logic path.'}"
         </p>
@@ -43,7 +43,7 @@ export function TheLogic({ reason = [], rationaleSummary, confidence }: TheLogic
       {/* Bullet Points */}
       <div>
         <p className="text-xs font-bold text-slate-500 mb-4 uppercase tracking-wider flex items-center gap-2">
-           <AlertCircle className="w-3 h-3" /> Key Drivers
+           <AlertCircle className="w-3 h-3" /> REASON
         </p>
         <div className="space-y-3">
           {reason.length > 0 ? reason.map((point, index) => (

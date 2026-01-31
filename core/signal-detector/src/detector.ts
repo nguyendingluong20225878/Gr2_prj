@@ -12,6 +12,19 @@ import { DetectorParams } from "./types";
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
+ * Helper: Lấy username từ URL tweet nếu dữ liệu author bị thiếu
+ * Ví dụ: https://x.com/username/status/123 -> username
+ */
+function getUsernameFromUrl(url: string): string {
+  try {
+    const match = url.match(/x\.com\/([^\/]+)\/status/);
+    return match ? match[1] : 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
+/**
  * Hàm gọi trực tiếp Google Gemini qua REST API
  * - Tích hợp Retry (429)
  * - Tích hợp JSON Mode (Fix lỗi cú pháp)
@@ -102,6 +115,7 @@ async function callGeminiDirectly(promptText: string): Promise<string> {
 
   throw new Error("Failed to call Gemini API after multiple retries.");
 }
+
 export function mapTweetsToSources(tweets: any[]): { label: string; url: string }[] {
   return tweets.map(tweet => {
     // Ưu tiên lấy username từ author object hoặc trường username trực tiếp
@@ -114,6 +128,7 @@ export function mapTweetsToSources(tweets: any[]): { label: string; url: string 
     };
   });
 }
+
 export async function detectSignalWithLlm(params: DetectorParams): Promise<LlmSignalResponse> {
   const { formattedTweets, knownTokens } = params;
 
@@ -151,7 +166,41 @@ export async function detectSignalWithLlm(params: DetectorParams): Promise<LlmSi
 
     const parsedResult = await parser.parse(contentString);
     
-    const validSignals = parsedResult.signals.filter(s => s.signalDetected);
+    // === LOGIC SỬA ĐỔI: ENRICH SOURCES ===
+    // Thay vì tin tưởng sources do AI bịa ra (thường sai URL), ta build lại sources từ tweet gốc
+    const validSignals = parsedResult.signals
+      .filter(s => s.signalDetected)
+      .map(signal => {
+        // Map lại từ relatedTweetIds sang full source object
+        const sources = (signal.relatedTweetIds || []).map(id => {
+          const originalTweet = formattedTweets.find(t => t.id === id);
+          
+          if (originalTweet) {
+            // Ưu tiên lấy author từ dữ liệu, nếu không thì parse từ URL
+            let author = originalTweet.author;
+            // Nếu author rỗng hoặc 'unknown' hoặc 'i', cố gắng lấy từ URL
+            if ((!author || author === 'unknown' || author === 'i') && originalTweet.url) {
+                author = getUsernameFromUrl(originalTweet.url);
+            }
+
+            return {
+              label: `Twitter (@${author})`, // Format đúng yêu cầu: Twitter (@Username)
+              url: originalTweet.url || `https://x.com/${author}/status/${id}`
+            };
+          }
+
+          // Fallback nếu không tìm thấy tweet gốc (hiếm khi xảy ra)
+          return {
+            label: "Twitter",
+            url: `https://x.com/i/web/status/${id}`
+          };
+        });
+
+        return {
+          ...signal,
+          sources: sources.length > 0 ? sources : signal.sources // Ghi đè bằng sources chuẩn
+        };
+      });
 
     console.log(`[Detector] AI Identified ${validSignals.length} valid signals.`);
     return {

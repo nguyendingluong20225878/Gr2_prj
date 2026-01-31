@@ -1,93 +1,105 @@
-export const generateProposalPromptText = (data: {
-  signal: any;
-  tokenPrices: any;
-  userBalance: any;
-  latestTweets: any;
-  tokenDetail: any;
-}) => {
-  const { signal, tokenDetail, userBalance, latestTweets } = data;
+import { StructuredOutputParser } from "@langchain/core/output_parsers";
+import { z } from "zod";
 
-  // Lấy giá hiện tại để AI có context tính toán
-  const currentPrice = data.tokenPrices?.[0]?.price || 0;
+// --- 1. Định nghĩa Schema Output ---
+const proposalSchema = z.object({
+  title: z.string().describe("A professional financial title"),
+  summary: z.string().describe("Concise executive summary (2-3 sentences)"),
+  reasons: z.array(z.string()).describe("3-5 bullet points explaining the logic"),
+  type: z.enum(["buy", "sell", "hold", "stake", "close_position"]).describe("Action type"),
+  confidence: z.number().min(0).max(100).describe("Confidence score (0-100)"),
+  
+  financialImpact: z.object({
+    currentValue: z.number().describe("Must use the EXACT 'Current Portfolio Value' provided in context"),
+    projectedValue: z.number().describe("Estimated value after action (e.g. +10% if buy)"),
+    riskLevel: z.enum(["Low", "Medium", "High"]).describe("Risk assessment")
+  }),
+  
+  sources: z.array(z.object({
+    name: z.string(),
+    url: z.string()
+  })).optional()
+});
 
-  return `
-    You are a Senior Crypto Portfolio Manager.
-    
-    ### 1. TARGET ASSET
-    - Name: ${tokenDetail.name} (${tokenDetail.symbol})
-    - Current Price: $${currentPrice}
-    
-    ### 2. THE SIGNAL
-    - Action: ${signal.suggestionType.toUpperCase()}
-    - Analysis: "${signal.rationaleSummary || signal.reasoning}"
-    - Signal Confidence: ${(signal.confidence * 100).toFixed(0)}%
+export const parser = StructuredOutputParser.fromZodSchema(proposalSchema);
 
-    ### 3. USER CONTEXT
-    - Holdings: ${userBalance.balance} ${tokenDetail.symbol}
-    - Total Portfolio: $${userBalance.totalAssetUsd}
-    - Recent News: ${latestTweets.map((t: any) => t.content).join(" | ").slice(0, 300)}...
-
-    ### TASK:
-    Generate a generic JSON object (key: "proposal") for a trading proposal.
-    
-    ### REQUIRED JSON STRUCTURE:
-    {
-      "proposal": {
-        "title": "String (e.g., 'Initiate Position: Solana (SOL)')",
-        "summary": "String (A concise executive summary of why this trade is recommended. REQUIRED.)",
-        "reasons": ["String", "String", "String"],
-        "confidence": Number (Float between 0.0 and 1.0, e.g., 0.85. DO NOT use strings or %),
-        "type": "String (buy, sell, hold, or trade)",
-        "financialImpact": {
-          "currentValue": Number (User's current holding value in USD),
-          "projectedValue": Number (Predicted value in 24h),
-          "percentChange": Number (e.g., 5.2),
-          "riskLevel": "String (Low, Medium, High)"
-        }
-      }
-    }
-
-    ### RULES:
-    1. "summary" is MANDATORY. Write 2-3 sentences.
-    2. "confidence" must be a number (e.g., 0.75), NOT a string like "75%".
-    3. If user balance is 0, "currentValue" must be 0.
-    
-    OUTPUT RAW JSON ONLY. NO MARKDOWN.
-  `;
-};
-
-export const parser: any = {
-  name: "proposalParser",
-  parse: async (input: any) => {
-    let str = typeof input === "string" ? input : input?.content || JSON.stringify(input);
-    // Làm sạch chuỗi JSON
-    str = str.replace(/```json|```/g, "").trim();
-    
-    try {
-      const parsed = JSON.parse(str);
-      
-      // Post-processing để sửa lỗi phổ biến của AI
-      if (parsed.proposal) {
-        // Fix lỗi confidence là string "75%"
-        if (typeof parsed.proposal.confidence === 'string') {
-          parsed.proposal.confidence = parseFloat(parsed.proposal.confidence.replace('%', '')) / 100;
-        }
-        // Fix lỗi confidence > 1 (vd: 85 -> 0.85)
-        if (parsed.proposal.confidence > 1) {
-          parsed.proposal.confidence = parsed.proposal.confidence / 100;
-        }
-      }
-      
-      return parsed;
-    } catch (e) {
-      // Fallback: Cố gắng trích xuất JSON từ text hỗn tạp
-      const m = str.match(/\{[\s\S]*\}/);
-      if (m) {
-        try {
-           return JSON.parse(m[0]);
-        } catch (err) {}
-      }
-      throw new Error("JSON Parse failed: " + str.slice(0, 50) + "...");
+// --- 2. Helper tính giá (Xử lý String -> Number) ---
+function calculateFinancials(tokenSymbol: string, tokenAddress: string, prices: any[], userBalanceObj: any) {
+  // A. Lấy giá (Price)
+  let price = 0;
+  if (prices && prices.length > 0) {
+    // Tìm giá khớp address
+    const priceRecord = prices.find((p: any) => p.tokenAddress === tokenAddress);
+    if (priceRecord && priceRecord.priceUsd) {
+      price = parseFloat(priceRecord.priceUsd); // "168.48" -> 168.48
     }
   }
+
+  // B. Lấy số dư (Balance)
+  let balance = 0;
+  if (userBalanceObj && userBalanceObj.balance) {
+    balance = parseFloat(userBalanceObj.balance); // "15" -> 15.0
+  }
+
+  // C. Tính Current Value
+  const currentValue = balance * price;
+
+  return { price, balance, currentValue };
+}
+
+// --- 3. Tạo Prompt ---
+export const generateProposalPromptText = (data: {
+  signal: any;
+  tokenPrices: any[];
+  userBalance: any; // Object từ dataFetch
+  latestTweets: any[];
+  tokenDetail: any;
+}) => {
+  const { signal, tokenPrices, userBalance, latestTweets, tokenDetail } = data;
+  const formatInstructions = parser.getFormatInstructions();
+
+  const symbol = tokenDetail?.symbol || "TOKEN";
+  const address = tokenDetail?.address || signal.tokenAddress;
+
+  // === TÍNH TOÁN SỐ LIỆU TẠI ĐÂY ===
+  const { price, balance, currentValue } = calculateFinancials(symbol, address, tokenPrices, userBalance);
+
+  // Format hiển thị
+  const fmtPrice = price > 0 ? `$${price.toFixed(4)}` : "Unknown Price";
+  const fmtValue = currentValue > 0 ? `$${currentValue.toFixed(2)}` : "$0.00";
+  
+  // Context Tweets
+  const tweetsContext = latestTweets.map(t => 
+    `- [${new Date(t.tweetTime).toLocaleDateString()}] ${t.content.substring(0, 100)}...`
+  ).join("\n");
+
+  return `
+You are a crypto portfolio manager AI. Generate a trading proposal based on this data.
+
+=== 1. SIGNAL INFO ===
+- Token: ${symbol}
+- Action: ${signal.suggestionType?.toUpperCase()} (Confidence: ${signal.confidence}%)
+- Rationale: ${signal.rationaleSummary}
+
+=== 2. FINANCIAL DATA (STRICT) ===
+Use these EXACT calculated numbers. Do not calculate them yourself.
+- Token Price: ${fmtPrice}
+- User Balance: ${balance} ${symbol}
+- **Current Portfolio Value: ${currentValue}** (This is 'currentValue' in financialImpact)
+
+=== 3. SOCIAL SENTIMENT ===
+${tweetsContext}
+
+=== 4. INSTRUCTIONS ===
+1. **Financial Impact**:
+   - 'currentValue': MUST be ${currentValue}.
+   - 'projectedValue': Estimate a target based on the signal. 
+     * If BUY/HOLD: Project a reasonable increase (e.g. +5% to +20%).
+     * If SELL: Project the cash value retrieved (approx ${currentValue}).
+     * **NEVER return 0** for projectedValue unless currentValue is 0.
+
+2. **Analysis**: Combine signal rationale and social sentiment.
+
+${formatInstructions}
+`;
 };

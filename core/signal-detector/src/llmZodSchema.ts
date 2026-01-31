@@ -9,6 +9,13 @@ export const SingleSignalSchema = z.object({
   action: z.enum(["BUY", "SELL", "HOLD"]).describe("Recommended action based on the net sentiment"),
   // Quan trọng: List các ID tweet đã đóng góp vào nhận định này
   relatedTweetIds: z.array(z.string()).describe("Array of tweet IDs that contributed to this specific signal"),
+  
+  // === THÊM DÒNG NÀY ===
+  // Thêm trường sources (optional) để chứa dữ liệu sau khi map từ tweet gốc
+  sources: z.array(z.object({
+    label: z.string(),
+    url: z.string()
+  })).optional().describe("Enriched sources from actual tweets"),
 });
 
 // Cấu trúc trả về tổng: Một mảng chứa nhiều tín hiệu

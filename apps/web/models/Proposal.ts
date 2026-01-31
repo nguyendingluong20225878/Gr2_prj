@@ -1,40 +1,41 @@
 import mongoose, { Schema, model, models } from 'mongoose';
 
 const ProposalSchema = new Schema({
-  // 1. LIÊN KẾT DỮ LIỆU (QUAN TRỌNG NHẤT)
+  // 1. LIÊN KẾT DỮ LIỆU
   userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   triggerSignalId: { type: Schema.Types.ObjectId, ref: 'Signal', required: true },
 
-  // 2. THÔNG TIN TOKEN (Cache lại để hiển thị nhanh)
+  // 2. THÔNG TIN TOKEN
   tokenSymbol: { type: String, required: true },
   tokenName: { type: String, required: true },
   
-  // 3. QUYẾT ĐỊNH CỦA AI (Dành cho User này)
+  // 3. QUYẾT ĐỊNH CỦA AI
   action: { type: String, enum: ['BUY', 'SELL', 'HOLD'], required: true },
-  title: { type: String }, // Tiêu đề ngắn gọn: "Mua ngay SOL vì..."
-  summary: { type: String }, // Tóm tắt lý do
+  title: { type: String },
+  summary: { type: String },
   
-  // 4. DỮ LIỆU TÀI CHÍNH (Đã cá nhân hóa theo vốn của User)
+  // 4. DỮ LIỆU TÀI CHÍNH
   financialImpact: {
     currentPrice: Number,
     targetPrice: Number,
     stopLoss: Number,
-    projectedPnL: Number, // Lãi dự kiến ($)
-    roiPercent: Number,   // Lãi dự kiến (%)
+    projectedPnL: Number, 
+    roiPercent: Number, // Legacy
+    roi: Number,        // === THÊM MỚI ===
     riskLevel: { type: String, enum: ['LOW', 'MEDIUM', 'HIGH'], default: 'MEDIUM' },
-    timeFrame: String,    // '24h', '1 week'
+    timeFrame: String,
   },
   
   // 5. PHÂN TÍCH
   analysis: {
-    reasoning: [String], // Các lý do chính
-    risks: [String],     // Rủi ro cần lưu ý
+    reasoning: [String],
+    risks: [String],
   },
 
-  // Confidence của AI khi đưa ra lời khuyên này
   confidence: { type: Number, required: true }, 
 
-  status: { type: String, default: 'ACTIVE' },
+  // === FIX DEFAULT STATUS: Đổi từ 'ACTIVE' sang 'pending' ===
+  status: { type: String, default: 'pending' }, 
   createdAt: { type: Date, default: Date.now },
   expiresAt: { type: Date, required: true },
 });

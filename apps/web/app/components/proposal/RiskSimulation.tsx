@@ -1,127 +1,137 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { TrendingUp, TrendingDown, AlertTriangle, Zap, Loader2 } from 'lucide-react';
+import { Slider } from '@/app/components/ui/slider'; // Đảm bảo đã import đúng
 import { Button } from '@/app/components/ui/button';
+import { Wallet, ArrowRight, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAuth } from '@/app/contexts/AuthContext'; // Cần User ID
+import { useRouter } from 'next/navigation';
 
 interface RiskSimulationProps {
-  targetPrice: number;
   currentPrice: number;
-  potentialReturn: number;
-  suggestedAmount: number;
-  action?: string;
-  onAmountChange?: (amount: number) => void;
+  targetPrice: number;
+  stopLoss: number;
+  recommendation: string; 
+  roi: number;
+  // Thêm các props cần thiết để lưu DB
+  tokenSymbol?: string;
+  proposalId?: string;
 }
 
 export function RiskSimulation({ 
-  targetPrice, currentPrice, potentialReturn, suggestedAmount, action
+  currentPrice, 
+  targetPrice, 
+  stopLoss, 
+  recommendation,
+  roi = 0,
+  tokenSymbol = 'TOKEN',
+  proposalId
 }: RiskSimulationProps) {
-  const [amount, setAmount] = useState(suggestedAmount);
+  
+  const { user } = useAuth(); // Lấy User đang đăng nhập
+  const router = useRouter();
+  const [amount, setAmount] = useState<number>(100);
+  const [projectedProfit, setProjectedProfit] = useState<number>(0);
   const [executing, setExecuting] = useState(false);
 
-  // Cập nhật state nếu props thay đổi
   useEffect(() => {
-    if (suggestedAmount) setAmount(suggestedAmount);
-  }, [suggestedAmount]);
+    const profit = amount * (roi / 100);
+    setProjectedProfit(profit);
+  }, [amount, roi]);
 
-  // Logic tính toán cơ bản
-  const profitPercent = Math.abs(potentialReturn) / 100;
-  const potentialProfit = amount * profitPercent;
-  // Giả định mức cắt lỗ (Stoploss) là 15% cho mô phỏng
-  const maxLoss = amount * 0.15; 
-  
-  const handleExecute = () => {
+  // --- HÀM EXECUTE THẬT ---
+  const handleExecute = async () => {
+    if (!user) {
+      toast.error("Please login to trade!");
+      return;
+    }
+
     setExecuting(true);
-    // Giả lập call API execute trade
-    setTimeout(() => {
-        setExecuting(false);
-        toast.success(`Lệnh ${action || 'TRADE'} $${amount} đã được gửi lên hệ thống!`);
-    }, 2000);
+    try {
+      // Gọi API mà chúng ta vừa tạo ở Bước 1
+      const res = await fetch('/api/trade/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user._id,
+          proposalId: proposalId,
+          tokenSymbol: tokenSymbol,
+          tokenAddress: 'So11111111111111111111111111111111111111112', // Tạm fix address hoặc truyền từ prop
+          amount: amount,
+          entryPrice: currentPrice,
+          direction: recommendation === 'SELL' ? 'SHORT' : 'LONG',
+          leverage: 1
+        })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.error || 'Failed to execute');
+
+      toast.success("Trade Executed Successfully!");
+      
+      // Chuyển hướng sang Portfolio để xem kết quả
+      router.push('/portfolio');
+
+    } catch (error: any) {
+      toast.error(`Trade Failed: ${error.message}`);
+    } finally {
+      setExecuting(false);
+    }
   };
 
   return (
-    <div className="space-y-6">
-       {/* Simulation Card */}
-      <div className="glass-card rounded-xl p-6 border border-purple-400/30 bg-slate-900/40">
-        <div className="flex items-center gap-2 mb-6">
-          <AlertTriangle className="w-5 h-5 text-purple-400" />
-          <h3 className="text-lg font-bold text-slate-200">Risk Simulator</h3>
-        </div>
-
-        <div className="mb-8">
-          <div className="flex justify-between mb-4">
-            <span className="text-sm text-slate-400">Vốn đầu tư (USDC)</span>
-            <div className="flex items-center gap-1">
-              <span className="text-xl font-bold text-white">$</span>
-              <input 
-                type="number" 
-                value={amount}
-                onChange={(e) => setAmount(Number(e.target.value))}
-                className="bg-transparent text-xl font-bold text-white w-24 text-right border-b border-slate-700 focus:border-cyan-400 outline-none"
-              />
-            </div>
-          </div>
-
-          {/* Custom Range Slider using Tailwind */}
-          <div className="relative w-full h-6 flex items-center">
-            <input 
-              type="range" 
-              min="10" 
-              max="2000" 
-              step="10"
-              value={amount}
-              onChange={(e) => setAmount(parseFloat(e.target.value))}
-              className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-400 hover:accent-cyan-300 transition-all"
-            />
-          </div>
-
-          <div className="flex justify-between text-xs text-slate-500 mt-2">
-            <span>Min: $10</span>
-            <span>Max: $2000</span>
+    <div className="space-y-6 animate-in fade-in">
+      {/* ... (Phần UI Slider giữ nguyên) ... */}
+      
+      <div className="space-y-4">
+        <div className="flex justify-between items-center">
+          <label className="text-sm font-bold text-slate-300 flex items-center gap-2">
+            <Wallet size={16} className="text-purple-400" /> Investment Amount
+          </label>
+          <div className="px-3 py-1 bg-purple-500/20 border border-purple-500/50 rounded-lg text-purple-300 font-mono font-bold">
+            ${amount.toLocaleString()}
           </div>
         </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          {/* Profit Box */}
-          <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4 transition-all hover:bg-green-500/20">
-            <div className="flex items-center gap-2 mb-2">
-                <TrendingUp className="w-4 h-4 text-green-400" />
-                <span className="text-xs text-green-400 uppercase font-bold">Lợi nhuận mục tiêu</span>
-            </div>
-            <p className="text-2xl font-bold text-green-400">+${potentialProfit.toFixed(2)}</p>
-            <p className="text-[10px] text-green-400/70 mt-1">ROI: {potentialReturn.toFixed(1)}%</p>
-          </div>
-
-          {/* Risk Box */}
-          <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 transition-all hover:bg-red-500/20">
-            <div className="flex items-center gap-2 mb-2">
-                <TrendingDown className="w-4 h-4 text-red-400" />
-                <span className="text-xs text-red-400 uppercase font-bold">Rủi ro tối đa</span>
-            </div>
-            <p className="text-2xl font-bold text-red-400">-${maxLoss.toFixed(2)}</p>
-            <p className="text-[10px] text-red-400/70 mt-1">Stoploss: -15%</p>
-          </div>
+        
+        <Slider
+          defaultValue={[100]}
+          max={5000}
+          step={50}
+          onValueChange={(val) => setAmount(val[0])}
+          className="py-4"
+        />
+        <div className="flex justify-between text-[10px] text-slate-500 font-mono">
+          <span>$0</span>
+          <span>$5,000</span>
         </div>
       </div>
 
-      {/* Execute Button Section */}
-      <div className="glass-card p-6 border border-white/10 text-center bg-gradient-to-b from-slate-900/50 to-black/50">
-         <p className="text-xs text-slate-400 mb-4 italic">
-            Bằng việc thực thi, bạn đồng ý với các quy tắc quản lý vốn tự động của AI.
-         </p>
-         <Button 
-            onClick={handleExecute} 
-            disabled={executing}
-            className="w-full py-6 text-lg bg-gradient-purple-cyan hover:shadow-[0_0_20px_rgba(168,85,247,0.4)] transition-all font-bold text-white border-0"
-         >
-            {executing ? (
-                <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Đang xử lý giao dịch...</>
-            ) : (
-                <><Zap className="mr-2 h-5 w-5 fill-white" /> EXECUTE {action || 'ORDER'}</>
-            )}
-         </Button>
+      <div className="glass-card p-4 rounded-xl border border-green-500/30 bg-green-500/5">
+        <div className="flex justify-between items-center mb-1">
+          <span className="text-xs uppercase font-bold text-green-400">Estimated Profit</span>
+          <span className="text-xs font-mono text-slate-400">ROI: {roi.toFixed(2)}%</span>
+        </div>
+        <div className="flex items-baseline gap-1">
+          <span className="text-3xl font-bold text-green-300">
+            +${projectedProfit.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+          </span>
+          <span className="text-xs text-green-500/70">USD</span>
+        </div>
       </div>
+
+      <Button 
+        onClick={handleExecute} // Gọi hàm thật
+        disabled={executing}
+        className="w-full h-12 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-bold text-lg shadow-lg shadow-green-900/20"
+      >
+        {executing ? (
+          <span className="flex items-center gap-2"><Loader2 className="animate-spin" /> Processing...</span>
+        ) : (
+          <span className="flex items-center gap-2">EXECUTE TRADE <ArrowRight size={18} /></span>
+        )}
+      </Button>
     </div>
   );
 }

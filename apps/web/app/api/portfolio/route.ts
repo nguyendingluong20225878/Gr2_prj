@@ -2,79 +2,151 @@ import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import mongoose from 'mongoose';
 
-// Import Tables từ Core
-import { perpPositionsTable } from '../../../../../core/shared/src/db/schema/perp_positions';
-import { transactionsTable } from '../../../../../core/shared/src/db/schema/transactions';
+// Import Proposal Model (DB Local)
+import { ProposalModel as RawProposalModel } from '../../../../../core/proposal-generator/src/db/schema/proposals';
+const ProposalModel = RawProposalModel as unknown as mongoose.Model<any>;
+
+/** Helper: Normalize number (15.0000 -> 15) */
+const normalizeNumber = (n: number) => {
+  return Number.isInteger(n) ? n : parseFloat(n.toString());
+};
+
+const getTokenSymbol = (addr: string) => {
+  if (!addr) return 'UNKNOWN';
+  if (addr === 'So11111111111111111111111111111111111111112') return 'SOL';
+  if (addr.startsWith('EPj')) return 'USDC';
+  if (addr.startsWith('JUP')) return 'JUP';
+  if (addr.startsWith('Es9')) return 'USDT';
+  if (addr === '6wrnLa6tkusRwKjGjTLyFG1czhNoNYF5pJg1wPhGg4bD') return 'SPL-TK';
+  return addr.slice(0, 4);
+};
 
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const wallet = searchParams.get('wallet');
 
-    if (!wallet) return NextResponse.json({ error: 'Wallet required' }, { status: 400 });
-
-    await connectDB();
-
-    // BƯỚC 1: Tìm User ID từ Wallet Address
-    // Chúng ta truy cập trực tiếp collection "users" để lấy ID mà không cần import User Model (tránh lỗi vòng lặp nếu có)
-    const user = await mongoose.connection.db.collection('users').findOne({ walletAddress: wallet });
-
-    if (!user) {
-      // Nếu chưa có user trong DB thì trả về portfolio rỗng
-      return NextResponse.json({ trades: [], stats: { totalTrades: 0, winRate: 0, totalPnL: 0 } });
+    if (!wallet) {
+      return NextResponse.json({ error: 'Wallet required' }, { status: 400 });
     }
 
-    const userId = user._id; // Đây là ObjectId
+    // 1. Connect DB
+    await connectDB();
 
-    // BƯỚC 2: Query dữ liệu dùng userId
-    
-    // Lấy vị thế đang mở (Perp Positions)
-    const openPositions = await perpPositionsTable.find({ userId: userId }).lean();
+    if (mongoose.connection.readyState !== 1) {
+      throw new Error('Database not connected');
+    }
 
-    // Lấy lịch sử giao dịch (Transactions)
-    const history = await transactionsTable.find({ userId: userId })
+    const db = mongoose.connection.db;
+
+    // 2. Fetch user
+    const user = await db.collection('users').findOne({ walletAddress: wallet });
+
+    console.log(`[Portfolio] Fetching for wallet: ${wallet}`);
+
+    if (!user) {
+      return NextResponse.json({
+        holdings: [],
+        investments: [],
+        watchlist: [],
+        stats: { totalValue: 0 }
+      });
+    }
+
+    const userId = user._id;
+    const balances = user.balances || [];
+
+    // 3. Fetch prices
+    const tokenAddresses = balances.map((b: any) => b.tokenAddress);
+
+    const pricesDocs = await db
+      .collection('token_prices')
+      .find({ tokenAddress: { $in: tokenAddresses } })
+      .toArray();
+
+    const priceMap = new Map<string, number>();
+    // Default SOL price for devnet testing
+    priceMap.set('So11111111111111111111111111111111111111112', 168.48);
+
+    pricesDocs.forEach((p: any) => {
+      const price = p.priceUsd ? parseFloat(p.priceUsd) : p.price || 0;
+      priceMap.set(p.tokenAddress, price);
+    });
+
+    // --- A. HOLDINGS ---
+    let totalWalletValue = 0;
+
+    const holdings = balances.map((b: any) => {
+      const price = priceMap.get(b.tokenAddress) || 0;
+      const amountRaw = parseFloat(b.balance);
+      const amount = normalizeNumber(amountRaw);
+
+      const valueUsdRaw = amount * price;
+      const valueUsd = normalizeNumber(valueUsdRaw);
+
+      if (valueUsd > 0) totalWalletValue += valueUsd;
+
+      return {
+        symbol: getTokenSymbol(b.tokenAddress),
+        balance: amount,
+        price: normalizeNumber(price),
+        value: valueUsd
+      };
+    });
+
+    // --- B. ACTIVE INVESTMENTS (Updated Fields) ---
+    const openPositions = await db
+      .collection('perp_positions')
+      .find({
+        userId: userId,
+        status: 'open'
+      })
+      .toArray();
+
+    const investments = openPositions.map((p: any) => ({
+      _id: p._id.toString(),
+      symbol: p.tokenSymbol !== 'TOKEN' ? p.tokenSymbol : getTokenSymbol(p.tokenAddress),
+      entryPrice: normalizeNumber(p.entryPrice),
+      size: normalizeNumber(p.positionSize),
+      leverage: p.leverage || 1,             // <--- Add
+      direction: p.positionDirection || 'LONG', // <--- Add
+      createdAt: p.createdAt,              // <--- Add
+      proposalId: p.proposalId,            // <--- Add
+      pnl: 0,
+      roi: normalizeNumber(p.roi || 0)
+    }));
+
+    // --- C. WATCHLIST ---
+    const pendingProposals = await ProposalModel.find({
+      status: { $in: ['pending', 'active'] },
+      expiresAt: { $gt: new Date() }
+    })
       .sort({ createdAt: -1 })
-      .limit(50)
+      .limit(10)
       .lean();
 
-    // BƯỚC 3: Mapping dữ liệu sang format Frontend (Trade[])
-    const trades = [
-        // Map Open Positions
-        ...openPositions.map((p: any) => ({
-            _id: p._id.toString(),
-            tokenSymbol: p.tokenAddress || 'UNK', // Nên có logic map address -> symbol nếu cần
-            action: p.positionDirection === 'long' ? 'BUY' : 'SELL',
-            status: 'OPEN',
-            entryPrice: parseFloat(p.entryPrice) || 0,
-            currentPrice: parseFloat(p.entryPrice), // Cần lấy giá realtime nếu có, tạm thời dùng entry
-            amount: parseFloat(p.positionSize) || 0,
-            pnl: 0, // Vị thế mở tạm thời tính PnL = 0 hoặc tính theo markPrice
-            executedAt: p.createdAt || new Date(),
-        })),
-        // Map Transactions (Closed/History)
-        ...history.map((t: any) => ({
-            _id: t._id.toString(),
-            tokenSymbol: t.fromTokenAddress || 'SOL', // Placeholder
-            action: t.transactionType === 'swap' ? 'SWAP' : 'TRADE',
-            status: 'CLOSED',
-            entryPrice: 0,
-            amount: parseFloat(t.amountFrom) || 0,
-            pnl: 0, 
-            executedAt: t.createdAt,
-        }))
-    ];
+    const watchlist = pendingProposals.map((p: any) => ({
+      _id: p._id.toString(),
+      tokenSymbol: p.tokenSymbol || (p.title ? p.title.split(' ')[0] : 'TOKEN'),
+      title: p.title,
+      roi: normalizeNumber(p.financialImpact?.roi || 0),
+      confidence: p.confidence,
+      createdAt: p.createdAt
+    }));
 
-    // Tính Stats đơn giản
     const stats = {
-      totalTrades: trades.length,
-      winRate: 0, 
-      totalPnL: 0
+      totalValue: normalizeNumber(totalWalletValue),
+      activeCount: investments.length,
+      watchlistCount: watchlist.length
     };
 
-    return NextResponse.json({ trades, stats });
+    return NextResponse.json({ holdings, investments, watchlist, stats });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Portfolio API Error:', error);
-    return NextResponse.json({ error: 'Internal Error', details: String(error) }, { status: 500 });
+    return NextResponse.json(
+      { error: error.message || 'Internal Error' },
+      { status: 500 }
+    );
   }
 }

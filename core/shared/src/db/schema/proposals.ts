@@ -15,13 +15,15 @@ export interface ProposalDocument extends Document {
     percentChange?: number;
     timeFrame?: string;
     riskLevel?: string;
+    roi?: number; // <--- THÊM MỚI
   };
-  confidence?: number; // Đã thêm interface
+  confidence?: number;
   expiresAt: Date;
   createdAt: Date;
   updatedAt: Date;
   status: string;
 }
+
 export type ProposalInsert = Omit<
   ProposalDocument,
   | "_id"
@@ -37,6 +39,7 @@ const FinancialImpactSchema = new Schema({
   percentChange: { type: Number },
   timeFrame: { type: String },
   riskLevel: { type: String },
+  roi: { type: Number }, // <--- THÊM MỚI: Lưu % lợi nhuận dự kiến
 }, { _id: false });
 
 const ProposalSchema = new Schema<ProposalDocument>(
@@ -47,10 +50,9 @@ const ProposalSchema = new Schema<ProposalDocument>(
     summary: { type: String, required: true },
     reason: { type: [String], required: true },
     sources: { type: [SourceSchema], default: [] },
-    type: { type: String, enum: ["trade", "stake", "risk", "opportunity","hold", "buy", "sell"] },
+    type: { type: String, enum: ["trade", "stake", "risk", "opportunity", "hold", "buy", "sell"] },
     proposedBy: { type: String, default: "NDL AI" },
     financialImpact: { type: FinancialImpactSchema },
-    // SỬA: Thêm trường confidence vào Schema
     confidence: { type: Number }, 
     expiresAt: { type: Date, required: true },
     status: { type: String, default: "pending" },

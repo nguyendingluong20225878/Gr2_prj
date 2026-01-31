@@ -4,17 +4,31 @@ interface TheNumbersProps {
   currentValue: number;
   projectedValue: number;
   percentChange?: number;
+  roi?: number; // Nhận thêm prop roi
   tokenSymbol: string;
 }
 
-export function TheNumbers({ currentValue, projectedValue, percentChange, tokenSymbol }: TheNumbersProps) {
-  const roi = projectedValue - currentValue;
-  const roiPercent = percentChange !== undefined ? percentChange : (currentValue !== 0 ? (roi / currentValue) * 100 : 0);
-  const isPositive = roiPercent >= 0;
+export function TheNumbers({ currentValue, projectedValue, percentChange, roi, tokenSymbol }: TheNumbersProps) {
+  // Ưu tiên lấy ROI từ prop, nếu không có mới tính toán
+  let displayRoi = 0;
+  if (roi !== undefined) displayRoi = roi;
+  else if (percentChange !== undefined) displayRoi = percentChange;
+  else if (currentValue > 0) displayRoi = ((projectedValue - currentValue) / currentValue) * 100;
+
+  const isPositive = displayRoi >= 0;
 
   const formatCurrency = (num: number) => {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(num);
   };
+
+  const diffValue = projectedValue - currentValue;
+
+  // === FIX PROGRESS BAR LOGIC ===
+  // Tính tỷ lệ phần trăm chiều rộng cho từng thanh
+  // Tổng thanh = Projected Value (hoặc Current Value nếu lỗ)
+  const maxValue = Math.max(currentValue, projectedValue);
+  const currentWidth = maxValue > 0 ? (currentValue / maxValue) * 100 : 0;
+  const gainWidth = maxValue > 0 ? (Math.abs(diffValue) / maxValue) * 100 : 0;
 
   return (
     <div className="glass-card rounded-xl p-6 border border-purple-400/30 bg-slate-950/50">
@@ -27,7 +41,7 @@ export function TheNumbers({ currentValue, projectedValue, percentChange, tokenS
         </div>
         <div className={`text-right ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
           <p className="text-4xl font-black font-mono leading-none tracking-tight">
-            {isPositive ? '+' : ''}{roiPercent.toFixed(2)}%
+            {isPositive ? '+' : ''}{displayRoi.toFixed(2)}%
           </p>
           <div className="flex items-center justify-end gap-1 mt-1">
              <TrendingUp className={`w-3 h-3 ${isPositive ? '' : 'rotate-180'}`} />
@@ -62,14 +76,22 @@ export function TheNumbers({ currentValue, projectedValue, percentChange, tokenS
       <div className="space-y-2">
         <div className="flex justify-between text-[10px] uppercase font-bold text-slate-500 px-1">
           <span>Current</span>
-          <span>Target (+{formatCurrency(roi)})</span>
+          <span>Target ({isPositive ? '+' : ''}{formatCurrency(diffValue)})</span>
         </div>
-        <div className="h-3 bg-slate-800 rounded-full overflow-hidden flex p-0.5 border border-slate-700">
-          {/* Base Bar */}
-          <div className="h-full bg-slate-500 rounded-full w-full" style={{ width: '100%' }}></div>
-          {/* Gain Bar */}
+        
+        <div className="h-3 bg-slate-800 rounded-full overflow-hidden flex p-0.5 border border-slate-700 relative">
+          {/* Base Bar (Current) */}
+          <div 
+            className="h-full bg-slate-500 rounded-l-full transition-all duration-1000" 
+            style={{ width: `${currentWidth}%` }}
+          />
+          
+          {/* Gain Bar (Target) */}
           {isPositive && (
-             <div className="h-full bg-gradient-to-r from-green-500 to-emerald-400 rounded-full animate-pulse ml-1" style={{ width: `${Math.min(Math.abs(roiPercent), 50)}%` }} />
+             <div 
+               className="h-full bg-gradient-to-r from-green-500 to-emerald-400 rounded-r-full animate-pulse ml-0.5 transition-all duration-1000" 
+               style={{ width: `${gainWidth}%` }} 
+             />
           )}
         </div>
       </div>

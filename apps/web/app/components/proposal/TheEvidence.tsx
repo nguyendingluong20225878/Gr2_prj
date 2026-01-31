@@ -57,7 +57,7 @@ export function TheEvidence({ signalData, tokenSymbol, overrideSources }: TheEvi
         <div className="bg-slate-900/50 border border-slate-700 rounded-lg p-4 mb-6">
           <div className="flex items-center gap-2 mb-2">
              <BarChart3 className="w-4 h-4 text-purple-400" />
-             <span className="text-xs font-bold text-purple-400 uppercase">Context Summary</span>
+             <span className="text-xs font-bold text-purple-400 uppercase">Signal Reason</span>
           </div>
           <p className="text-sm text-slate-300 leading-relaxed italic">
             "{signalData.rationaleSummary || 'No summary available for this signal.'}"
