@@ -1,127 +1,69 @@
-import type { LogEntry, LoggerConfig, LogWriter } from "../types";
-import { LogLevel } from "../types";
+// core/shared/src/utils/logger.ts
+
+export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+const LOG_LEVELS: Record<LogLevel, number> = {
+  debug: 0,
+  info: 1,
+  warn: 2,
+  error: 3,
+};
+
+// Lấy level từ biến môi trường, mặc định là 'info'
+const CURRENT_LOG_LEVEL: LogLevel = (process.env.LOG_LEVEL as LogLevel) || 'info';
 
 export class Logger {
-  private config: Omit<Required<LoggerConfig>, "logWriter">;
-  private logWriter?: LogWriter;
+  private context: string;
 
-  constructor(config: LoggerConfig) {
-    this.config = {
-      level: config.level,
-      enableTimestamp: config.enableTimestamp ?? true,
-      enableColors: config.enableColors ?? true,
-      logToFile: config.logToFile ?? false,
-      logPath: config.logPath ?? "./logs",
-    };
-
-    if (this.config.logToFile && !config.logWriter) {
-      throw new Error("LogWriter must be provided when logToFile is enabled");
-    }
-
-    if (config.logWriter) {
-      this.logWriter = config.logWriter;
-    }
+  constructor(context: string) {
+    this.context = context;
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: data could be anything
-  error(context: string, message: string, data?: any) {
-    this.log(LogLevel.ERROR, context, message, data);
-    console.error(data);
+  private shouldLog(level: LogLevel): boolean {
+    return LOG_LEVELS[level] >= LOG_LEVELS[CURRENT_LOG_LEVEL];
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: data could be anything
-  warn(context: string, message: string, data?: any) {
-    this.log(LogLevel.WARN, context, message, data);
-  }
-
-  // biome-ignore lint/suspicious/noExplicitAny: data could be anything
-  info(context: string, message: string, data?: any) {
-    this.log(LogLevel.INFO, context, message, data);
-  }
-
-  // biome-ignore lint/suspicious/noExplicitAny: data could be anything
-  debug(context: string, message: string, data?: any) {
-    this.log(LogLevel.DEBUG, context, message, data);
-  }
-
-  // biome-ignore lint/suspicious/noExplicitAny: data could be anything
-  trace(context: string, message: string, data?: any) {
-    this.log(LogLevel.TRACE, context, message, data);
-  }
-
-  // biome-ignore lint/suspicious/noExplicitAny: data could be anything
-  private log(level: LogLevel, context: string, message: string, data?: any) {
-    if (level > this.config.level) return;
-
-    const entry: LogEntry = {
-      level,
-      timestamp: new Date(),
-      context,
-      message,
-      data,
-    };
-
-    const formatted = this.formatLogEntry(entry);
-
-    if (this.config.enableColors) {
-      console.log(this.colorize(formatted, level));
-    } else {
-      console.log(formatted);
-    }
-
-    if (this.config.logToFile) {
-      this.writeToFile(entry);
-    }
-  }
-
-  private formatLogEntry(entry: LogEntry): string {
-    const parts: string[] = [];
-
-    if (this.config.enableTimestamp) {
-      parts.push(`[${entry.timestamp.toISOString()}]`);
-    }
-
-    parts.push(`[${LogLevel[entry.level]}]`);
-    parts.push(`[${entry.context}]`);
-    parts.push(entry.message);
-
-    if (entry.data) {
-      parts.push(JSON.stringify(entry.data, null, 2));
-    }
-
-    return parts.join(" ");
-  }
-
-  private colorize(message: string, level: LogLevel): string {
+  private formatMessage(level: LogLevel, message: string, meta?: any): string {
+    const timestamp = new Date().toISOString();
+    const metaString = meta ? `\n${JSON.stringify(meta, null, 2)}` : '';
+    
+    // Màu sắc
     const colors = {
-      [LogLevel.ERROR]: "\x1b[31m", // Red
-      [LogLevel.WARN]: "\x1b[33m", // Yellow
-      [LogLevel.INFO]: "\x1b[36m", // Cyan
-      [LogLevel.DEBUG]: "\x1b[32m", // Green
-      [LogLevel.TRACE]: "\x1b[90m", // Gray
+      debug: '\x1b[32m', // Green
+      info: '\x1b[36m',  // Cyan
+      warn: '\x1b[33m',  // Yellow
+      error: '\x1b[31m', // Red
     };
+    const reset = '\x1b[0m';
+    const color = colors[level];
 
-    const reset = "\x1b[0m";
-    return `${colors[level]}${message}${reset}`;
+    // Format: [TIME] [LEVEL] [CONTEXT] Message
+    return `${color}[${timestamp}] [${level.toUpperCase()}] [${this.context}]${reset} ${message}${metaString}`;
   }
 
-  private initLogFile() {
-    if (!this.logWriter) {
-      throw new Error("LogWriter not configured");
+  debug(message: string, meta?: any) {
+    if (this.shouldLog('debug')) {
+      console.debug(this.formatMessage('debug', message, meta));
     }
-    this.logWriter.init(this.config.logPath);
   }
 
-  private writeToFile(entry: LogEntry) {
-    if (!this.logWriter) {
-      throw new Error("LogWriter not configured");
+  info(message: string, meta?: any) {
+    if (this.shouldLog('info')) {
+      console.log(this.formatMessage('info', message, meta));
     }
+  }
 
-    const logLine = `${this.formatLogEntry(entry)}\n`;
-    this.logWriter.write(logLine);
+  warn(message: string, meta?: any) {
+    if (this.shouldLog('warn')) {
+      console.warn(this.formatMessage('warn', message, meta));
+    }
+  }
+
+  error(message: string, error?: any) {
+    if (this.shouldLog('error')) {
+      // Với error, ta in riêng error object ra để trình duyệt/server hiển thị stack trace đẹp hơn
+      console.error(this.formatMessage('error', message));
+      if (error) console.error(error);
+    }
   }
 }
-
-export const logger = new Logger({
-  level: process.env.NODE_ENV === "production" ? LogLevel.INFO : LogLevel.DEBUG,
-});

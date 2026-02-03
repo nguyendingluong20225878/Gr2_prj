@@ -2,6 +2,7 @@
   "name": "@-ai/token-price-fetcher",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
@@ -17,7 +18,8 @@
     "lint": "eslint src/**/*.ts"
   },
   "dependencies": {
-    "node-cron": "^3.0.3"
+    "node-cron": "^3.0.3",
+    "@-ai/shared": "*"  
   },
   "devDependencies": {
     "@types/node-cron": "^3.0.11",

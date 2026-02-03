@@ -7,9 +7,13 @@
     "strict": true,
     "declaration": true,
     "outDir": "dist",
-    "rootDir": "src",
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    "baseUrl": ".",
+    "paths": {
+      "@-ai/shared": ["../shared/src/index.ts"]
+    }
+    // ====================
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]

@@ -19,4 +19,8 @@ export type TokenPriceDocument = HydratedDocument<TokenPriceSchema>;
 export type TokenPriceSelect = TokenPriceDocument;
 export type TokenPriceInsert = TokenPriceSchema;
 
-export const tokenPricesTable = models.TokenPrice ?? model<TokenPriceSchema>("TokenPrice", tokenPriceSchema);
+// === FIX: Export đúng tên TokenPriceModel mà service đang gọi ===
+export const TokenPriceModel = models.TokenPrice || model<TokenPriceSchema>("TokenPrice", tokenPriceSchema);
+
+// Giữ lại alias cũ (nếu code khác còn dùng) để tránh lỗi breaking change
+export const tokenPricesTable = TokenPriceModel;

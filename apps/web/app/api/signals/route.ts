@@ -1,24 +1,21 @@
 import { NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import { SignalModel } from '@/models/Signal';
+import { SignalService } from '@/services/SignalService';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    await connectDB();
-
-    // Ép kiểu query thành any để Mongoose không bắt bẻ
-    const query: any = {
-      expiresAt: { $gt: new Date() }//$gt (expiresAt > date)
-    };
-
-    const signals = await SignalModel.find(query)
-      .sort({ detectedAt: -1 })
-      .limit(20)
-      .lean();
-
-    return NextResponse.json(signals);//trả về http 200 và body là JSON array
-  } catch (error: any) {
-    console.error('Fetch Signals Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const { searchParams } = new URL(request.url);
+    const limit = parseInt(searchParams.get('limit') || '10');
+    const type = searchParams.get('type') || 'ALL'; // Hỗ trợ lọc theo type
+    
+    // Gọi Service Layer
+    const signals = await SignalService.getSignals(limit, type);
+    
+    return NextResponse.json(signals);
+  } catch (error) {
+    console.error("API Error:", error); // Ở đây có thể dùng Logger của Server nếu muốn
+    return NextResponse.json(
+      { error: 'Failed to fetch signals', details: String(error) }, 
+      { status: 500 }
+    );
   }
 }

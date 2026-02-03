@@ -19,7 +19,7 @@ export * from "./types";
 // ===== UTILS =====
 export {
   Logger,
-  logger,
+  
 } from "./utils/logger";
 
 export {
@@ -42,6 +42,14 @@ export type {
 
 // ===== CONSTANTS =====
 export * from "./constants";
+
+export { tokensTable, TokenDocument } from "./db/schema/tokens"; 
+export { tokenPriceHistory, TokenPriceHistoryDocument } from "./db/schema/token_price_history";
+export { tokenPrice24hAgoView } from "./db/schema/token_price_24h_ago_view";
+// ----------------------------
+
+// File token_prices.ts (Đã sửa ở bước trước)
+export * from "./db/schema/token_prices";
 
 // export * from './types/proposal';
 
