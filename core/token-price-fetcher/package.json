@@ -1,5 +1,5 @@
 {
-  "name": "@-ai/token-price-fetcher",
+  "name": "@gr2/token-price-fetcher",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -19,7 +19,7 @@
   },
   "dependencies": {
     "node-cron": "^3.0.3",
-    "@-ai/shared": "*"  
+    "@gr2/shared": "file:../shared"
   },
   "devDependencies": {
     "@types/node-cron": "^3.0.11",

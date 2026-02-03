@@ -1,7 +1,5 @@
 import "dotenv/config";
-import { connectToDatabase } from "../../shared/src/db/connection";
-import { tokensTable } from "../../shared/src/db/schema/tokens";
-
+import { connectToDatabase, tokensTable } from "@gr2/shared";
 // DANH SÁCH TOP TOKENS SOLANA (Hardcoded - Dùng khi mạng lỗi)
 // Bao gồm: Native, Stablecoins, Top Ecosystem, Top Memes
 const TOP_TOKENS = [

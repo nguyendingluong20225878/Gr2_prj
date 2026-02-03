@@ -1,11 +1,15 @@
 {
+  "extends": "../../tsconfig.json", // Kế thừa từ file gốc
   "compilerOptions": {
-    "target": "ES2020",
-    "module": "CommonJS",
-    "moduleResolution": "Node",
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "strict": false
+    "outDir": "dist",
+    "rootDir": "src",
+    
+    // QUAN TRỌNG: Không được có dòng "typeRoots" ở đây!
+    // TypeScript sẽ tự leo lên root để tìm types.
+    
+    // Nếu vẫn lỗi process, bỏ comment dòng dưới:
+    // "types": ["node"]
   },
-  "include": ["src", "scripts"]
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts"]
 }

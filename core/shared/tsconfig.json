@@ -1,16 +1,15 @@
 {
+  "extends": "../../tsconfig.json", // Kế thừa từ file gốc
   "compilerOptions": {
-    "target": "ES2020",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "esModuleInterop": true,
-    "strict": true,
-    "declaration": true,
     "outDir": "dist",
     "rootDir": "src",
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
+    
+    // QUAN TRỌNG: Không được có dòng "typeRoots" ở đây!
+    // TypeScript sẽ tự leo lên root để tìm types.
+    
+    // Nếu vẫn lỗi process, bỏ comment dòng dưới:
+    // "types": ["node"]
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"]
+  "exclude": ["node_modules", "dist", "**/*.test.ts"]
 }

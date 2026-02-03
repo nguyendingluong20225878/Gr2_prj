@@ -6,7 +6,7 @@ import {
   tokenPriceHistory,    // Model lịch sử giá (Import mới từ index)
   tokensTable,          // Model danh sách token (Import mới từ index)
   Logger
-} from '@-ai/shared';
+} from '/shared';
 
 // Jupiter price response type
 interface JupiterPriceResponse {

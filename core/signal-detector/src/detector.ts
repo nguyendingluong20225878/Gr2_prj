@@ -9,9 +9,8 @@ import { GeminiClient } from "../../shared/src/utils/gemini-client"; // Import t
 const getGeminiClient = () => {
   return new GeminiClient({
     apiKeys: [
-      process.env.GOOGLE_API_KEY,
-      process.env.GOOGLE_API_KEY_1,
-      process.env.GOOGLE_API_KEY_2,
+      process.env.GOOGLE_API_KEY_DETECTOR,
+    
     ].filter((k): k is string => !!k), // Lọc key undefined
     modelName: "gemini-1.5-flash", // Hoặc flash-latest
     temperature: 0.1,

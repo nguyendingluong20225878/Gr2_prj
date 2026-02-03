@@ -1,20 +1,19 @@
 {
+  "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "target": "ES2020",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "esModuleInterop": true,
-    "strict": true,
-    "declaration": true,
     "outDir": "dist",
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "baseUrl": ".",
-    "paths": {
-      "@-ai/shared": ["../shared/src/index.ts"]
-    }
-    // ====================
+    "rootDir": ".", 
+    
+    // Đảm bảo các cấu hình module vẫn giữ đúng chuẩn ESM
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext"
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "src/**/*", 
+    "scripts/**/*"
+  ],
+  "exclude": [
+    "node_modules", 
+    "dist"
+  ]
 }

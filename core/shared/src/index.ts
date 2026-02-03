@@ -1,5 +1,7 @@
 // ===== DB =====
 export * from "./db";
+
+export * from "./db/connection";
 export { getProposalModel, ProposalDocument } from "./db/schema/proposals";
 export { tweetTable } from "./db/schema/tweets";
 export { xAccountTable } from "./db/schema/x_accounts";

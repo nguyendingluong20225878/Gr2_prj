@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    /* 1. Cấu hình cơ bản (Basic Options) */
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["es2022", "DOM", "DOM.Iterable"],
+    
+    /* 2. Quy tắc nghiêm ngặt (Strictness) */
+    "strict": true,
+    "noImplicitAny": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "sourceMap": true,
+
+    /* 3. Đường dẫn (Paths & BaseUrl) - QUAN TRỌNG CHO MONOREPO */
+    "baseUrl": ".",
+    "paths": {
+      // Định nghĩa alias để các gói nhìn thấy nhau mà không cần build
+      "@gr2/*": ["core/*/src", "services/*/src", "apps/*/src"],
+      "@/*": ["apps/web/*"] 
+    }
+  },
+  "exclude": ["node_modules", "dist", "build", ".next"]
+}
