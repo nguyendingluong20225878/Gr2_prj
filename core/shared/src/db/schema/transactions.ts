@@ -1,11 +1,33 @@
-import { HydratedDocument, InferSchemaType, Schema, model, models } from "mongoose";
+import mongoose, {
+  HydratedDocument,
+  InferSchemaType,
+  Schema,
+  model,
+  Model,
+} from "mongoose";
 
-const TRANSACTION_TYPES = ["swap", "staking", "liquid_staking", "perp_trade", "perp_close", "lending"] as const;
+const TRANSACTION_TYPES = [
+  "swap",
+  "staking",
+  "liquid_staking",
+  "perp_trade",
+  "perp_close",
+  "lending",
+] as const;
 
 const transactionSchema = new Schema(
   {
-    userId: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
-    transactionType: { type: String, enum: TRANSACTION_TYPES, required: true },
+    userId: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      index: true,
+    },
+    transactionType: {
+      type: String,
+      enum: TRANSACTION_TYPES,
+      required: true,
+    },
     fromTokenAddress: { type: String },
     toTokenAddress: { type: String },
     fromToken: { type: Schema.Types.ObjectId, ref: "Token" },
@@ -18,7 +40,7 @@ const transactionSchema = new Schema(
   {
     collection: "transactions",
     timestamps: { createdAt: "createdAt", updatedAt: false },
-  },
+  }
 );
 
 transactionSchema.index({ transactionType: 1, userId: 1 });
@@ -30,5 +52,6 @@ export type TransactionDocument = HydratedDocument<TransactionSchema>;
 export type TransactionSelect = TransactionDocument;
 export type TransactionInsert = TransactionSchema;
 
-export const transactionsTable =
-  models.Transaction ?? model<TransactionSchema>("Transaction", transactionSchema);
+export const transactionsTable: Model<TransactionSchema> =
+  (mongoose.models.Transaction as Model<TransactionSchema>) ??
+  model<TransactionSchema>("Transaction", transactionSchema);

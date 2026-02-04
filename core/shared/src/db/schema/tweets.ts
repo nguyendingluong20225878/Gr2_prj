@@ -1,9 +1,8 @@
-import {
+import mongoose, {
   HydratedDocument,
   InferSchemaType,
   Schema,
   model,
-  models,
   Model,
 } from "mongoose";
 
@@ -32,5 +31,5 @@ export type TweetSelect = TweetSchema;
 export type TweetInsert = TweetSchema;
 
 export const tweetTable: Model<TweetSchema> =
-  (models.Tweet as Model<TweetSchema>) ??
+  (mongoose.models.Tweet as Model<TweetSchema>) ??
   model<TweetSchema>("Tweet", tweetSchema);

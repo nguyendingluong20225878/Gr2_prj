@@ -17,3 +17,8 @@ Update token_prices (giá hiện tại)
 Insert token_price_history (lịch sử)
    ↓
 (Cron) Update token_price_24h_ago_view
+
+
+services/* = use case / nghiệp vụ
+
+providers/* = adapter gọi API ngoài

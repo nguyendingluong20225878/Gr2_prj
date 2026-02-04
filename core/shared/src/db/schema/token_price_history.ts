@@ -1,4 +1,10 @@
-import { HydratedDocument, InferSchemaType, Schema, model, models } from "mongoose";
+import mongoose, {
+  HydratedDocument,
+  InferSchemaType,
+  Schema,
+  model,
+  Model,
+} from "mongoose";
 
 const tokenPriceHistorySchema = new Schema(
   {
@@ -16,10 +22,16 @@ const tokenPriceHistorySchema = new Schema(
 
 tokenPriceHistorySchema.index({ tokenAddress: 1, timestamp: 1 });
 
-export type TokenPriceHistorySchema = InferSchemaType<typeof tokenPriceHistorySchema>;
-export type TokenPriceHistoryDocument = HydratedDocument<TokenPriceHistorySchema>;
+export type TokenPriceHistorySchema =
+  InferSchemaType<typeof tokenPriceHistorySchema>;
+export type TokenPriceHistoryDocument =
+  HydratedDocument<TokenPriceHistorySchema>;
 export type TokenPriceHistory = TokenPriceHistoryDocument;
 export type InsertTokenPriceHistory = TokenPriceHistorySchema;
 
-export const tokenPriceHistory =
-  models.TokenPriceHistory ?? model<TokenPriceHistorySchema>("TokenPriceHistory", tokenPriceHistorySchema);
+export const tokenPriceHistory: Model<TokenPriceHistorySchema> =
+  (mongoose.models.TokenPriceHistory as Model<TokenPriceHistorySchema>) ??
+  model<TokenPriceHistorySchema>(
+    "TokenPriceHistory",
+    tokenPriceHistorySchema
+  );

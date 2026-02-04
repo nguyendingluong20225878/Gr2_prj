@@ -1,4 +1,9 @@
-import { HydratedDocument, InferSchemaType, Schema, model, models } from "mongoose";
+import mongoose, {
+  HydratedDocument,
+  InferSchemaType,
+  Schema,
+  Model,
+} from "mongoose";
 
 const fundingRateSchema = new Schema(
   {
@@ -13,10 +18,16 @@ const fundingRateSchema = new Schema(
   },
 );
 
-export type FundingRateSchema = InferSchemaType<typeof fundingRateSchema>;
-export type FundingRateDocument = HydratedDocument<FundingRateSchema>;
+export type FundingRateSchema =
+  InferSchemaType<typeof fundingRateSchema>;
+export type FundingRateDocument =
+  HydratedDocument<FundingRateSchema>;
 export type FundingRateSelect = FundingRateDocument;
 export type FundingRateInsert = FundingRateSchema;
 
-export const fundingRatesTable =
-  models.FundingRate ?? model<FundingRateSchema>("FundingRate", fundingRateSchema);
+export const fundingRatesTable: Model<FundingRateSchema> =
+  (mongoose.models.FundingRate as Model<FundingRateSchema>) ??
+  mongoose.model<FundingRateSchema>(
+    "FundingRate",
+    fundingRateSchema,
+  );

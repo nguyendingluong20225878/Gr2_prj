@@ -1,16 +1,10 @@
-import { Types, Model } from "mongoose";
-import { connectToDatabase } from "../db";
-import { tokenPricesTable as _tokenPricesTable } from "../db/schema/token_prices";
-import { tokensTable as _tokensTable, TokenSchema } from "../db/schema/tokens";
-import { usersTable } from "../db/schema/users";
-import { logger } from "./logger";
-
-/* ✅ CAST MODEL 1 LẦN DUY NHẤT */
-const tokensTable = _tokensTable as Model<TokenSchema>;
-const tokenPricesTable = _tokenPricesTable as Model<{
-  tokenAddress: string;
-  priceUsd: string;
-}>;
+import { Types } from "mongoose";
+import { connectToDatabase } from "../db/index.js";
+import { tokenPricesTable } from "../db/schema/token_prices.js";
+import { tokensTable, TokenSchema } from "../db/schema/tokens.js";
+import { usersTable } from "../db/schema/users.js";
+import { TokenPriceSchema } from "../db/schema/token_prices.js";
+import { logger } from "./logger.js";
 
 export async function setupInitialPortfolio(
   userId: string,
@@ -31,7 +25,7 @@ export async function setupInitialPortfolio(
         ? { symbol: { $in: options.specificSymbols } }
         : {};
 
-    const tokens = await tokensTable.find(tokenQuery).lean();
+    const tokens = await tokensTable.find(tokenQuery).lean<TokenSchema[]>();
 
     if (!tokens.length) {
       logger.error(
@@ -42,14 +36,15 @@ export async function setupInitialPortfolio(
     }
 
     /* ===============================
-       2. QUERY PRICES (HẾT TS2349)
+       2. QUERY PRICES (ĐÚNG TYPE)
     =============================== */
 
     const tokenPrices = await tokenPricesTable
       .find({
         tokenAddress: { $in: tokens.map((t) => t.address) },
       })
-      .lean();
+      .select({ tokenAddress: 1, priceUsd: 1, _id: 0 })
+      .lean<Pick<TokenPriceSchema, "tokenAddress" | "priceUsd">[]>();
 
     /* ===============================
        3. BUILD PRICE MAP
@@ -68,28 +63,8 @@ export async function setupInitialPortfolio(
     const defaultUsdBalances: Record<string, number> = {
       SOL: 2000,
       JUP: 1000,
-      JTO: 1000,
-      RAY: 1000,
-      HNT: 1000,
-      PYTH: 1000,
-      TRUMP: 1000,
-      WIF: 1000,
-      W: 1000,
-      MEW: 1000,
-      POPCAT: 1000,
-      ORCA: 1000,
-      ZEUS: 1000,
-      KMNO: 1000,
-      WBTC: 2000,
       USDC: 2000,
-      BONK: 1000,
-      WSUI: 1000,
-      BIO: 1000,
-      LAYER: 1000,
-      AIXBT: 1000,
-      ACT: 1000,
-      Fartcoin: 1000,
-      MELANIA: 1000,
+      WBTC: 2000,
     };
 
     /* ===============================

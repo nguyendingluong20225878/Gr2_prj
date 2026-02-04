@@ -1,6 +1,6 @@
 import "dotenv/config";
 import cron from "node-cron";//lập lịch
-import { processTokenPrices } from "./process";
+import { processTokenPrices } from "./process.js";
 
 /**
 * Tập lệnh để chạy trong môi trường cục bộ

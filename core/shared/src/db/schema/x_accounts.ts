@@ -1,4 +1,4 @@
-import { InferSchemaType, Schema, model, models, Model } from "mongoose";
+import mongoose, { InferSchemaType, Schema, model, Model } from "mongoose";
 
 const xAccountSchema = new Schema(
   {
@@ -17,11 +17,8 @@ const xAccountSchema = new Schema(
 xAccountSchema.index({ lastTweetUpdatedAt: -1 });
 
 export type XAccountSchema = InferSchemaType<typeof xAccountSchema>;
-
-/** ✅ EXPORT Insert type */ //type~compile
 export type XAccountInsert = XAccountSchema;
 
-/** ✅ EXPORT Model */ // const~runtime 
 export const xAccountTable: Model<XAccountSchema> =
-  (models.XAccount as Model<XAccountSchema>) ??
+  (mongoose.models.XAccount as Model<XAccountSchema>) ??
   model<XAccountSchema>("XAccount", xAccountSchema);

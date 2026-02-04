@@ -1,3 +1,3 @@
-export * from "./Repository";
-export * from "./XAccountRepository";
-export * from "./TweetRepository";
+export * from "./Repository.js";
+export * from "./XAccountRepository.js";
+export * from "./TweetRepository.js";

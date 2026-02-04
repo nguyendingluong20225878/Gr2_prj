@@ -1,5 +1,3 @@
-// core/shared/src/utils/logger.ts
-
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 const LOG_LEVELS: Record<LogLevel, number> = {
@@ -9,61 +7,96 @@ const LOG_LEVELS: Record<LogLevel, number> = {
   error: 3,
 };
 
-// Lấy level từ biến môi trường, mặc định là 'info'
-const CURRENT_LOG_LEVEL: LogLevel = (process.env.LOG_LEVEL as LogLevel) || 'info';
+const CURRENT_LOG_LEVEL: LogLevel =
+  (process.env.LOG_LEVEL as LogLevel) || 'info';
 
 export class Logger {
-  private context: string;
+  private defaultContext: string;
 
-  constructor(context: string) {
-    this.context = context;
+  constructor(context: string = 'Global') {
+    this.defaultContext = context;
   }
 
   private shouldLog(level: LogLevel): boolean {
     return LOG_LEVELS[level] >= LOG_LEVELS[CURRENT_LOG_LEVEL];
   }
 
-  private formatMessage(level: LogLevel, message: string, meta?: any): string {
+  private formatMessage(
+    level: LogLevel,
+    context: string,
+    message: string,
+    meta?: unknown
+  ): string {
     const timestamp = new Date().toISOString();
-    const metaString = meta ? `\n${JSON.stringify(meta, null, 2)}` : '';
-    
-    // Màu sắc
-    const colors = {
-      debug: '\x1b[32m', // Green
-      info: '\x1b[36m',  // Cyan
-      warn: '\x1b[33m',  // Yellow
-      error: '\x1b[31m', // Red
+    const metaString = meta
+      ? `\n${JSON.stringify(meta, null, 2)}`
+      : '';
+
+    const colors: Record<LogLevel, string> = {
+      debug: '\x1b[32m',
+      info: '\x1b[36m',
+      warn: '\x1b[33m',
+      error: '\x1b[31m',
     };
+
     const reset = '\x1b[0m';
     const color = colors[level];
 
-    // Format: [TIME] [LEVEL] [CONTEXT] Message
-    return `${color}[${timestamp}] [${level.toUpperCase()}] [${this.context}]${reset} ${message}${metaString}`;
+    return `${color}[${timestamp}] [${level.toUpperCase()}] [${context}]${reset} ${message}${metaString}`;
   }
 
-  debug(message: string, meta?: any) {
-    if (this.shouldLog('debug')) {
-      console.debug(this.formatMessage('debug', message, meta));
-    }
+  info(ctxOrMsg: string, msgOrMeta?: unknown, meta?: unknown) {
+    if (!this.shouldLog('info')) return;
+
+    const context =
+      typeof msgOrMeta === 'string' ? ctxOrMsg : this.defaultContext;
+    const message =
+      typeof msgOrMeta === 'string' ? msgOrMeta : ctxOrMsg;
+    const data =
+      typeof msgOrMeta === 'string' ? meta : msgOrMeta;
+
+    console.log(this.formatMessage('info', context, message, data));
   }
 
-  info(message: string, meta?: any) {
-    if (this.shouldLog('info')) {
-      console.log(this.formatMessage('info', message, meta));
-    }
+  warn(ctxOrMsg: string, msgOrMeta?: unknown, meta?: unknown) {
+    if (!this.shouldLog('warn')) return;
+
+    const context =
+      typeof msgOrMeta === 'string' ? ctxOrMsg : this.defaultContext;
+    const message =
+      typeof msgOrMeta === 'string' ? msgOrMeta : ctxOrMsg;
+    const data =
+      typeof msgOrMeta === 'string' ? meta : msgOrMeta;
+
+    console.warn(this.formatMessage('warn', context, message, data));
   }
 
-  warn(message: string, meta?: any) {
-    if (this.shouldLog('warn')) {
-      console.warn(this.formatMessage('warn', message, meta));
-    }
+  debug(ctxOrMsg: string, msgOrMeta?: unknown, meta?: unknown) {
+    if (!this.shouldLog('debug')) return;
+
+    const context =
+      typeof msgOrMeta === 'string' ? ctxOrMsg : this.defaultContext;
+    const message =
+      typeof msgOrMeta === 'string' ? msgOrMeta : ctxOrMsg;
+    const data =
+      typeof msgOrMeta === 'string' ? meta : msgOrMeta;
+
+    console.debug(this.formatMessage('debug', context, message, data));
   }
 
-  error(message: string, error?: any) {
-    if (this.shouldLog('error')) {
-      // Với error, ta in riêng error object ra để trình duyệt/server hiển thị stack trace đẹp hơn
-      console.error(this.formatMessage('error', message));
-      if (error) console.error(error);
-    }
+  error(ctxOrMsg: string, msgOrErr?: unknown, err?: unknown) {
+    if (!this.shouldLog('error')) return;
+
+    const context =
+      typeof msgOrErr === 'string' ? ctxOrMsg : this.defaultContext;
+    const message =
+      typeof msgOrErr === 'string' ? msgOrErr : ctxOrMsg;
+    const errorObj =
+      typeof msgOrErr === 'string' ? err : msgOrErr;
+
+    console.error(this.formatMessage('error', context, message));
+    if (errorObj) console.error(errorObj);
   }
 }
+
+export const logger = new Logger('App');

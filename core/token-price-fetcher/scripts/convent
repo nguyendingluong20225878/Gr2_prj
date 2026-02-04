@@ -1,0 +1,23 @@
+bỏ Jupiter --> 
+
+Birdeye  → price / market / top tokens
+Helius   → on-chain metadata (mint, supply, decimals, authority…)
+MongoDB  → lưu trữ
+
+| Mục            | Giải pháp                                        |
+| -------------- | ------------------------------------------------ |
+| Token metadata | **Solana Token Registry (GitHub JSON)**          |
+| Token on-chain | **Solana RPC (Helius / QuickNode / public RPC)** |
+| Price          | **CoinGecko API (FREE, không block VN)**         |
+| Fallback       | Có thể thêm **Birdeye API** sau                  |
+
+
+CoinGecko (market cap)
+   ↓
+TokenListService.importTopCoins()
+   ↓
+tokens (collection)
+   ↓
+TokenPriceService.updatePrices()
+   ↓
+token_prices (collection)

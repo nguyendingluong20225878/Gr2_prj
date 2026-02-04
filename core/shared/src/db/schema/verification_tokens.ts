@@ -1,4 +1,10 @@
-import { HydratedDocument, InferSchemaType, Schema, model, models } from "mongoose";
+import mongoose, {
+  HydratedDocument,
+  InferSchemaType,
+  Schema,
+  model,
+  Model,
+} from "mongoose";
 
 const verificationTokenSchema = new Schema(
   {
@@ -9,15 +15,21 @@ const verificationTokenSchema = new Schema(
   {
     collection: "verification_tokens",
     timestamps: false,
-  },
+  }
 );
 
 verificationTokenSchema.index({ identifier: 1, token: 1 }, { unique: true });
 
-export type VerificationTokenSchema = InferSchemaType<typeof verificationTokenSchema>;
-export type VerificationTokenDocument = HydratedDocument<VerificationTokenSchema>;
+export type VerificationTokenSchema =
+  InferSchemaType<typeof verificationTokenSchema>;
+export type VerificationTokenDocument =
+  HydratedDocument<VerificationTokenSchema>;
 export type VerificationTokenSelect = VerificationTokenDocument;
 export type VerificationTokenInsert = VerificationTokenSchema;
 
-export const verificationTokensTable =
-  models.VerificationToken ?? model<VerificationTokenSchema>("VerificationToken", verificationTokenSchema);
+export const verificationTokensTable: Model<VerificationTokenSchema> =
+  (mongoose.models.VerificationToken as Model<VerificationTokenSchema>) ??
+  model<VerificationTokenSchema>(
+    "VerificationToken",
+    verificationTokenSchema
+  );

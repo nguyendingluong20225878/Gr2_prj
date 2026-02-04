@@ -1,8 +1,19 @@
-import { HydratedDocument, InferSchemaType, Schema, model, models } from "mongoose";
+import mongoose, {
+  HydratedDocument,
+  InferSchemaType,
+  Schema,
+  model,
+  Model,
+} from "mongoose";
 
 const pushSubscriptionSchema = new Schema(
   {
-    userId: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
+    userId: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      index: true,
+    },
     endpoint: { type: String, required: true },
     p256dh: { type: String, required: true },
     auth: { type: String, required: true },
@@ -16,11 +27,23 @@ const pushSubscriptionSchema = new Schema(
   },
 );
 
-pushSubscriptionSchema.index({ userId: 1, endpoint: 1 }, { unique: true });
-pushSubscriptionSchema.index({ userId: 1, os: 1, browser: 1 }, { unique: true, sparse: true });
+pushSubscriptionSchema.index(
+  { userId: 1, endpoint: 1 },
+  { unique: true },
+);
+pushSubscriptionSchema.index(
+  { userId: 1, os: 1, browser: 1 },
+  { unique: true, sparse: true },
+);
 
-export type PushSubscriptionSchema = InferSchemaType<typeof pushSubscriptionSchema>;
-export type PushSubscriptionDocument = HydratedDocument<PushSubscriptionSchema>;
+export type PushSubscriptionSchema =
+  InferSchemaType<typeof pushSubscriptionSchema>;
+export type PushSubscriptionDocument =
+  HydratedDocument<PushSubscriptionSchema>;
 
-export const pushSubscriptionTable =
-  models.PushSubscription ?? model<PushSubscriptionSchema>("PushSubscription", pushSubscriptionSchema);
+export const pushSubscriptionTable: Model<PushSubscriptionSchema> =
+  (mongoose.models.PushSubscription as Model<PushSubscriptionSchema>) ??
+  model<PushSubscriptionSchema>(
+    "PushSubscription",
+    pushSubscriptionSchema
+  );

@@ -1,4 +1,4 @@
-import { TokenPriceService } from "./services/token-price-service";
+import { TokenPriceService } from "./services/token-price-service.js";
 
 //core function to run the token price update process
 export async function processTokenPrices(options?: { specificTokenAddress?: string }): Promise<{

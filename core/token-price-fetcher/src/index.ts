@@ -1,2 +1,2 @@
-export { processTokenPrices } from "./process";
-export { TokenPriceService } from "./services/token-price-service";
+export { processTokenPrices } from "./process.js";
+export { TokenPriceService } from "./services/token-price-service.js";

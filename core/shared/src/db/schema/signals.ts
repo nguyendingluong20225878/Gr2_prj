@@ -1,8 +1,21 @@
-import { HydratedDocument, InferSchemaType, Schema, model, models } from "mongoose";
+import mongoose, {
+  HydratedDocument,
+  InferSchemaType,
+  Schema,
+  model,
+  Model,
+} from "mongoose";
 
 export type SignalSource = { label: string; url: string };
+
 const SENTIMENT_TYPES = ["positive", "negative", "neutral"] as const;
-const SUGGESTION_TYPES = ["buy", "sell", "hold", "stake", "close_position"] as const;
+const SUGGESTION_TYPES = [
+  "buy",
+  "sell",
+  "hold",
+  "stake",
+  "close_position",
+] as const;
 
 const signalSchema = new Schema(
   {
@@ -17,8 +30,16 @@ const signalSchema = new Schema(
       ],
       required: true,
     },
-    sentimentType: { type: String, enum: SENTIMENT_TYPES, required: true },
-    suggestionType: { type: String, enum: SUGGESTION_TYPES, required: true },
+    sentimentType: {
+      type: String,
+      enum: SENTIMENT_TYPES,
+      required: true,
+    },
+    suggestionType: {
+      type: String,
+      enum: SUGGESTION_TYPES,
+      required: true,
+    },
     confidence: { type: Number, required: true },
     rationaleSummary: { type: String, required: true },
     expiresAt: { type: Date, required: true, index: true },
@@ -34,4 +55,6 @@ export type SignalDocument = HydratedDocument<SignalSchema>;
 export type SignalSelect = SignalDocument;
 export type SignalInsert = SignalSchema;
 
-export const signalsTable = models.Signal ?? model<SignalSchema>("Signal", signalSchema);
+export const signalsTable: Model<SignalSchema> =
+  (mongoose.models.Signal as Model<SignalSchema>) ??
+  model<SignalSchema>("Signal", signalSchema);

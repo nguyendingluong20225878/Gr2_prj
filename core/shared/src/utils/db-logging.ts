@@ -1,4 +1,4 @@
-import { logsTable } from "../db/schema";
+import { logsTable } from "../db/schema/index.js";
 
 export type DbLogStatus = "processing" | "success" | "failed";
 

@@ -1,4 +1,9 @@
-import { HydratedDocument, InferSchemaType, Schema, model, models } from "mongoose";
+import mongoose, {
+  HydratedDocument,
+  InferSchemaType,
+  Schema,
+  Model,
+} from "mongoose";
 
 const farcasterUserSchema = new Schema(
   {
@@ -18,8 +23,14 @@ const farcasterUserSchema = new Schema(
   },
 );
 
-export type FarcasterUserSchema = InferSchemaType<typeof farcasterUserSchema>;
-export type FarcasterUserDocument = HydratedDocument<FarcasterUserSchema>;
+export type FarcasterUserSchema =
+  InferSchemaType<typeof farcasterUserSchema>;
+export type FarcasterUserDocument =
+  HydratedDocument<FarcasterUserSchema>;
 
-export const farcasterUsersTable =
-  models.FarcasterUser ?? model<FarcasterUserSchema>("FarcasterUser", farcasterUserSchema);
+export const farcasterUsersTable: Model<FarcasterUserSchema> =
+  (mongoose.models.FarcasterUser as Model<FarcasterUserSchema>) ??
+  mongoose.model<FarcasterUserSchema>(
+    "FarcasterUser",
+    farcasterUserSchema,
+  );

@@ -2,11 +2,16 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": ".", 
-    
-    // Đảm bảo các cấu hình module vẫn giữ đúng chuẩn ESM
+    "rootDir": "..", 
     "module": "NodeNext",
-    "moduleResolution": "NodeNext"
+    "moduleResolution": "NodeNext",
+    
+    // === THÊM ĐOẠN NÀY ĐỂ TRỎ @gr2/shared VỀ SOURCE CODE ===
+    "baseUrl": ".",
+    "paths": {
+      "@gr2/shared": ["../shared/src/index.ts"]
+    }
+    // =====================================================
   },
   "include": [
     "src/**/*", 

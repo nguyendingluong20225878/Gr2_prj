@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  transpilePackages: ['@repo/shared'], 
+  transpilePackages: ['@gr2/shared'], 
   experimental: {
 
     outputFileTracingRoot: require('path').join(__dirname, '../../'),

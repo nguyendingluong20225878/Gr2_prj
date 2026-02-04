@@ -1,12 +1,11 @@
-import {
+import mongoose, {
   HydratedDocument,
   InferSchemaType,
   Schema,
   model,
-  models,
   Model,
 } from "mongoose";
-import { userBalanceSubSchema } from "./user_balances";
+import { userBalanceSubSchema } from "./user_balances.js";
 
 const userSchema = new Schema(
   {
@@ -40,5 +39,5 @@ export type UserSelect = UserSchema;
 export type UserInsert = UserSchema;
 
 export const usersTable: Model<UserSchema> =
-  (models.User as Model<UserSchema>) ??
+  (mongoose.models.User as Model<UserSchema>) ??
   model<UserSchema>("User", userSchema);
