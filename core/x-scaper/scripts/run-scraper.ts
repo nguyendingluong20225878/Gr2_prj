@@ -9,7 +9,7 @@ async function main() {
     console.log('DEBUG: MONGODB_URI present?', Boolean(process.env.MONGODB_URI))
 
     // Dynamic import BÊN TRONG async function (KHÔNG còn top-level await)
-    const { processXScraping } = await import('../src/process')
+    const { processXScraping } = await import('../src/process.js')
 
     const result = await processXScraping()
     console.log(result)

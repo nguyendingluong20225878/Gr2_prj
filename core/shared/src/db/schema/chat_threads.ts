@@ -1,5 +1,5 @@
 import { HydratedDocument, InferSchemaType, Schema, model, models } from "mongoose";
-import { chatMessageSubSchema } from "./chat_messages";
+import { chatMessageSubSchema } from "./chat_messages.js";
 
 const chatThreadSchema = new Schema(
   {

@@ -1,0 +1,1 @@
+export { XScraper } from "./scraper";

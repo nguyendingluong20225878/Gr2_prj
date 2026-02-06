@@ -1,5 +1,5 @@
-import type { TokenSchema } from "../db/schema/tokens";
-import type { ProposalInsert } from "../db/schema/proposals";
+import type { TokenSchema } from "../db/schema/tokens.js";
+import type { ProposalInsert } from "../db/schema/proposals.js";
 
 /**
  * Internal-only types
@@ -16,7 +16,7 @@ export const initialTokens: TokenInsert[] = [
     symbol: "SOL",
     name: "Wrapped SOL",
     decimals: 9,
-    type: "normal",
+    type: "coin",
     iconUrl: "/tokens/SOL.png",
   },
   {
@@ -24,7 +24,7 @@ export const initialTokens: TokenInsert[] = [
     symbol: "USDC",
     name: "USD Coin",
     decimals: 6,
-    type: "normal",
+    type: "coin",
     iconUrl: "/tokens/USDC.png",
   },
 ];

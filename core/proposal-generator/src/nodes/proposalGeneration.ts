@@ -12,7 +12,7 @@ export const proposalGenerationNode = async (
 
   const modelInstance = getProposalChatModel();
   if (!modelInstance) {
-    throw new Error("AI Model not configured. GOOGLE_API_KEY missing.");
+    throw new Error("AI Model not configured. GOOGLE_API_KEY_PROPOSAL missing.");
   }
 
   const signal = state.signal as any;
@@ -43,7 +43,8 @@ export const proposalGenerationNode = async (
     throw err;
   }
 
-  const aiProposal = result; 
+  // Fix lỗi kiểu unknown
+  const aiProposal: any = result;
 
   // === TÍNH TOÁN ROI (LOGIC MỚI) ===
   const currentVal = Number(aiProposal.financialImpact?.currentValue) || 0;

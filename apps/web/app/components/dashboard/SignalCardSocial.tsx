@@ -41,7 +41,7 @@ export function ProposalCardSocial({ proposal, onViewDetails }: ProposalCardSoci
       if (!queryId) return;
 
       try {
-        // Gọi route đã sửa ở Bước 2 (hỗ trợ tìm bằng signalID)
+        // Gọi API cho tất cả tín hiệu (BUY, SELL, HOLD)
         const res = await fetch(`/api/proposals/${queryId}`);
         if (res.ok) {
           const data = await res.json();
@@ -52,7 +52,7 @@ export function ProposalCardSocial({ proposal, onViewDetails }: ProposalCardSoci
       }
     }
     fetchDetails();
-  }, [proposal.signalId, proposal._id]);
+  }, [proposal.signalId, proposal._id, proposal.action]);
 
   const displayData = realData || proposal;
   const action = displayData.action?.toUpperCase() || 'HOLD';
@@ -100,7 +100,7 @@ export function ProposalCardSocial({ proposal, onViewDetails }: ProposalCardSoci
       </div>
 
       <h4 className="text-sm font-medium mb-4 line-clamp-2 min-h-[40px] text-slate-200">
-        {displayData.title || proposal.summary}
+        {action === 'SELL' ? (displayData.rationaleSummary || displayData.reasoning || 'NEGATIVE Signal Detected') : (displayData.title || proposal.summary)}
       </h4>
 
       <div className={`${config.bg} ${config.border} border rounded-lg p-3 mb-4`}>

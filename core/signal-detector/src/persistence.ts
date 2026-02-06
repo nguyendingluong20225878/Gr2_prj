@@ -16,16 +16,15 @@ export function mapLlmResponseToSignalInsert(resp: any) {
   
   let suggestionType = "hold";
   let sentimentType: "positive" | "negative" | "neutral" = "neutral";
-  let sentimentScore = 0;
+  // Lấy sentimentScore từ AI, giới hạn -1 đến 1
+  let sentimentScore = typeof resp.sentimentScore === "number" ? Math.max(-1, Math.min(1, resp.sentimentScore)) : 0;
 
   if (rawAction === "BUY") {
     suggestionType = "buy";
     sentimentType = "positive";
-    sentimentScore = 0.8; 
   } else if (rawAction === "SELL") {
     suggestionType = "sell";
     sentimentType = "negative";
-    sentimentScore = -0.8; 
   }
 
   // 2. Xử lý Confidence & Strength
@@ -112,7 +111,7 @@ export async function saveSignalToDb(resp: any) {
   }
   
   // Dynamic Import Shared Module
-  const shared = await import("../../shared/src/index.js");
+  const shared = await import("@gr2/shared");
   const { connectToDatabase, signalsTable, logProcessing, logSuccess, logFailed } = shared as any;
 
   try {
@@ -126,19 +125,17 @@ export async function saveSignalToDb(resp: any) {
       { tokenAddress: insertData.tokenAddress }
     );
 
-    // === ANTI-SPAM: Chặn trùng lặp trong 1 tiếng ===
-    const DUPLICATE_WINDOW_MS = 60 * 60 * 1000; 
+    // Chỉ coi là duplicate nếu tokenAddress và suggestionType đều giống nhau trong 1h
+    const DUPLICATE_WINDOW_MS = 60 * 60 * 1000;
     const oneHourAgo = new Date(Date.now() - DUPLICATE_WINDOW_MS);
-    
     const existingSignal = await signalsTable.findOne({
-        tokenAddress: insertData.tokenAddress,
-        suggestionType: insertData.suggestionType,
-        createdAt: { $gte: oneHourAgo }
+      tokenAddress: insertData.tokenAddress,
+      suggestionType: insertData.suggestionType,
+      createdAt: { $gte: oneHourAgo }
     });
-
     if (existingSignal) {
-        console.log(`[Persistence] ⚠️ Skip duplicate signal for ${resp.tokenSymbol}`);
-        return existingSignal; 
+      console.log(`[Persistence] ⚠️ Skip duplicate signal for ${resp.tokenSymbol} (${insertData.tokenAddress}, ${insertData.suggestionType})`);
+      return existingSignal;
     }
 
     // Insert

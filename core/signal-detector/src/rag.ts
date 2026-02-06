@@ -1,5 +1,4 @@
 // import { TavilySearchAPIRetriever } from "@langchain/community/retrievers/tavily_search_api";
-// import { OpenAIEmbeddings } from "@langchain/openai";
 // import fs from "fs";
 // import { Document } from "langchain/document";
 // import { TextLoader } from "langchain/document_loaders/fs/text";
@@ -11,7 +10,6 @@
 // /**
 //  * Initialize or return existing in-memory vector store built from project specs.
 //  */
-// async function initializeVectorStore(): Promise<MemoryVectorStore> {
 //   if (vectorStore) return vectorStore;
 //   const specsDir = path.resolve(process.cwd(), "docs/specs");
 //   const docs: Document[] = [];

@@ -107,10 +107,10 @@ class GeminiDirectClient {
 // SỬA TẠI ĐÂY: Đã đổi sang gemini-2.0-flash (Model có trong danh sách của bạn)
 export function getProposalChatModel(modelName: string = "gemini-2.0-flash") {
   // Ưu tiên dùng GOOGLE_API_KEY_PROPOSAL (Project riêng), nếu không thì fallback về KEY chung
-  const apiKey = process.env.GOOGLE_API_KEY_PROPOSAL || process.env.GOOGLE_API_KEY;
+  const apiKey = process.env.GOOGLE_API_KEY_PROPOSAL;
   
   if (!apiKey) {
-    console.error("❌ MISSING GOOGLE_API_KEY (or GOOGLE_API_KEY_PROPOSAL) in .env");
+    console.error("❌ MISSING GOOGLE_API_KEY_PROPOSAL in .env");
     return null;
   }
 

@@ -17,7 +17,6 @@
     "@langchain/community": "^0.3.42",
     "@langchain/core": "^0.3.50",
     "@langchain/langgraph": "^0.2.67",
-    "@langchain/openai": "^0.3.17",
     "dotenv": "^17.2.3",
     "x-scaper": "file:../x-scaper"
   },

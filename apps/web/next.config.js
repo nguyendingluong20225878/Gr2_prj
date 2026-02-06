@@ -9,6 +9,11 @@ const nextConfig = {
   webpack: (config) => {
     // Fix lỗi module mongoose/mongodb khi chạy ở phía server nextjs
     config.externals.push('pino-pretty', 'lokijs', 'encoding');
+      // Thêm alias @ để resolve đúng thư mục
+      config.resolve.alias = {
+        ...(config.resolve.alias || {}),
+        '@': require('path').resolve(__dirname),
+      };
     return config;
   },
 };

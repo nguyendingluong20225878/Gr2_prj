@@ -4,6 +4,15 @@ import { fetchPricesFromCoingecko } from "./providers/coingecko.provider.js";
 const logger = new Logger("TokenPriceService");
 
 export class TokenPriceService {
+    async getTokenPrice(tokenAddress: string): Promise<number | null> {
+      // Tìm giá token theo address
+      const priceDoc = await tokenPricesTable.findOne({ tokenKey: tokenAddress }).lean();
+      return priceDoc?.priceUsd ?? null;
+    }
+
+    async updateAllTokenPrices(): Promise<void> {
+      await TokenPriceService.updatePrices();
+    }
   static async updatePrices() {
     logger.info("Đang cập nhật giá coin...");
 

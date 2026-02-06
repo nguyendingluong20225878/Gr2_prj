@@ -3,14 +3,14 @@ import path from 'path';
 
 // Load .env
 dotenv.config();
-if (!process.env.GOOGLE_API_KEY) {
+if (!process.env.GOOGLE_API_KEY_PROPOSAL) {
   dotenv.config({ path: path.resolve(__dirname, '../.env') });
 }
 
 async function listModels() {
   const apiKey = process.env.GOOGLE_API_KEY_PROPOSAL;
   if (!apiKey) {
-    console.error("❌ Lỗi: Chưa cấu hình GOOGLE_API_KEY trong file .env");
+    console.error("❌ Lỗi: Chưa cấu hình GOOGLE_API_KEY_PROPOSAL trong file .env");
     return;
   }
 

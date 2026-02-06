@@ -46,7 +46,7 @@ async function waitForDbConnect(retries = 3, delayMs = 2000) {
     const { tokensTable } = await import('../../shared/src/db/schema/tokens.js');
 
     // 1. Lấy Tweets mới nhất
-    const tweets = await tweetTable.find().sort({ tweetTime: -1 }).limit(30).lean(); // Tăng lên 30 để AI có nhiều context
+    const tweets = await tweetTable.find().sort({ tweetTime: -1 }).limit(10).lean(); // Lấy 10 tweet mới nhất
     console.log(`Loaded ${tweets.length} tweets from DB.`);
 
     const formattedTweets = tweets.map((t: any) => ({
@@ -58,7 +58,7 @@ async function waitForDbConnect(retries = 3, delayMs = 2000) {
     }));
 
     // 2. Lấy Tokens
-    const dbTokens = await tokensTable.find({}).lean();
+    const dbTokens = await tokensTable.find().limit(20).lean(); // Lấy 20 token đầu tiên
     const knownTokens = dbTokens.map((t: any) => ({
       address: t.address,
       symbol: t.symbol,

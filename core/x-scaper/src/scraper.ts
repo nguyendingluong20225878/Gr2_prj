@@ -30,10 +30,10 @@ interface Tweet {
   data: string;
   url: string;
   username?: string; 
-  replyCount: number | null;
-  retweetCount: number | null;
-  likeCount: number | null;
-  impressionsCount: number | null;
+  replyCount?: number;
+  retweetCount?: number;
+  likeCount?: number;
+  impressionsCount?: number;
 }
 
 /* ======================= UTILS ======================= */
@@ -162,14 +162,14 @@ export class XScraper {
         }
       } catch {}
 
-      let replyCount = null, retweetCount = null, likeCount = null;
-      try { replyCount = parseEngagementCount(await el.findElement(By.css(REPLY_COUNT_SELECTOR_CSS)).getText()); } catch {}
-      try { retweetCount = parseEngagementCount(await el.findElement(By.css(RETWEET_COUNT_SELECTOR_CSS)).getText()); } catch {}
-      try { likeCount = parseEngagementCount(await el.findElement(By.css(LIKE_COUNT_SELECTOR_CSS)).getText()); } catch {}
+      let replyCount: number | undefined = undefined, retweetCount: number | undefined = undefined, likeCount: number | undefined = undefined;
+      try { replyCount = parseEngagementCount(await el.findElement(By.css(REPLY_COUNT_SELECTOR_CSS)).getText()) ?? undefined; } catch {}
+      try { retweetCount = parseEngagementCount(await el.findElement(By.css(RETWEET_COUNT_SELECTOR_CSS)).getText()) ?? undefined; } catch {}
+      try { likeCount = parseEngagementCount(await el.findElement(By.css(LIKE_COUNT_SELECTOR_CSS)).getText()) ?? undefined; } catch {}
 
       return {
         time: tweetTimeStr, data: text.trim(), url: tweetUrl, username,
-        replyCount, retweetCount, likeCount, impressionsCount: null,
+        replyCount, retweetCount, likeCount, impressionsCount: undefined,
       };
     } catch (e) { return null; }
   }

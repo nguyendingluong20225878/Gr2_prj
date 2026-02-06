@@ -41,10 +41,10 @@ export async function setupInitialPortfolio(
 
     const tokenPrices = await tokenPricesTable
       .find({
-        tokenAddress: { $in: tokens.map((t) => t.address) },
+        tokenKey: { $in: tokens.map((t) => t.address) },
       })
-      .select({ tokenAddress: 1, priceUsd: 1, _id: 0 })
-      .lean<Pick<TokenPriceSchema, "tokenAddress" | "priceUsd">[]>();
+      .select({ tokenKey: 1, priceUsd: 1, _id: 0 })
+      .lean<Array<{ tokenKey: string; priceUsd: number }>>();
 
     /* ===============================
        3. BUILD PRICE MAP
@@ -53,7 +53,7 @@ export async function setupInitialPortfolio(
     const priceMap = new Map<string, number>();
     for (const tp of tokenPrices) {
       const price = Number(tp.priceUsd);
-      priceMap.set(tp.tokenAddress, Number.isFinite(price) ? price : 0);
+      priceMap.set(tp.tokenKey, Number.isFinite(price) ? price : 0);
     }
 
     /* ===============================
@@ -78,7 +78,7 @@ export async function setupInitialPortfolio(
           defaultUsdBalances[token.symbol] ??
           0;
 
-        const price = priceMap.get(token.address) ?? 0;
+        const price = priceMap.get(token.address ?? "") ?? 0;
         const tokenAmount = price > 0 ? usdAmount / price : 0;
 
         return {

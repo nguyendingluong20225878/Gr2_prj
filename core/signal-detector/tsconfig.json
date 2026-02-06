@@ -1,15 +1,14 @@
 {
-  "extends": "../../tsconfig.json", // Kế thừa từ file gốc
+  "extends": "../../tsconfig.json",
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "src",
-    
-    // QUAN TRỌNG: Không được có dòng "typeRoots" ở đây!
-    // TypeScript sẽ tự leo lên root để tìm types.
-    
-    // Nếu vẫn lỗi process, bỏ comment dòng dưới:
-    // "types": ["node"]
+    "composite": true // Thêm dòng này
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "**/*.test.ts"]
+  ,
+  "references": [
+    { "path": "../shared" }
+  ]
 }

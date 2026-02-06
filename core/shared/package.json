@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./utils/gemini-client": {
+      "types": "./dist/utils/gemini-client.d.ts",
+      "default": "./dist/utils/gemini-client.js"
     }
   },
   "files": [

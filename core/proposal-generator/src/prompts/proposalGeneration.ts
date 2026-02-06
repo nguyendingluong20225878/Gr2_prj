@@ -21,7 +21,7 @@ const proposalSchema = z.object({
   })).optional()
 });
 
-export const parser = StructuredOutputParser.fromZodSchema(proposalSchema);
+export const parser = StructuredOutputParser.fromZodSchema(proposalSchema as any);
 
 // --- 2. Helper tính giá (Xử lý String -> Number) ---
 function calculateFinancials(tokenSymbol: string, tokenAddress: string, prices: any[], userBalanceObj: any) {

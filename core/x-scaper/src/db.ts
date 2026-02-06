@@ -8,10 +8,10 @@ import {
   logProcessing,
   logSuccess,
   logFailed,
-} from "../../shared/src";
+} from "@gr2/shared";
 import { XAccount } from "../../shared/src/types/x-account";
 
-const log = new Logger({ level: LogLevel.INFO });
+const log = new Logger("XScaper");
 
 let dbInitialized = false;
 async function initDB() {
@@ -32,8 +32,8 @@ export const getAllXAccounts = async (): Promise<XAccount[]> => {
 
   return docs.map((d) => ({
     id: d._id,
-    displayName: d.displayName,
-    profileImageUrl: d.profileImageUrl,
+    displayName: d.displayName ?? undefined,
+    profileImageUrl: d.profileImageUrl ?? undefined,
     lastTweetUpdatedAt: d.lastTweetUpdatedAt ?? null,
   }));
 };

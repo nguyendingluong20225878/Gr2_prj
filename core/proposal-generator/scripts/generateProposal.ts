@@ -10,8 +10,8 @@ dotenv.config({ path: envPath });
 
 async function main() {
   // Check Env
-  if (!process.env.GOOGLE_API_KEY) {
-    console.error("❌ Missing GOOGLE_API_KEY");
+  if (!process.env.GOOGLE_API_KEY_PROPOSAL) {
+    console.error("❌ Missing GOOGLE_API_KEY_PROPOSAL");
     process.exit(1);
   }
   

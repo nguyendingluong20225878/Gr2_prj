@@ -5,7 +5,7 @@ dotenv.config();
 async function main() {
   try {
     // Dynamic import AFTER dotenv is loaded
-    const { processXScraping } = await import('../src/process');
+    const { processXScraping } = await import('../src/process.js');
 
     const accountId = process.env.SCRAPE_ACCOUNT_ID;
     if (!accountId) {
