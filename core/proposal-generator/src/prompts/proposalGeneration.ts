@@ -96,7 +96,8 @@ ${tweetsContext}
    - 'projectedValue': Estimate a target based on the signal. 
      * If BUY/HOLD: Project a reasonable increase (e.g. +5% to +20%).
      * If SELL: Project the cash value retrieved (approx ${currentValue}).
-     * **NEVER return 0** for projectedValue unless currentValue is 0.
+    * **NEVER return 0** for projectedValue unless currentValue is 0.
+    * **projectedValue must be a number with maximum 6 decimal places.**
 
 2. **Analysis**: Combine signal rationale and social sentiment.
 

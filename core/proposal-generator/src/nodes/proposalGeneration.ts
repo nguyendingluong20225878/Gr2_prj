@@ -37,7 +37,14 @@ export const proposalGenerationNode = async (
   
   let result;
   try {
-    result = await parser.parse(response.content as string);
+    // Sanitize projectedValue in response before parsing
+    let content = response.content as string;
+    // Attempt to fix projectedValue if it's a string with excessive zeros
+    content = content.replace(/("projectedValue"\s*:\s*)([0-9]+\.[0-9]{6,})[0]+/g, (match, p1, p2) => {
+      // Limit to 6 decimals
+      return p1 + parseFloat(p2).toFixed(6);
+    });
+    result = await parser.parse(content);
   } catch (err) {
     console.error("[Proposal Gen] Error parsing AI response:", err);
     throw err;
@@ -62,26 +69,23 @@ export const proposalGenerationNode = async (
   const finalProposal = {
     title: aiProposal.title,
     summary: aiProposal.summary,
-    
     reason: Array.isArray(aiProposal.reasons) ? aiProposal.reasons : [signal.rationaleSummary],
-    
-    sources: (aiProposal.sources && aiProposal.sources.length > 0) ? aiProposal.sources : signal.sources || [],
+    // Always use sources from signal, preserve all
+    sources: Array.isArray(signal.sources) ? signal.sources : [],
     type: aiProposal.type || signal.suggestionType || "trade",
     proposedBy: "NDL AI",
-    
     financialImpact: {
       currentValue: currentVal,
       projectedValue: projectedVal,
       riskLevel: aiProposal.financialImpact?.riskLevel || "Medium",
-      roi: calculatedRoi // <--- LƯU ROI VÀO DB
+      roi: calculatedRoi
     },
-    
-    confidence: aiProposal.confidence || signal.confidence,
+    // Normalize confidence to 0-100
+    confidence: typeof aiProposal.confidence === 'number' ? Math.max(0, Math.min(100, aiProposal.confidence * (aiProposal.confidence <= 1 ? 100 : 1))) : (signal.confidence || 50),
     status: "pending",
-    
     userId,
     triggerEventId: signal._id || signalId,
-    tokenAddress: signal.tokenAddress,
+    tokenAddress: signal.tokenAddress || tokenDetail?.address || "unknown",
     createdAt: new Date(),
     updatedAt: new Date(),
     expiresAt: signal.expiresAt || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)

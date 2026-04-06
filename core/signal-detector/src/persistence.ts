@@ -59,9 +59,16 @@ export function mapLlmResponseToSignalInsert(resp: any) {
   const expiresAt = new Date(detectedAt.getTime() + 7 * 24 * 60 * 60 * 1000);
 
   // 4. Object Insert 
+  // Đảm bảo tokenAddress luôn có giá trị (đã truyền từ run-detection)
+  const tokenName = resp.tokenName || resp.tokenSymbol || "unknown_token";
+  // Nếu không có tokenAddress, dùng tokenSymbol
+  let tokenAddress = resp.tokenAddress;
+  if (!tokenAddress || tokenAddress === "unknown" || tokenAddress === "unknown_address") {
+    tokenAddress = resp.tokenSymbol || "unknown_token";
+  }
   const insert = {
-    // Các trường định danh
-    tokenAddress: resp.tokenAddress || "unknown_address", 
+    tokenName,
+    tokenAddress,
     signalDetected: true,
     detectedAt,
     expiresAt,
@@ -125,20 +132,8 @@ export async function saveSignalToDb(resp: any) {
       { tokenAddress: insertData.tokenAddress }
     );
 
-    // Chỉ coi là duplicate nếu tokenAddress và suggestionType đều giống nhau trong 1h
-    const DUPLICATE_WINDOW_MS = 60 * 60 * 1000;
-    const oneHourAgo = new Date(Date.now() - DUPLICATE_WINDOW_MS);
-    const existingSignal = await signalsTable.findOne({
-      tokenAddress: insertData.tokenAddress,
-      suggestionType: insertData.suggestionType,
-      createdAt: { $gte: oneHourAgo }
-    });
-    if (existingSignal) {
-      console.log(`[Persistence] ⚠️ Skip duplicate signal for ${resp.tokenSymbol} (${insertData.tokenAddress}, ${insertData.suggestionType})`);
-      return existingSignal;
-    }
-
-    // Insert
+    // Chỉ coi là duplicate nếu suggestionType giống nhau trong 1h (bỏ kiểm tra tokenAddress)
+    // Luôn lưu signal, không skip nếu thiếu tokenAddress
     const created = await signalsTable.create(insertData);
 
     await logSuccess(

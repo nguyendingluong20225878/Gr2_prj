@@ -1,0 +1,21 @@
+site URL
+   ↓
+discoverArticles (mapUrl)
+   ↓
+list article URLs
+   ↓
+scrapeArticle (từng bài)
+   ↓
+detect token
+   ↓
+save DB
+
+
+
+1. discover (mapUrl)
+2. filter URL (VERY IMPORTANT)
+3. validate URL
+4. scrape
+5. clean content
+6. detect token
+7. save DB

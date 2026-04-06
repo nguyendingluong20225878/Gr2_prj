@@ -4,6 +4,12 @@ export type FormattedTweetForLlm = {
   author: string;
   time: string; // ISO timestamp
   url?: string;
+  // Engagement signals from DB (used for weighting)
+  replyCount?: number | null;
+  retweetCount?: number | null;
+  likeCount?: number | null;
+  // AuthorWeight computed from tier/followerCount (used for weighting)
+  authorWeight?: number;
 };
 
 export type KnownTokenType = {

@@ -16,11 +16,14 @@ const newsSiteSchema = new Schema(
       default: [],
     },
     lastScraped: { type: Date },
+    tier: {type:String, enum: ["tier1", "tier2", "normal"], default: "normal"},
+    siteWeight: {type:Number, default: 1,index: true },
   },
   {
     collection: "news_sites",
     timestamps: { createdAt: "createdAt", updatedAt: "updatedAt" },
   },
+
 );
 
 export type NewsSiteSchema = InferSchemaType<typeof newsSiteSchema>;

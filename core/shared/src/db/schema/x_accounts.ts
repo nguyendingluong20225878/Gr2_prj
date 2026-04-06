@@ -7,6 +7,8 @@ const xAccountSchema = new Schema(
     profileImageUrl: String,
     lastTweetUpdatedAt: { type: Date, default: null },
     userIds: { type: [Schema.Types.ObjectId], ref: "User", default: [] },
+    followerCount: {type: Number, default: 0},
+ 
   },
   {
     collection: "x_accounts",

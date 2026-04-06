@@ -142,7 +142,7 @@ export default function ProfilePage() {
             </div>
 
             {/* Form Fields */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="flex flex-col gap-6">
               <div>
                 <label className="block text-sm text-slate-400 mb-2">Display Name</label>
                 <div className="relative">
@@ -165,6 +165,20 @@ export default function ProfilePage() {
                     value={formData.email}
                     onChange={(e) => setFormData({...formData, email: e.target.value})}
                     className="w-full bg-slate-900/50 border border-white/10 rounded-lg pl-10 pr-4 py-3 text-slate-200 focus:border-purple-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm text-slate-400 mb-2">Age</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    value={formData.age}
+                    onChange={(e) => setFormData({...formData, age: e.target.value})}
+                    className="w-full bg-slate-900/50 border border-white/10 rounded-lg pl-4 pr-4 py-3 text-slate-200 focus:border-purple-500 focus:outline-none"
+                    placeholder="Your age"
                   />
                 </div>
               </div>

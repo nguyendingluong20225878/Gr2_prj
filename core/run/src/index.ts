@@ -37,20 +37,20 @@ async function start() {
       isRunning = true;
 
       try {
-        logger.info("=== BẮT ĐẦU PIPELINE TỰ ĐỘNG ===");
-        logger.info("Bước 1: Cào dữ liệu từ X...");
+        // logger.info("=== BẮT ĐẦU PIPELINE TỰ ĐỘNG ===");
+        // logger.info("Bước 1: Cào dữ liệu từ X...");
 
-        const scraperPath = path.resolve(
-          __dirname,
-          "../../x-scaper/scripts/run-scraper.ts"
-        );
+        // const scraperPath = path.resolve(
+        //   __dirname,
+        //   "../../x-scaper/scripts/run-scraper.ts"
+        // );
 
-        execSync(`npx tsx ${scraperPath}`, {
-          stdio: "inherit",
-          env: process.env, // 🔥 truyền .env từ core/run xuống x-scaper
-        });
+        // execSync(`npx tsx ${scraperPath}`, {
+        //   stdio: "inherit",
+        //   env: process.env, // 🔥 truyền .env từ core/run xuống x-scaper
+        // });
 
-        logger.info("Bước 1 hoàn thành: Cào dữ liệu từ X.");
+        // logger.info("Bước 1 hoàn thành: Cào dữ liệu từ X.");
           // Bước 2: Phát hiện tín hiệu
           logger.info("Bước 2: Phát hiện tín hiệu...");
           const signalDetectorPath = path.resolve(

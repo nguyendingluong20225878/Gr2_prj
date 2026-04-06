@@ -1,0 +1,20 @@
+{
+  "name": "@gr2/news-scraper",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "scrape": "tsx scripts/run-news-scraper.ts"
+  },
+ "dependencies": {
+    "@gr2/shared": "file:../shared",
+    "@mendable/firecrawl-js": "^1.0.0",
+    "dotenv": "^17.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "tsx": "^4.20.6"
+  }
+}
