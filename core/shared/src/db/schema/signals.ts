@@ -43,6 +43,8 @@ const signalSchema = new Schema(
     confidence: { type: Number, required: true },
     rationaleSummary: { type: String, required: true },
     expiresAt: { type: Date, required: true, index: true },
+    // Optional: store quantitative features for backtesting/audit
+    metadata: { type: Schema.Types.Mixed, required: false, default: null },
   },
   {
     collection: "signals",

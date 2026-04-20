@@ -1,11 +1,12 @@
-import { connectToDatabase } from "../../shared/src/db/connection.js";
-import { newsSiteTable } from "../../shared/src/db/schema/news_sites.js";
-import { tokensTable } from "../../shared/src/db/schema/tokens.js";
-import { newsArticlesTable } from "../../shared/src/db/schema/news_articles.js";
+import { connectToDatabase } from "@gr2/shared/db/connection";
+import { newsSiteTable } from "@gr2/shared/db/schema/news_sites";
+import { tokensTable } from "@gr2/shared/db/schema/tokens";
+import { newsArticlesTable } from "@gr2/shared/db/schema/news_articles";
 
 export async function loadNewsSites() {
   await connectToDatabase();
   return newsSiteTable.find().lean();
+  //find: lấy dl mongo, lean; convert sang obj thường
 }
 
 export async function loadTokens() {

@@ -1,10 +1,17 @@
 // core/signal-detector/src/detector.ts
+// Xử lí tweet và tính toán signal
+// Xử lý Twitter. Thay vì chỉ đọc text, nó tính authorWeight (từ followers) và engagementMultiplier (từ like/retweet).
+
+// Sử dụng FinBERT để lấy baseScore (Bullish - Bearish).
+
+// Cải tiến: Sử dụng z-score > 1 để ra lệnh BUY thay vì con số 0.2 cố định, giúp hệ thống thích nghi với biến động thị trường.
 import { StructuredOutputParser } from "@langchain/core/output_parsers";
 import { MultiSignalResponseSchema, LlmSignalResponse } from "./llmZodSchema";
 import { buildKnownTokensBlock, signalPromptTemplate } from "./prompt";
 import { DetectorParams } from "./types";
 import { GeminiClient } from "@gr2/shared/utils/gemini-client";
 import { finBertProbs } from "./finbert";
+import { zscores, weightedAvg } from "./stats";
 import { SingleSignalSchema } from "./llmZodSchema";
 
 // Khởi tạo Client với Key Rotation
@@ -198,6 +205,7 @@ export async function detectSignalWithFinBertQuant(
 ): Promise<LlmSignalResponse> {
   const { formattedTweets, knownTokens } = params;
 
+  // Deprecated fixed thresholds; keep env as fallback for emergency
   const buyThreshold = Number(process.env.FINBERT_BUY_THRESHOLD ?? DEFAULT_BUY_THRESHOLD);
   const sellThreshold = Number(process.env.FINBERT_SELL_THRESHOLD ?? DEFAULT_SELL_THRESHOLD);
   const minTweetsPerToken = Number(
@@ -223,6 +231,8 @@ export async function detectSignalWithFinBertQuant(
     baseScore: number;
     authorWeight: number;
     engagementMultiplier: number;
+    rawScore: number;
+    z: number;
   };
   const byTokenSymbol = new Map<string, Evidence[]>();
 
@@ -259,6 +269,8 @@ export async function detectSignalWithFinBertQuant(
     // 3b) AuthorWeight (from run-detection.ts)
     const authorWeight = tweet.authorWeight ?? 1.0;
 
+    const rawScore = baseScore * authorWeight * engagementMultiplier;
+
     // 4) assign evidence to all matched tokens
     for (const m of matched) {
       const symbol = m.token.symbol;
@@ -268,13 +280,25 @@ export async function detectSignalWithFinBertQuant(
         baseScore,
         authorWeight,
         engagementMultiplier,
+        rawScore,
+        z: 0, // fill later after global zscore
       });
       byTokenSymbol.set(symbol, arr);
     }
   }
 
+  // Normalize tweet evidence scores (z-score) across the whole batch
+  const allEvidence: Evidence[] = [];
+  for (const arr of byTokenSymbol.values()) allEvidence.push(...arr);
+  const allRaw = allEvidence.map((e) => e.rawScore);
+  const allZ = zscores(allRaw);
+  allEvidence.forEach((e, i) => (e.z = allZ[i]));
+
   // 5) aggregate per token => SingleSignal objects
   const signals: SingleSignal[] = [];
+
+  // First compute per-token twitter score (already normalized at evidence level)
+  const tokenScores: Array<{ symbol: string; score: number; evidence: Evidence[] }> = [];
 
   for (const token of knownTokens) {
     const symbol = token.symbol;
@@ -282,39 +306,44 @@ export async function detectSignalWithFinBertQuant(
     if (!evidence || evidence.length === 0) continue;
     if (evidence.length < minTweetsPerToken) continue;
 
-    // finalScore ~= weighted average of baseScore by engagementMultiplier
-    let numerator = 0;
-    let denom = 0;
-    for (const ev of evidence) {
-      numerator += ev.baseScore * ev.authorWeight * ev.engagementMultiplier;
-      denom += ev.authorWeight * ev.engagementMultiplier;
+    const values = evidence.map((e) => e.z);
+    const weights = evidence.map((e) => e.authorWeight * e.engagementMultiplier);
+    const twitterScore = weightedAvg(values, weights);
+    tokenScores.push({ symbol, score: twitterScore, evidence });
+  }
+
+  // z-score across token scores (adaptive thresholds)
+  const tokenScoreZ = zscores(tokenScores.map((t) => t.score));
+
+  for (let i = 0; i < tokenScores.length; i++) {
+    const { symbol, score, evidence } = tokenScores[i];
+    const z = tokenScoreZ[i];
+    const action = z > 1 ? "BUY" : z < -1 ? "SELL" : "HOLD";
+
+    // Confidence: |z| * sqrt(n) normalized to 0..100 (soft cap)
+    const n = evidence.length;
+    const confRaw = Math.abs(z) * Math.sqrt(n);
+    const confidence = Math.round(100 * clamp01(Math.tanh(confRaw / 2)));
+
+    // Keep a fallback to fixed thresholds in case distribution is tiny
+    if (tokenScores.length < 5) {
+      const fallbackAction = score >= buyThreshold ? "BUY" : score <= sellThreshold ? "SELL" : "HOLD";
+      if (fallbackAction !== "HOLD") {
+        // keep action if zscore can't be trusted
+      }
     }
-    const finalScore = denom > 0 ? numerator / denom : 0;
 
-    const action =
-      finalScore >= buyThreshold ? "BUY" : finalScore <= sellThreshold ? "SELL" : "HOLD";
+    if (action === "HOLD" && confidence < 25) continue;
 
-    const abs = Math.abs(finalScore);
-    const evidenceFactor = clamp01(evidence.length / 3);
-    // keep confidence in 0..100
-    const confidence = Math.round(100 * clamp01(Math.tanh(abs)) * evidenceFactor);
-
-    const signalDetected = action !== "HOLD" || confidence >= 25;
-
-    if (!signalDetected) continue;
-
-    const sortedEvidence = [...evidence].sort(
-      (a, b) =>
-        Math.abs(b.baseScore * b.authorWeight * b.engagementMultiplier) -
-        Math.abs(a.baseScore * a.authorWeight * a.engagementMultiplier)
-    );
-    const top = sortedEvidence.slice(0, 8);
+    const top = [...evidence]
+      .sort((a, b) => Math.abs(b.z) - Math.abs(a.z))
+      .slice(0, 8);
 
     const reason = [
-      `FinBERT aggregation for ${symbol} using full tweet text.`,
-      `Weighted finalScore=${finalScore.toFixed(3)} (weighted by authorWeight * engagementMultiplier; N=${evidence.length}).`,
-      `Thresholds: buy>=${buyThreshold}, sell<=${sellThreshold}.`,
-      `Action=${action}, confidence=${confidence}/100.`,
+      `FinBERT(Twitter) z-score pipeline for ${symbol}.`,
+      `TwitterScore=${score.toFixed(3)}, z=${z.toFixed(2)} (N=${n}).`,
+      `Rule: z>1 BUY, z<-1 SELL.`,
+      `Confidence=${confidence}/100.`,
     ].join(" ");
 
     signals.push({

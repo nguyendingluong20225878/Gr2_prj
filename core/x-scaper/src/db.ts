@@ -50,13 +50,10 @@ export const saveTweets = async (
   if (!tweets.length) return null;
 
   try {
-    await logProcessing(
-      "X-Scraper",
-      `Saving ${tweets.length} tweets from account ${accountId}...`,
-      { accountId, tweetCount: tweets.length }
-    );
+    // 1. Kiểm tra xem trong danh sách 'tweets' vừa cào có cái nào trùng URL với nhau không (đề phòng logic scraper)
+    const uniqueTweets = Array.from(new Map(tweets.map(t => [t.url, t])).values());
 
-    const tweetDocuments = tweets.map((t) => ({
+    const tweetDocuments = uniqueTweets.map((t) => ({
       authorId: accountId,
       url: t.url,
       retweetCount: t.retweetCount ?? null,
@@ -68,7 +65,13 @@ export const saveTweets = async (
       updatedAt: new Date(),
     }));
 
-    await tweetTable.insertMany(tweetDocuments, { ordered: false }).catch(() => {});
+    // 2. Chèn vào DB. Nhờ unique: true ở Schema, những cái đã có trong DB từ trước sẽ bị từ chối ở đây
+    await tweetTable.insertMany(tweetDocuments, { ordered: false }).catch((err) => {
+      // Chỉ log nếu không phải lỗi trùng lặp (code 11000)
+      if (err.code !== 11000) {
+          console.error("[DB] Lỗi chèn tweet:", err.message);
+      }
+  });
 
     const newest = tweets
       .map((t) => new Date(t.time))

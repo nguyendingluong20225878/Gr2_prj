@@ -16,6 +16,7 @@ if (!process.env.MONGODB_URI) {
 // =======================
 import { saveSignalToDb } from '../src/persistence';
 import { detectSignalWithFinBertQuant } from '../src/detector';
+import { computeStage2Signals } from '../src/stage2';
 
 // =======================
 // 3. DB helper
@@ -45,6 +46,9 @@ async function waitForDbConnect(retries = 3, delayMs = 2000) {
     const { tweetTable } = await import('../../shared/src/db/schema/tweets.js');
     const { tokensTable } = await import('../../shared/src/db/schema/tokens.js');
     const { xAccountTable } = await import('../../shared/src/db/schema/x_accounts.js');
+    const { newsArticlesTable } = await import('../../shared/src/db/schema/news_articles.js');
+    const { sourceWeightsTable } = await import('../../shared/src/db/schema/source_weights.js');
+    const { signalWeightsTable } = await import('../../shared/src/db/schema/signal_weights.js');
 
     //Tinh authorWeight tu followerCount
     const xAccounts = await xAccountTable.find().lean();
@@ -121,39 +125,101 @@ for (const acc of xAccounts) {
       address: t.address,
       symbol: t.symbol,
       name: t.name,
+      coingeckoId: t.coingeckoId ?? null,
     }));
     console.log(`Loaded ${knownTokens.length} known tokens.`);
 
-    // 3. CHẠY PHÂN TÍCH (AGGREGATION MODE)
-    console.log('🧠 Running FinBERT Quant Signal Detection...');
+    // 3. Load News (48h) + weights
+    const now = new Date();
+    const since = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+    const recentNews = await newsArticlesTable
+      .find({ scrapedAt: { $gte: since } })
+      .sort({ scrapedAt: -1 })
+      .limit(200)
+      .lean();
 
-    const result = await detectSignalWithFinBertQuant({
-      formattedTweets,
-      knownTokens,
+    const siteWeights = await sourceWeightsTable.find().lean();
+    const latestSignalWeights = await signalWeightsTable.find().sort({ updatedAt: -1 }).limit(1).lean();
+    const dyn = latestSignalWeights[0]
+      ? { wTwitter: latestSignalWeights[0].wTwitter, wNews: latestSignalWeights[0].wNews }
+      : null;
+
+    // 4. Token attribution for tweets: map symbol->coingeckoId (symbol-only matching recommended)
+    const symbolToCg = new Map<string, string>();
+    for (const t of knownTokens) {
+      if (t.coingeckoId) symbolToCg.set(String(t.symbol).toUpperCase(), t.coingeckoId);
+    }
+
+    function escapeRegex(text: string): string {
+      return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
+    function strictSymbolRegex(symbol: string): RegExp | null {
+      const s = symbol?.trim();
+      if (!s || s.length < 2) return null;
+      const escaped = escapeRegex(s);
+      const isAllUpperLetters = /^[A-Z]{2,}$/.test(s);
+      const flags = isAllUpperLetters ? "" : "i";
+      return new RegExp(`(^|[^A-Za-z0-9])\\$?${escaped}([^A-Za-z0-9]|$)`, flags);
+    }
+
+    const tokenRegexes = knownTokens
+      .map((t) => ({ symbol: String(t.symbol), re: strictSymbolRegex(String(t.symbol)) }))
+      .filter((x) => !!x.re);
+
+    const stage2Tweets = formattedTweets.map((t: any) => {
+      const keys = new Set<string>();
+      for (const tr of tokenRegexes) {
+        if (tr.re!.test(t.text)) {
+          const cg = symbolToCg.get(tr.symbol.toUpperCase());
+          if (cg) keys.add(cg);
+        }
+      }
+      return { ...t, tokenKeys: [...keys] };
     });
 
-    // 4. Xử lý kết quả
-    if (result.signals && result.signals.length > 0) {
-      console.log(`\n=== 🚀 PHÁT HIỆN ${result.signals.length} TÍN HIỆU ===`);
-      
-      for (const signal of result.signals) {
-        console.log(`------------------------------------------------`);
-        console.log(`Token:      ${signal.tokenSymbol}`);
-        console.log(`Action:     ${signal.action} (Confidence: ${signal.confidence}%)`);
-        console.log(`Reason:     ${signal.reason}`);
-        console.log(`Sources:    ${signal.relatedTweetIds.length} tweets aggregated`);
+    // 5. Compute Stage2 signals (Twitter+News, z-score thresholds)
+    console.log('🧠 Running Stage2 Quant (Twitter+News)...');
 
-        // Luôn lưu signal, nếu thiếu tokenAddress thì dùng tokenSymbol làm fallback
-        const tokenInfo = knownTokens.find(t => t.symbol === signal.tokenSymbol);
-        const tokenAddress = tokenInfo?.address || signal.tokenSymbol || "unknown_token";
-        const tokenName = tokenInfo?.name || signal.tokenSymbol;
-        // Map sang object Signal DB
+    const stage2Signals = await computeStage2Signals({
+      tokenRefs: knownTokens.map((t: any) => ({ symbol: t.symbol, coingeckoId: t.coingeckoId })),
+      tweets: stage2Tweets,
+      newsArticles: recentNews as any,
+      siteWeights: siteWeights.map((w: any) => ({ siteHost: w.siteHost, siteWeight: w.siteWeight })),
+      dynamicWeights: dyn,
+    });
+
+    // 6. Save signals
+    if (stage2Signals.length > 0) {
+      console.log(`\n=== 🚀 PHÁT HIỆN ${stage2Signals.length} TÍN HIỆU (STAGE2) ===`);
+
+      for (const signal of stage2Signals) {
+        console.log(`------------------------------------------------`);
+        console.log(`TokenKey:   ${signal.tokenKey}`);
+        console.log(`Action:     ${signal.action} (Confidence: ${signal.confidencePct}%)`);
+        console.log(`finalScore: ${signal.finalScore.toFixed(3)} z=${signal.zFinal.toFixed(2)}`);
+
+        const tokenInfo = knownTokens.find((t: any) => t.coingeckoId === signal.tokenKey);
+        const tokenName = tokenInfo?.name || signal.tokenKey;
+
         const signalToSave = {
-          ...signal,
-          tokenAddress,
+          signalDetected: true,
+          tokenSymbol: tokenInfo?.symbol || signal.tokenKey,
           tokenName,
-          type: "social_aggregation",
-          tweetCount: signal.relatedTweetIds.length,
+          tokenAddress: signal.tokenKey, // use coingeckoId as token key
+          action: signal.action,
+          confidence: signal.confidencePct,
+          reason: `Stage2 finalScore=${signal.finalScore.toFixed(3)} z=${signal.zFinal.toFixed(2)} wTw=${(signal.metadata as any).wTwitter} wNews=${(signal.metadata as any).wNews}`,
+          relatedTweetIds: [],
+          sources: signal.sources,
+          type: "stage2_quant",
+          tweetCount: (signal.metadata as any).nTweets,
+          metadata: {
+            ...signal.metadata,
+            twitterScore: signal.twitterScore,
+            newsScore: signal.newsScore,
+            finalScore: signal.finalScore,
+            zFinal: signal.zFinal,
+          },
         };
         await saveSignalToDb(signalToSave);
         console.log(`✅ Saved to DB.`);

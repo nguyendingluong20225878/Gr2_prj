@@ -4,6 +4,8 @@ export * from "./tweets.js";
 export * from "./x_accounts.js";
 export * from "./news_sites.js";
 export * from "./news_articles.js";
+export * from "./source_weights.js";
+export * from "./signal_weights.js";
 export * from "./user_balances.js";
 export * from "./token_prices.js";
 export * from "./signals.js";

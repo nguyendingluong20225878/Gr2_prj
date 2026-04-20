@@ -15,6 +15,8 @@ export { tweetTable } from "./db/schema/tweets.js";
 export { xAccountTable } from "./db/schema/x_accounts.js";
 export { newsSiteTable } from "./db/schema/news_sites.js";
 export { newsArticlesTable } from "./db/schema/news_articles.js";
+export { sourceWeightsTable } from "./db/schema/source_weights.js";
+export { signalWeightsTable } from "./db/schema/signal_weights.js";
 
 // ===== TYPES =====
 export * from "./types/index.js";

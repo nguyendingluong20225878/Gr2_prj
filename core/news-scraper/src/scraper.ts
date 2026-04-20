@@ -10,10 +10,7 @@ export type ScrapedNewsArticle = {
   raw: unknown;
 };
 
-/* =========================
-   🧠 CONTENT PROCESSING
-========================= */
-
+//Lay noi dung chinh
 function extractMainContent(md: string): string {
   if (!md) return "";
 
@@ -23,6 +20,8 @@ function extractMainContent(md: string): string {
   const normalizeForSearch = (s: string) =>
     s
       .replace(/\u00a0/g, " ") // NBSP -> space
+      //NBSP : Non-breaking space -> 1 kí tự khoảng trắng đặc biệt ngăn trình duyệt xuống dòng 
+      //vd: a b -> space giữa nếu đang là 1 NBSP thì sẽ không bị tách dòng.
       .toLowerCase();
 
   const endMarkers = [
@@ -34,13 +33,14 @@ function extractMainContent(md: string): string {
     "Read More",
   ];
 
-  let end = md.length;
-
+  let end = md.length; //neu k tim thay marker -> lay toan bo content
+  
+  //Tìm vị trí của marker trong content
   for (const marker of endMarkers) {
     // Case-insensitive search over normalized text
     const idx = normalizeForSearch(md).indexOf(normalizeForSearch(marker));
     if (idx !== -1 && idx > start) {
-      end = Math.min(end, idx);
+      end = Math.min(end, idx);//nhiều marker -> lấy cái gần nhất
     }
   }
 
@@ -49,21 +49,18 @@ function extractMainContent(md: string): string {
 
 function cleanContent(md: string): string {
   return md
-    .replace(/!\[.*?\]\(.*?\)/g, "")
-    .replace(/\[(.*?)\]\(.*?\)/g, "$1")
-    .replace(/https?:\/\/\S+/g, "")
-    .replace(/\$\d+[,\d.]*/g, "")
-    .replace(/Share this article[\s\S]*?\n/g, "")
-    .replace(/[•●▪]/g, "-")
-    .replace(/[ \t]+/g, " ")
-    .replace(/\n{2,}/g, "\n\n")
-    .trim();
+    .replace(/!\[.*?\]\(.*?\)/g, "")//Xóa ảnh
+    .replace(/\[(.*?)\]\(.*?\)/g, "$1")//Giữ text , bỏ link
+    .replace(/https?:\/\/\S+/g, "")//Xóa url thuần
+    .replace(/\$\d+[,\d.]*/g, "")//Xóa số tiền
+    .replace(/Share this article[\s\S]*?\n/g, "")//Xoá block “Share this article”
+    .replace(/[•●▪]/g, "-")//Chuẩn hoá bullet
+    .replace(/[ \t]+/g, " ")//Xoá space thừa
+    .replace(/\n{2,}/g, "\n\n")//Chuẩn hoá xuống dòng
+    .trim();//xóa đầu cuối
 }
 
-/* =========================
-   🔍 URL FILTER
-========================= */
-
+//Lọc url
 function isValidArticleUrl(url: string): boolean {
   return (
     (
@@ -73,35 +70,35 @@ function isValidArticleUrl(url: string): boolean {
       url.includes("/policy/") ||
       url.includes("/news/")
     ) &&
-    !url.includes("/fr/") &&
-    !url.includes("/es/") &&
-    !url.includes("sitemap") &&
-    !url.includes("feed") &&
-    !url.includes("/tag/") &&
-    !url.includes("/author/") &&
-    !url.includes("/price/") &&
-    !url.endsWith(".xml")
+    !url.includes("/fr/") && //tiếng Pháp
+    !url.includes("/es/") && //tiếng TBN
+    !url.includes("sitemap") && // sitemap.xml
+    !url.includes("feed") && //RSS feed
+    !url.includes("/tag/") && //tag
+    !url.includes("/author/") && //author
+    !url.includes("/price/") && //giá
+    !url.endsWith(".xml") //file XMl
   );
 }
 
-/* =========================
-   🚀 SCRAPER
-========================= */
+// SCRAPER
+
 
 export class NewsScraper {
-  private app: FirecrawlApp;
+  private app: FirecrawlApp;//dùng API Firecrawl
+  // tên biến : kiểu dlieu
 
   constructor(apiKey: string) {
     this.app = new FirecrawlApp({ apiKey });
   }
 
-  /* =========================
-     STEP 1: DISCOVERY
-  ========================= */
 
-  async discoverArticles(siteUrl: string): Promise<string[]> {
+//Tìm bài
+ async discoverArticles(siteUrl: string): Promise<string[]> {
     try {
       const res = await this.app.mapUrl(siteUrl, { limit: 30 });
+      //mapUrl là một method của Firecrawl SDK (FirecrawlApp)
+      //quét siteURL và trả về các url bên trong, tối đa 30 limit
 
       if (!res.success) {
         throw new Error(res.error);
@@ -110,17 +107,20 @@ export class NewsScraper {
       const urls: string[] = res.links ?? [];
 
       return [...new Set(urls.filter(isValidArticleUrl))];
+      //filter -> Loại trùng -> convert array 
     } catch (err) {
       console.error(`Discover error ${siteUrl}`, err);
       return [];
     }
   }
 
+  //lấy dsach bài viết từ RSS feed
   async discoverFromRSS(rssUrl: string): Promise<string[]> {
     try {
       const res = await fetch(rssUrl);
       const xml = await res.text();
 
+      //Parse link bằng regex
       const matches = [...xml.matchAll(/<link>(.*?)<\/link>/g)];
 
       return matches
@@ -132,18 +132,15 @@ export class NewsScraper {
     }
   }
 
-  /* =========================
-     STEP 2: SCRAPE (RETRY)
-  ========================= */
-
+  //in:url -> out: object chuẩn hóa
   async scrapeArticle(articleUrl: string): Promise<ScrapedNewsArticle> {
     const MAX_RETRY = 2;
 
     for (let i = 0; i < MAX_RETRY; i++) {
-      try {
+      try {//API scrape trong FireCrawl
         const res = await this.app.scrapeUrl(articleUrl, {
         
-          formats: ["markdown"],
+          formats: ["markdown"], //trả về nội dung dạng Markdown
           timeout: 20000,
           waitFor: 2000,
         });

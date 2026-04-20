@@ -1,9 +1,9 @@
 import * as db from "./db";
 import { NewsScraper } from "./scraper";
-import { connectToDatabase } from "../../shared/src/db/connection.js";
-import { newsArticlesTable } from "../../shared/src/db/schema/news_articles.js";
+import { connectToDatabase } from "@gr2/shared/db/connection";
+import { newsArticlesTable } from "@gr2/shared/db/schema/news_articles";
 
-
+//Định nghĩa kiểu return
 type ProcessResult = {
   success: boolean;
   message: string;
@@ -12,36 +12,32 @@ type ProcessResult = {
 
 declare const process: { env: Record<string, string | undefined> };
 
-/* =========================
-   🔧 REGEX UTILS
-========================= */
 
+/* =========================
+       REGEX UTILS
+========================= */
 function escapeRegex(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-// 🔥 STRICT SYMBOL MATCH (fix bug "m", "aster")
+// STRICT SYMBOL MATCH 
 function buildStrictSymbolRegex(symbol: string): RegExp | null {
-  const s = symbol?.trim();
+  const s = symbol?.trim();//có gtri thì trim k thì bỏ qua
   if (!s) return null;
-
-  // ❌ ignore symbol quá ngắn
+  // symbol quá ngắn
   if (s.length < 2) return null;
 
   const escaped = escapeRegex(s);
 
-  // ✅ match BTC, $BTC, (BTC), BTC.
-  // NOTE: For symbols that are all-uppercase letters (e.g. NIGHT), we use case-sensitive
-  // matching to avoid accidental matches on common lowercase words in prose (e.g. "night").
+ 
   const isAllUpperLetters = /^[A-Z]{2,}$/.test(s);
   const flags = isAllUpperLetters ? "" : "i";
   return new RegExp(`(^|[^A-Za-z0-9])\\$?${escaped}([^A-Za-z0-9]|$)`, flags);
 }
 
 /* =========================
-   🔍 TOKEN DETECTION
+   TOKEN DETECTION
 ========================= */
-
 type TokenMatcher = {
   symbol: string;
   symbolRe: RegExp | null;
@@ -134,7 +130,7 @@ async function findExistingArticleUrls(urls: string[]): Promise<Set<string>> {
 }
 
 /* =========================
-   🚀 MAIN PROCESS
+    MAIN PROCESS
 ========================= */
 
 export async function processNewsScraping(
@@ -228,7 +224,7 @@ export async function processNewsScraping(
               debug: debugTokenMatch,
             });
 
-            // ❌ hard cleanup: skip nếu không có token
+            //  hard cleanup: skip nếu không có token
             if (detectedTokens.length === 0) return "skipped";
 
             await db.upsertNewsArticle({

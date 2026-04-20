@@ -95,11 +95,11 @@ export function mapLlmResponseToSignalInsert(resp: any) {
     relatedTweetIds,
 
     // Metadata
-    metadata: {
-        tweetCount: resp.tweetCount,
-        tokenSymbol: resp.tokenSymbol,
-        type: resp.type || "social_aggregation"
-    }
+    metadata: resp.metadata ?? {
+      tweetCount: resp.tweetCount,
+      tokenSymbol: resp.tokenSymbol,
+      type: resp.type || "social_aggregation",
+    },
   };
 
   return insert;

@@ -9,7 +9,8 @@ import mongoose, {
 const tweetSchema = new Schema(
   {
     authorId: { type: String, ref: "XAccount", required: true, index: true },
-    url: { type: String, required: true },
+    // Thêm unique: true để chặn trùng lặp URL
+    url: { type: String, required: true, unique: true, index: true }, 
     content: { type: String, required: true },
     retweetCount: { type: Number, default: null },
     replyCount: { type: Number, default: null },
