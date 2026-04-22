@@ -28,9 +28,10 @@ export const COPY_LINK_MENU_ITEM_XPATH =
 export const REPLY_COUNT_SELECTOR_CSS =
   "button[data-testid='reply'] span[data-testid='app-text-transition-container'] > span > span";
 export const RETWEET_COUNT_SELECTOR_CSS =
-  "button[data-testid='retweet'] span[data-testid='app-text-transition-container'] > span > span"; // Đã thêm
+  "button[data-testid='retweet'] span[data-testid='app-text-transition-container'] > span > span"; 
 export const LIKE_COUNT_SELECTOR_CSS =
-  "button[data-testid='like'] span[data-testid='app-text-transition-container'] > span > span"; // Đã thêm
+  "button[data-testid='like'] span[data-testid='app-text-transition-container'] > span > span";
+export const FOLLOWER_COUNT_SELECTOR_CSS = "a[href$='/verified_followers'] span"; // CSS có thể cần tinh chỉnh theo DOM thật của X
 
 // Filesystem Paths (relative to package root, e.g., packages/x-scraper/)
 export const COOKIES_DIR_RELATIVE = "./cookies";
@@ -50,5 +51,6 @@ export const LOGIN_SUCCESS_DELAY_MAX = 7000;
 export const PAGE_LOAD_WAIT_MS = 7000;
 export const ELEMENT_LOCATE_TIMEOUT_MS = 20000;
 export const BATCH_PROCESSING_WAIT_MS = 2000; // Cần thiết cho checkXAccounts
+
 
 export const MAX_TWEETS_TO_PROCESS_PER_ACCOUNT = 20; // Giới hạn số lượng tweet tối đa mỗi lần scrape

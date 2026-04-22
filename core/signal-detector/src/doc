@@ -1,0 +1,25 @@
+// /src/detector.ts (Orchestrator):
+//  Gọi FinBERT -> Tính Event-level Weights (Author, Engagement, Recency) -> Tính Raw Score -> Chuẩn hóa Z-score mức Event -> Đẩy data sạch xuống Stage 2.
+
+// /src/stage2.ts & /src/newsStage2.ts (Aggregators): 
+// CHỈ nhận mảng Evidence đã có sẵn điểm -> Gom nhóm theo tokenKey -> Dùng stats.weightedAvg -> Trả kết quả về Orchestrator.
+// newsStage2.ts // news
+// stage2.ts // twitter
+
+// /src/stats.ts: Không đổi, chỉ chứa Pure Math.
+
+// //Các file rag, prompt, llmZodSchema thì có thể bỏ, hiện tại đang để lại tạm thời
+
+
+// /core/signal-detector/src/
+// ├── types.ts                # (Định nghĩa MỌI loại Input/Output)
+// ├── stats.ts                # (Thư viện Toán học cốt lõi - Pure Math)
+// ├── sentiment-client.ts     # (Giao tiếp với AI Model để lấy điểm cảm xúc)
+// │
+// ├── twitter-aggregator.ts   # (Nhà máy tổng hợp điểm mạng xã hội)
+// ├── news-aggregator.ts      # (Nhà máy tổng hợp điểm báo chí)
+// │
+// ├── quant-engine.ts         # (NHẠC TRƯỞNG: Chạy pipeline, gọi client, gọi nhà máy tổng hợp)
+// │
+// ├── db-mapper.ts            # (Đẩy tín hiệu đã chốt xuống MongoDB)
+// └── index.ts                # (Export hàm chạy chính ra cho toàn bộ project dùng)

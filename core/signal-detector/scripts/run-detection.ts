@@ -14,9 +14,9 @@ if (!process.env.MONGODB_URI) {
 // =======================
 // 2. Imports
 // =======================
-import { saveSignalToDb } from '../src/persistence';
-import { detectSignalWithFinBertQuant } from '../src/detector';
-import { computeStage2Signals } from '../src/stage2';
+import { saveSignalToDb } from '../src/db-mapper';
+import { detectSignalWithFinBertQuant } from '../src/quant-engine';
+import { computeStage2Signals } from '../src/twitter-aggregator';
 
 // =======================
 // 3. DB helper

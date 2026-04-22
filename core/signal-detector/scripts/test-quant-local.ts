@@ -1,7 +1,7 @@
 import dotenv from "dotenv";
 dotenv.config();
 
-import { detectSignalWithFinBertQuant } from "../src/detector";
+import { detectSignalWithFinBertQuant } from "../src/quant-engine";
 
 (async () => {
   const formattedTweets = [

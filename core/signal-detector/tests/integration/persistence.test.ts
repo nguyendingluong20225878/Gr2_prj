@@ -2,8 +2,8 @@ import { beforeAll, afterAll, beforeEach, describe, it, expect } from "vitest";
 import mongoose from "mongoose";
 import { MongoMemoryServer } from "mongodb-memory-server";
 
-import { saveSignalToDb } from "../../src/persistence";
-import type { LlmSignalResponse } from "../../src/types";
+import { saveSignalToDb } from "../../src/db-mapper";
+import type { quantSignalResponse } from "../../src/types";
 
 let mongod: MongoMemoryServer | null = null;
 const useRealMongo = Boolean(process.env.USE_REAL_MONGO);
@@ -45,7 +45,7 @@ beforeEach(async () => {
 
 describe("Signal persistence (integration)", () => {
   it("should persist a detected signal to MongoDB", async () => {
-    const resp: LlmSignalResponse = {
+    const resp: quantSignalResponse = {
       signalDetected: true,
       tokenAddress: "0xINTEGRATION_TEST",
       sources: [{ url: "https://x.com/test/1", label: "tweet" }],

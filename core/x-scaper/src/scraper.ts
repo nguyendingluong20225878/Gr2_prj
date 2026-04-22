@@ -37,7 +37,7 @@ interface Tweet {
 }
 
 /* ======================= UTILS ======================= */
-function parseEngagementCount(text: string | null): number | null {
+function parseKMetric(text: string | null): number | null {
   if (!text) return null;
   const clean = text.replace(/,/g, "").toUpperCase();
   const num = parseFloat(clean);
@@ -163,9 +163,9 @@ export class XScraper {
       } catch {}
 
       let replyCount: number | undefined = undefined, retweetCount: number | undefined = undefined, likeCount: number | undefined = undefined;
-      try { replyCount = parseEngagementCount(await el.findElement(By.css(REPLY_COUNT_SELECTOR_CSS)).getText()) ?? undefined; } catch {}
-      try { retweetCount = parseEngagementCount(await el.findElement(By.css(RETWEET_COUNT_SELECTOR_CSS)).getText()) ?? undefined; } catch {}
-      try { likeCount = parseEngagementCount(await el.findElement(By.css(LIKE_COUNT_SELECTOR_CSS)).getText()) ?? undefined; } catch {}
+      try { replyCount = parseKMetric(await el.findElement(By.css(REPLY_COUNT_SELECTOR_CSS)).getText()) ?? undefined; } catch {}
+      try { retweetCount = parseKMetric(await el.findElement(By.css(RETWEET_COUNT_SELECTOR_CSS)).getText()) ?? undefined; } catch {}
+      try { likeCount = parseKMetric(await el.findElement(By.css(LIKE_COUNT_SELECTOR_CSS)).getText()) ?? undefined; } catch {}
 
       return {
         time: tweetTimeStr, data: text.trim(), url: tweetUrl, username,
@@ -231,29 +231,62 @@ export class XScraper {
     return Array.from(tweetsMap.values());
   }
 
-  public async checkSingleAccount(xId: string, closeDriverAfter: boolean = true, cutoffDate: Date | null = null): Promise<Date | null> {
+  // (Tìm và thay thế toàn bộ hàm checkSingleAccount trong scraper.ts)
+
+  public async checkSingleAccount(xId: string, cutoffDate?: Date | string | null, closeDriverAfter = true): Promise<Date | null> {
     if (!this.driver) {
       const ok = await this.ensureLoggedIn();
       if (!ok) return null;
     }
 
+    // FIX LỖI 1: Đảm bảo cutoffDate là một đối tượng Date chuẩn (Tránh lỗi toISOString)
+    const safeCutoffDate = cutoffDate ? new Date(cutoffDate) : null;
+
     try {
       this.logger.info(`Truy cập profile: ${xId}`);
       await this.driver!.get(`${X_BASE_URL}/${xId}`);
-      await this.driver!.sleep(3000);
+      await this.driver!.sleep(5000); // Đợi 5s cho trang load hẳn
 
-      const extracted = await this.extractTweets(this.driver!, cutoffDate);
+      // --- FIX LỖI 3: Lấy Follower bằng JS an toàn hơn ---
+      let followerCount: number | null = null;
+      try {
+        const followerText = await this.driver!.executeScript(`
+          const el = document.querySelector("a[href$='/followers']");
+          return el ? el.innerText : null;
+        `) as string | null;
+
+        if (followerText) {
+          // Twitter text thường có dạng "1.5M\nFollowers", ta lấy phần số đầu tiên
+          const rawNum = followerText.split('\\n')[0].trim();
+          followerCount = parseKMetric(rawNum);
+          this.logger.info(`Tài khoản ${xId} có ${followerCount} followers.`);
+        }
+      } catch (e) {
+        this.logger.warn(`⚠️ Không lấy được số lượng follower cho ${xId}. DOM X có thể đã thay đổi.`);
+      }
+      // ----------------------------------
+
+      // Truyền safeCutoffDate vào thay vì cutoffDate gốc
+      const extracted = await this.extractTweets(this.driver!, safeCutoffDate);
+      
+      const hasEngagement = extracted.some(t => t.likeCount !== null || t.retweetCount !== null);
+      if (extracted.length > 0 && !hasEngagement) {
+         this.logger.warn(`🚨 CẢNH BÁO QUANT: ${extracted.length} tweets nhưng TOÀN BỘ tương tác = null. CSS Selectors có thể đã gãy!`);
+      }
+
       this.logger.info(`Đã tìm thấy ${extracted.length} tweets MỚI từ ${xId}`);
 
       if (extracted.length > 0) {
-        return await saveTweets(xId, extracted);
+        return await saveTweets(xId, extracted, followerCount); 
       }
       return null;
     } catch (error) {
       this.logger.error(`Lỗi khi xử lý account ${xId}`, error);
       return null;
     } finally {
-      if (closeDriverAfter) await this.closeDriver();
+      if (closeDriverAfter) {
+         await this.closeDriver();
+      }
     }
   }
 
@@ -268,13 +301,20 @@ export class XScraper {
     }
 
     for (const acc of accounts) {
-      const lastUpdate = acc.lastTweetUpdatedAt ? new Date(acc.lastTweetUpdatedAt) : null;
-      const ts = await this.checkSingleAccount(acc.id, false, lastUpdate);
-      if (ts) success++;
+      // FIX LỖI 2: Truyền FALSE vào tham số thứ 3 (closeDriverAfter) 
+      // để giữ trình duyệt mở chạy liên tục cho tất cả account
+      const result = await this.checkSingleAccount(acc.id, acc.lastTweetUpdatedAt, false);
+      
       processed++;
-      await this.driver?.sleep(2000);
+      if (result) success++;
+      
+      // Delay ngẫu nhiên giữa các account (3-5s) để tránh bị Twitter Block/Rate Limit
+      await this.driver!.sleep(3000 + Math.random() * 2000); 
     }
+
+    // Sau khi quét XONG TOÀN BỘ 15 account thì mới Đóng trình duyệt
     await this.closeDriver();
+
     return { processed, success };
   }
 }

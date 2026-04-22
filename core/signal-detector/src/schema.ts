@@ -10,7 +10,7 @@ export const sourceSchema = new Schema({
 });
 
 // Schema chính cho LLM Signal
-export const llmSignalSchema = new Schema(
+export const quantSignalSchema = new Schema(
   {
     signalDetected: { type: Boolean, required: true },
     tokenAddress: { type: String, required: true },
@@ -32,7 +32,7 @@ export const llmSignalSchema = new Schema(
 );
 
 // Middleware để kiểm tra `strength`
-llmSignalSchema.pre("save", async function (this: LlmSignalDocument) {
+quantSignalSchema.pre("save", async function (this: LlmSignalDocument) {
   if (this.signalDetected && (this.strength === null || this.strength < 1)) {
     throw new Error("Strength must be between 1-100…");
   }
@@ -59,5 +59,5 @@ export interface LlmSignalDocument extends Document {
 // Model
 export const LlmSignalModel = mongoose.model<LlmSignalDocument>(
   "LlmSignal",
-  llmSignalSchema
+  quantSignalSchema
 );

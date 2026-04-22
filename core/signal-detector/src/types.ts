@@ -1,16 +1,55 @@
-export type FormattedTweetForLlm = {
+// ==========================================
+// 1. RAW DATA INPUTS (Dữ liệu thô từ Scraper)
+// ==========================================
+
+export type FormattedTweet = {
   id: string;
   text: string;
   author: string;
   time: string; // ISO timestamp
   url?: string;
-  // Engagement signals from DB (used for weighting)
+  // Engagement signals từ DB (dùng để tính trọng số)
   replyCount?: number | null;
   retweetCount?: number | null;
   likeCount?: number | null;
-  // AuthorWeight computed from tier/followerCount (used for weighting)
+  // AuthorWeight tính từ độ uy tín của tài khoản
   authorWeight?: number;
 };
+
+export type FormattedNews = {
+  siteUrl: string;
+  articleUrl: string;
+  title: string;
+  summary: string;
+  content: string;
+  publishedAt: Date | null;
+  scrapedAt: Date;
+  detectedTokens: string[];
+};
+
+// ==========================================
+// 2. PRE-SCORED EVIDENCE (Dữ liệu đã qua API FinBERT & Weighting)
+// Dữ liệu này được Nhạc trưởng (Quant Engine) đẩy xuống các Aggregators
+// ==========================================
+
+export type PreScoredEvidence = {
+  tweetId: string;
+  tokenKey: string;
+  zScore: number;      // Điểm đã chuẩn hóa qua hàm zscores (chống nhiễu)
+  finalWeight: number; // = authorWeight * engagementMultiplier
+  url?: string;
+};
+
+export type PreScoredNewsEvidence = {
+  tokenKey: string; 
+  articleUrl: string;
+  zScore: number;       // Điểm đã chuẩn hóa qua hàm zscores (chống nhiễu)
+  finalWeight: number;  // = recencyMultiplier * siteWeight
+};
+
+// ==========================================
+// 3. SHARED TYPES & SYSTEM CONFIG
+// ==========================================
 
 export type KnownTokenType = {
   address: string;
@@ -25,9 +64,13 @@ export type Source = {
 
 export type SuggestionType = "buy" | "sell" | "hold" | "close_position" | "stake";
 
-export interface LlmSignalResponse {
+// ==========================================
+// 4. FINAL OUTPUT (Tín hiệu cuối cùng lưu xuống DB)
+// ==========================================
+
+export interface QuantSignalResponse {
   signalDetected: boolean;
-  tokenAddress: string;
+  tokenSymbol: string;
   sources: Source[];
   sentimentScore: number;
   suggestionType: SuggestionType;
@@ -39,7 +82,8 @@ export interface LlmSignalResponse {
   impactScore: number | null;
 }
 
+// Params cho Orchestrator (Detector cũ)
 export interface DetectorParams {
-  formattedTweets: FormattedTweetForLlm[];
+  formattedTweets: FormattedTweet[];
   knownTokens: KnownTokenType[];
 }

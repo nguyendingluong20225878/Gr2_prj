@@ -23,5 +23,5 @@ export const MultiSignalResponseSchema = z.object({
   signals: z.array(SingleSignalSchema).describe("List of detected signals, one per relevant Token"),
 });
 
-export type LlmSignalResponse = z.infer<typeof MultiSignalResponseSchema>;
+export type quantSignalResponse = z.infer<typeof MultiSignalResponseSchema>;
 export type SingleSignal = z.infer<typeof SingleSignalSchema>;

@@ -1,7 +1,7 @@
 /// <reference path="../src/types/vitest-globals.d.ts" />
-import { detectSignalWithLlm } from "../src/detector";
+import { detectSignalWithLlm } from "../src/quant-engine";
 import { mockKnownTokens, mockTweetsForDetector } from "./mockdata";
-import { mapLlmResponseToSignalInsert, saveSignalToDb } from "../src/persistence";
+import { mapQuantToMongoInsert, saveSignalToDb } from "../src/db-mapper";
 
 describe("Signal Detector Tests", () => {
   it("should detect signals from tweets and known tokens", async () => {
@@ -29,7 +29,7 @@ describe("Signal Detector Tests", () => {
     expect(result.signalDetected).toBe(false);
   }, 60000);
 
-  it("mapLlmResponseToSignalInsert should map sentiment and fields correctly", () => {
+  it("mapQuantToMongoInsert should map sentiment and fields correctly", () => {
     const response = {
       signalDetected: true,
       tokenAddress: "0xABC",
@@ -43,7 +43,7 @@ describe("Signal Detector Tests", () => {
       impactScore: 7,
     } as any;
 
-    const mapped = mapLlmResponseToSignalInsert(response);
+    const mapped = mapQuantToMongoInsert(response);
     expect(mapped.tokenAddress).toBe("0xABC");
     expect(mapped.sentimentType).toBe("positive");
     expect(mapped.suggestionType).toBe("buy");

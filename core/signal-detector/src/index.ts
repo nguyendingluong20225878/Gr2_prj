@@ -1,8 +1,6 @@
 // Public types
-export type { KnownTokenType, LlmSignalResponse, Source } from "./types";
+export type { KnownTokenType, QuantSignalResponse, Source } from "./types";
 
-// Public schema and types
-//export { LlmSignalResponseSchema, type LlmSignalResponseType } from "./schema";
 
 // Model factory
 //export { defaultSignalChatModel } from "./model";
@@ -11,10 +9,10 @@ export type { KnownTokenType, LlmSignalResponse, Source } from "./types";
 export { buildKnownTokensBlock, signalPromptTemplate } from "./prompt";
 
 // Main detection function
-export { detectSignalWithLlm } from "./detector";
-export { detectSignalWithFinBertQuant } from "./detector";
-export { computeStage2Signals } from "./stage2";
+// export { detectSignalWithLlm } from "./quant-engine";
+export { detectSignalWithFinBertQuant } from "./quant-engine";
+// export { computeStage2Signals } from "./twitter-aggregator";
 // Persistence helpers (optional): map and save to shared Mongo signals collection
-export { mapLlmResponseToSignalInsert, saveSignalToDb } from "./persistence";
+export { mapQuantToMongoInsert, saveSignalToDb } from "./db-mapper";
 
 // End of public API

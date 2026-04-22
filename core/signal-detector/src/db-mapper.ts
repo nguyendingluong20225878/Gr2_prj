@@ -1,14 +1,6 @@
-import { LlmSignalResponse } from "./types"; 
+import { QuantSignalResponse } from "./types"; 
 
-/**
- * Map dữ liệu từ phản hồi của LLM (LlmSignalResponse) sang cấu trúc Document của MongoDB
- * Fixes:
- * - Map 'reason' -> 'rationaleSummary' (Schema Shared yêu cầu)
- * - Map 'reason' -> 'reasoning' (Schema Local yêu cầu - giữ cả 2 cho an toàn)
- * - Thêm strength, sentimentScore
- * - Ưu tiên sources đã được enrich từ detector
- */
-export function mapLlmResponseToSignalInsert(resp: any) {
+export function mapQuantToMongoInsert(resp: any) {
   const detectedAt = new Date();
 
   // 1. Map Suggestion Type & Sentiment Type
@@ -124,7 +116,7 @@ export async function saveSignalToDb(resp: any) {
   try {
     await connectToDatabase();
 
-    const insertData = mapLlmResponseToSignalInsert(resp);
+    const insertData = mapQuantToMongoInsert(resp);
 
     await logProcessing(
       "Signal-Detector",

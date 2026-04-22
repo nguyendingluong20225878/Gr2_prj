@@ -1,7 +1,5 @@
 import {
   Logger,
-  LogLevel,
-  Tweet,
   xAccountTable,
   tweetTable,
   connectToDatabase,
@@ -10,6 +8,17 @@ import {
   logFailed,
 } from "@gr2/shared";
 import { XAccount } from "../../shared/src/types/x-account";
+
+// Define Tweet interface locally if not fully exported from shared, or import it
+interface Tweet {
+  time: string;
+  data: string;
+  url: string;
+  username?: string;
+  replyCount?: number | null;
+  retweetCount?: number | null;
+  likeCount?: number | null;
+}
 
 const log = new Logger("XScaper");
 
@@ -27,10 +36,9 @@ async function initDB() {
 export const getAllXAccounts = async (): Promise<XAccount[]> => {
   await initDB();
 
-  const docs = await xAccountTable.find().lean();//lean" để lấy plain JS object, js thuần 
-  // khong co methods cua mongoose 
+  const docs = await xAccountTable.find().lean();
 
-  return docs.map((d) => ({
+  return docs.map((d: any) => ({
     id: d._id,
     displayName: d.displayName ?? undefined,
     profileImageUrl: d.profileImageUrl ?? undefined,
@@ -41,23 +49,26 @@ export const getAllXAccounts = async (): Promise<XAccount[]> => {
 // =============================
 //          LƯU TWEETS
 // =============================
+// FIX: Thêm tham số followerCount để lưu vào xAccountTable
 export const saveTweets = async (
   accountId: string,
   tweets: Tweet[],
+  followerCount?: number | null
 ): Promise<Date | null> => {
   await initDB();
 
   if (!tweets.length) return null;
 
   try {
-    // 1. Kiểm tra xem trong danh sách 'tweets' vừa cào có cái nào trùng URL với nhau không (đề phòng logic scraper)
-    const uniqueTweets = Array.from(new Map(tweets.map(t => [t.url, t])).values());
+    await logProcessing("X-Scraper", `Saving ${tweets.length} tweets for ${accountId}`);
 
-    const tweetDocuments = uniqueTweets.map((t) => ({
-      authorId: accountId,
+    // 1. Chuẩn bị documents
+    const tweetDocuments = tweets.map((t) => ({
+      tweetId: t.url.split("/status/")[1] || t.url,
+      accountId: accountId,
       url: t.url,
-      retweetCount: t.retweetCount ?? null,
       replyCount: t.replyCount ?? null,
+      retweetCount: t.retweetCount ?? null, // <-- ĐÃ FIX: Không còn rớt data
       likeCount: t.likeCount ?? null,
       content: t.data,
       tweetTime: new Date(t.time),
@@ -65,45 +76,36 @@ export const saveTweets = async (
       updatedAt: new Date(),
     }));
 
-    // 2. Chèn vào DB. Nhờ unique: true ở Schema, những cái đã có trong DB từ trước sẽ bị từ chối ở đây
-    await tweetTable.insertMany(tweetDocuments, { ordered: false }).catch((err) => {
-      // Chỉ log nếu không phải lỗi trùng lặp (code 11000)
+    // 2. Chèn vào DB (Bỏ qua lỗi trùng lặp bằng ordered: false)
+    await tweetTable.insertMany(tweetDocuments, { ordered: false }).catch((err: any) => {
       if (err.code !== 11000) {
-          console.error("[DB] Lỗi chèn tweet:", err.message);
+        console.error("[DB] Lỗi chèn tweet:", err.message);
       }
-  });
+    });
 
+    // 3. Cập nhật thời gian và Follower Count cho Account
     const newest = tweets
       .map((t) => new Date(t.time))
       .sort((a, b) => b.getTime() - a.getTime())[0];
 
-    if (newest) {
-      const updateResult = await xAccountTable.updateOne(
-  { _id: accountId }, // accountId PHẢI = _id trong x_accounts
-  { $set: { lastTweetUpdatedAt: newest } }
-);
-
-console.log(
-  "[DEBUG] update lastTweetUpdatedAt",
-  { accountId, newest, matched: updateResult.matchedCount }
-);
-
+    const updateData: any = {};
+    if (newest) updateData.lastTweetUpdatedAt = newest;
+    if (followerCount !== undefined && followerCount !== null) {
+      updateData.followerCount = followerCount; // <-- ĐÃ FIX: Cập nhật Follower để tính AuthorWeight
     }
 
-    await logSuccess(
-      "X-Scraper",
-      `Successfully saved ${tweets.length} tweets`,
-      { accountId, tweetCount: tweets.length, newestTweetTime: newest }
-    );
+    if (Object.keys(updateData).length > 0) {
+      await xAccountTable.updateOne(
+        { _id: accountId },
+        { $set: updateData }
+      );
+    }
 
+    await logSuccess("X-Scraper", `Successfully saved tweets for ${accountId}`);
     return newest ?? null;
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    await logFailed(
-      "X-Scraper",
-      `Failed to save tweets: ${errorMessage}`,
-      { accountId, error: errorMessage }
-    );
-    throw error;
+  } catch (error: any) {
+    console.error("[DB] Lỗi tổng thể khi saveTweets:", error.message);
+    await logFailed("X-Scraper", `Error saving tweets for ${accountId}: ${error.message}`);
+    return null;
   }
 };
