@@ -63,25 +63,37 @@ export const saveTweets = async (
     await logProcessing("X-Scraper", `Saving ${tweets.length} tweets for ${accountId}`);
 
     // 1. Chuẩn bị documents
-    const tweetDocuments = tweets.map((t) => ({
-      tweetId: t.url.split("/status/")[1] || t.url,
-      accountId: accountId,
-      url: t.url,
-      replyCount: t.replyCount ?? null,
-      retweetCount: t.retweetCount ?? null, // <-- ĐÃ FIX: Không còn rớt data
-      likeCount: t.likeCount ?? null,
-      content: t.data,
-      tweetTime: new Date(t.time),
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    }));
-
-    // 2. Chèn vào DB (Bỏ qua lỗi trùng lặp bằng ordered: false)
-    await tweetTable.insertMany(tweetDocuments, { ordered: false }).catch((err: any) => {
-      if (err.code !== 11000) {
-        console.error("[DB] Lỗi chèn tweet:", err.message);
-      }
+    const tweetDocuments = tweets.map((t) => {
+      const idMatch = t.url.match(/\/status\/(\d+)/);
+      return {
+        tweetId: idMatch ? idMatch[1] : t.url,
+        authorId: accountId,
+        url: t.url,
+        replyCount: t.replyCount ?? null,
+        retweetCount: t.retweetCount ?? null, 
+        likeCount: t.likeCount ?? null,
+        content: t.data,
+        tweetTime: new Date(t.time),
+        isSignalGenerated: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
     });
+
+    // Bắt lỗi rành mạch để biết tại sao không vào DB:
+   try {
+      const result = await tweetTable.insertMany(tweetDocuments, { ordered: false });
+      // Xử lý thông minh: Trả về số lượng tuỳ theo phiên bản Mongoose
+      const insertedCount = Array.isArray(result) ? result.length : (result as any).insertedCount || 1;
+      console.log(`[DB SUCCESS] Đã chèn mới thành công ${insertedCount} tweets vào MongoDB!`);
+    } catch (err: any) {
+      // Bắt chính xác lỗi BulkWrite (trùng lặp ID)
+      if (err.code === 11000 || (err.writeErrors && err.writeErrors.some((e: any) => e.code === 11000))) {
+        console.log(`[DB INFO] Hệ thống đã loại bỏ các bài bị trùng lặp (Duplicate Key) an toàn.`);
+      } else {
+        console.error(`[DB FATAL ERROR] Lỗi Mongoose:`, err.message);
+      }
+    }
 
     // 3. Cập nhật thời gian và Follower Count cho Account
     const newest = tweets

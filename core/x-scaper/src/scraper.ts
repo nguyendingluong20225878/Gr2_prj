@@ -16,6 +16,10 @@ import {
   TWEET_TEXT_SELECTOR_CSS,
   TWEET_LINK_SELECTOR,
   PRIMARY_COLUMN_SELECTOR_CSS,
+  LOGIN_URL,
+  INITIAL_INPUT_SELECTOR_CSS,
+  NEXT_BUTTON_XPATH,
+  PASSWORD_SELECTOR_CSS
 } from "./constant";
 
 /* ======================= TYPES ======================= */
@@ -83,6 +87,54 @@ export class XScraper {
       return null;
     }
   }
+  private async saveCookies(): Promise<void> {
+    if (!this.driver) return;
+    try {
+      const cookies = await this.driver.manage().getCookies();
+      const filePath = this.getCookiesFilePath();
+      fs.writeFileSync(filePath, JSON.stringify(cookies, null, 2));
+      this.logger.info("Đã lưu cookie mới thành công.");
+    } catch (error) {
+      this.logger.error("Lỗi khi lưu cookie:", error);
+    }
+  }
+  // ==========================================
+  // 🚀 CẢI TIẾN: TỰ ĐỘNG LOGIN BẰNG TÀI KHOẢN/MẬT KHẨU
+  // ==========================================
+  private async loginAndSaveCookies(): Promise<boolean> {
+    try {
+      this.logger.info("Tiến hành đăng nhập bằng Credentials...");
+      await this.driver!.get(LOGIN_URL);
+
+      // Nhập Username/Email
+      const usernameInput = await this.driver!.wait(until.elementLocated(By.css(INITIAL_INPUT_SELECTOR_CSS)), 20000);
+      await this.driver!.wait(until.elementIsVisible(usernameInput), 10000);
+      await usernameInput.sendKeys(this.credentials.username);
+      
+      const nextBtn = await this.driver!.findElement(By.xpath(NEXT_BUTTON_XPATH));
+      await nextBtn.click();
+      await this.driver!.sleep(2000 + Math.random() * 1000);
+
+      // Nhập Password
+      const pwdInput = await this.driver!.wait(until.elementLocated(By.css(PASSWORD_SELECTOR_CSS)), 15000);
+      await this.driver!.wait(until.elementIsVisible(pwdInput), 10000);
+      await pwdInput.sendKeys(this.credentials.password);
+
+      // Bấm Login (Dùng XPath tìm nút Log in)
+      const loginBtn = await this.driver!.findElement(By.xpath("//button[.//span[text()='Log in']]"));
+      await loginBtn.click();
+
+      // Đợi load xong trang chủ
+      await this.driver!.wait(until.elementLocated(By.css(PRIMARY_COLUMN_SELECTOR_CSS)), 30000);
+      this.logger.info("Đăng nhập thành công! Đang lưu lại Cookie mới...");
+      
+      await this.saveCookies();
+      return true;
+    } catch (error) {
+      this.logger.error("Lỗi trong quá trình Auto Login:", error);
+      return false;
+    }
+  }
 
   private async initDriver(cookies?: any[]): Promise<void> {
     const options = new chrome.Options();
@@ -113,22 +165,26 @@ export class XScraper {
     }
   }
 
-  public async ensureLoggedIn(): Promise<boolean> {
-    const cookies = this.loadCookies();
-    if (!cookies) return false;
+ public async ensureLoggedIn(): Promise<boolean> {
+    if (!this.driver) await this.initDriver();
 
-    await this.initDriver(cookies);
-    try {
-      this.logger.info("Kiểm tra session...");
-      await this.driver!.get(`${X_BASE_URL}/home`);
-      await this.driver!.wait(until.elementLocated(By.css(PRIMARY_COLUMN_SELECTOR_CSS)), 15000);
-      this.logger.info("Login OK.");
-      return true;
-    } catch (e) {
-      this.logger.error("Cookie hết hạn hoặc lỗi login.", e);
-      await this.closeDriver();
-      return false;
+    const cookieLoaded = await this.loadCookies();
+    if (cookieLoaded) {
+      this.logger.info("Kiểm tra session từ Cookie...");
+      await this.driver!.get(X_BASE_URL);
+      await this.driver!.sleep(3000);
+
+      const currentUrl = await this.driver!.getCurrentUrl();
+      if (!currentUrl.includes("i/flow/login")) {
+        this.logger.info("Session Cookie OK.");
+        return true;
+      }
+      this.logger.warn("Cookie đã hết hạn hoặc bị X từ chối.");
     }
+
+    // Nếu không có Cookie hoặc Cookie chết -> Gọi Auto Login
+    this.logger.info("Khởi động quy trình đăng nhập cấp phép...");
+    return await this.loginAndSaveCookies();
   }
 
   private async closeDriver(): Promise<void> {
@@ -180,8 +236,29 @@ export class XScraper {
     
     this.logger.info(`Bắt đầu cào. Cutoff Date: ${cutoffDate?.toISOString() ?? "NONE"}`);
 
+    // ========================================================
+    // 🚀 BƯỚC 1: CHỜ LOAD BÀI VIẾT (KÈM AUTO-REFRESH CHỐNG KẸT)
+    // ========================================================
     try {
       await driver.wait(until.elementLocated(By.css(TWEET_ARTICLE_SELECTOR_CSS)), 15000);
+    } catch (timeoutErr) {
+      this.logger.warn(`Trang load chậm hoặc bị kẹt. Tiến hành Refresh (F5) lại trang...`);
+      await driver.navigate().refresh();
+      await driver.sleep(5000 + Math.random() * 2000); // Chờ 5-7 giây sau khi F5
+      
+      try {
+        // Thử tìm lại lần 2 sau khi đã Refresh
+        await driver.wait(until.elementLocated(By.css(TWEET_ARTICLE_SELECTOR_CSS)), 15000);
+      } catch (finalErr) {
+        this.logger.warn(`Vẫn không tìm thấy Tweet sau khi Refresh. Bỏ qua account này.`);
+        return Array.from(tweetsMap.values()); // Thoát an toàn
+      }
+    }
+
+    // ========================================================
+    // 🚀 BƯỚC 2: VÒNG LẶP CUỘN VÀ TRÍCH XUẤT DỮ LIỆU
+    // ========================================================
+    try {
       let previousHeight = 0;
       let attempts = 0;
 
@@ -194,6 +271,7 @@ export class XScraper {
           
           const tweetDate = new Date(tweet.time);
 
+          // Xử lý Cutoff Date (Chống cào lại bài cũ)
           if (cutoffDate) {
             if (tweetDate <= cutoffDate) {
               consecutiveOldTweets++;
@@ -206,19 +284,22 @@ export class XScraper {
             }
           }
 
+          // Lưu tweet mới vào Map
           const isNew = cutoffDate ? tweetDate > cutoffDate : true;
           if (tweet.url !== "unknown" && !tweetsMap.has(tweet.url) && isNew) {
              tweetsMap.set(tweet.url, tweet);
           }
         }
 
+        // Thực hiện cuộn trang (Scroll)
         await driver.executeScript("window.scrollTo(0, document.body.scrollHeight);");
         await driver.sleep(2000);
 
+        // Kiểm tra xem đã cuộn đến đáy chưa
         const currentHeight = await driver.executeScript("return document.body.scrollHeight") as number;
         if (currentHeight === previousHeight) {
           attempts++;
-          if (attempts >= 3) break; 
+          if (attempts >= 3) break; // Kẹt ở đáy 3 lần thì thoát
         } else {
           previousHeight = currentHeight;
           attempts = 0;
@@ -301,20 +382,21 @@ export class XScraper {
     }
 
     for (const acc of accounts) {
-      // FIX LỖI 2: Truyền FALSE vào tham số thứ 3 (closeDriverAfter) 
-      // để giữ trình duyệt mở chạy liên tục cho tất cả account
+      this.logger.info(`Đang chuẩn bị cào profile: ${acc.id}...`);
       const result = await this.checkSingleAccount(acc.id, acc.lastTweetUpdatedAt, false);
       
       processed++;
       if (result) success++;
       
-      // Delay ngẫu nhiên giữa các account (3-5s) để tránh bị Twitter Block/Rate Limit
-      await this.driver!.sleep(3000 + Math.random() * 2000); 
+      // 🚀 CẢI TIẾN TỐI QUAN TRỌNG: DELAY CHỐNG RATE LIMIT / SHADOWBAN
+      // Nghỉ từ 15 đến 25 giây giữa mỗi profile để giả lập người dùng thật
+      const delayMs = 15000 + Math.random() * 10000; 
+      this.logger.info(`Nghỉ ngơi ${(delayMs / 1000).toFixed(1)} giây để tránh bị X block IP...`);
+      await this.driver!.sleep(delayMs);
     }
 
-    // Sau khi quét XONG TOÀN BỘ 15 account thì mới Đóng trình duyệt
     await this.closeDriver();
-
     return { processed, success };
   }
+
 }

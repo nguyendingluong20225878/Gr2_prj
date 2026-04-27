@@ -29,22 +29,23 @@ export type FormattedNews = {
 
 // ==========================================
 // 2. PRE-SCORED EVIDENCE (Dữ liệu đã qua API FinBERT & Weighting)
-// Dữ liệu này được Nhạc trưởng (Quant Engine) đẩy xuống các Aggregators
 // ==========================================
 
 export type PreScoredEvidence = {
   tweetId: string;
   tokenKey: string;
-  zScore: number;      // Điểm đã chuẩn hóa qua hàm zscores (chống nhiễu)
-  finalWeight: number; // = authorWeight * engagementMultiplier
+  zScore: number;      
+  rawScore?: number;    
+  finalWeight: number; 
   url?: string;
 };
 
 export type PreScoredNewsEvidence = {
   tokenKey: string; 
   articleUrl: string;
-  zScore: number;       // Điểm đã chuẩn hóa qua hàm zscores (chống nhiễu)
-  finalWeight: number;  // = recencyMultiplier * siteWeight
+  zScore: number;       
+  rawScore?: number;    
+  finalWeight: number;  
 };
 
 // ==========================================
@@ -83,7 +84,8 @@ export interface QuantSignalResponse {
 }
 
 // Params cho Orchestrator (Detector cũ)
-export interface DetectorParams {
+export type DetectorParams = {
+  formattedNews: FormattedNews[];
   formattedTweets: FormattedTweet[];
   knownTokens: KnownTokenType[];
-}
+};

@@ -3,11 +3,11 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "src",
-    "composite": true // Thêm dòng này
+    "composite": true,
+    "ignoreDeprecations": "6.0"
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts"]
-  ,
+  "exclude": ["node_modules", "dist", "**/*.test.ts"],
   "references": [
     { "path": "../shared" }
   ]

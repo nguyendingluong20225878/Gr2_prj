@@ -68,7 +68,6 @@ function detectTokenSymbols(text: string, matchers: TokenMatcher[], opts?: { deb
   for (const m of matchers) {
     let matchedBy: "symbol" | null = null;
     let matchIndex = -1;
-    let matchSnippet = "";
 
     if (m.symbolRe) {
       m.symbolRe.lastIndex = 0;
@@ -76,7 +75,6 @@ function detectTokenSymbols(text: string, matchers: TokenMatcher[], opts?: { deb
       if (exec) {
         matchedBy = "symbol";
         matchIndex = exec.index;
-        matchSnippet = snippetAround(text, matchIndex);
       }
     }
 
@@ -84,15 +82,13 @@ function detectTokenSymbols(text: string, matchers: TokenMatcher[], opts?: { deb
       const sym = m.symbol;
       if (sym) matched.add(sym.toUpperCase());
       if (opts?.debug) {
+        const matchSnippet = snippetAround(text, matchIndex);
         console.log(
-          `[token-match] by=${matchedBy} token=${sym.toUpperCase()} matchIndex=${matchIndex} matchSnippet=${JSON.stringify(
-            matchSnippet
-          )}`
+          `[token-match] by=${matchedBy} token=${sym.toUpperCase()} matchIndex=${matchIndex} matchSnippet=${JSON.stringify(matchSnippet)}`
         );
       }
     }
   }
-
   return [...matched];
 }
 
@@ -241,8 +237,11 @@ export async function processNewsScraping(
 
             savedCount++;
             return "saved";
-          } catch (err) {
-            console.error(`Error article ${articleUrl}`, err);
+        } catch (err) {
+            // Lấy thông báo lỗi ngắn gọn
+            const errMsg = err instanceof Error ? err.message : String(err);
+            // Log ra gọn gàng
+            console.log(`[Bộ lọc] Đã bỏ qua bài viết ${articleUrl}: ${errMsg}`);
             return "error";
           }
         });

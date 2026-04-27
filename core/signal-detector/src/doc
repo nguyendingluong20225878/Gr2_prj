@@ -23,3 +23,21 @@
 // │
 // ├── db-mapper.ts            # (Đẩy tín hiệu đã chốt xuống MongoDB)
 // └── index.ts                # (Export hàm chạy chính ra cho toàn bộ project dùng)
+
+
+//quant engine 
+//lấy dữ liệu từ news + tweets
+// → chấm điểm sentiment bằng FinBERT , weight
+// → chuẩn hóa (std,Z-score) 
+// → gom nhóm → merge → xuất ra tín hiệu cuối cùng cho LLM.
+// RAW DATA (news + tweets)
+//    ↓
+// SCORING (FinBERT + weight)
+//    ↓
+// NORMALIZATION (Z-score)
+//    ↓
+// AGGREGATION (per token)
+//    ↓
+// MERGE (news + twitter)
+//    ↓
+// FILTER → OUTPUT cho LLM

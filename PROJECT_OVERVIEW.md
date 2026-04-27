@@ -21,7 +21,7 @@
 
     ### 1. Data Collection
     - Twitter scraping (KOLs, founder)
-    - News scraping (CoinDesk, The Block)
+    - News scraping (CoinDesk, The Block,...)
     - Token filtering (regex)
 
     ---
@@ -86,7 +86,13 @@
     - Không cá nhân hóa (no user profile)
 
     ---
-
+  ## Tech Stack
+    - Node.js (Express)
+    - MongoDB
+    - FinBERT
+    - LLM
+    - LangGraph
+    - Statistical methods (Z-score, IC)
     ## Current Status
 
     ### ✅ Done
@@ -103,13 +109,7 @@
 
     ---
 
-    ## Tech Stack
-    - Node.js (Express)
-    - MongoDB
-    - FinBERT
-    - LLM
-    - LangGraph
-    - Statistical methods (Z-score, IC)
+  
 
     ---
 

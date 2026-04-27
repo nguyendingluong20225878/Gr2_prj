@@ -17,7 +17,7 @@ const tweetSchema = new Schema(
     likeCount: { type: Number, default: null },
     tweetTime: { type: Date, required: true },
     metadata: { type: Schema.Types.Mixed },
-    isSignalGenerated: { type: Boolean, default: false, index: true },
+    isSignalGenerated: { type: Boolean, default: false }
   },
   {
     collection: "tweets",

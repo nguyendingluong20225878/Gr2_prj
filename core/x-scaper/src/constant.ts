@@ -31,8 +31,8 @@ export const RETWEET_COUNT_SELECTOR_CSS =
   "button[data-testid='retweet'] span[data-testid='app-text-transition-container'] > span > span"; 
 export const LIKE_COUNT_SELECTOR_CSS =
   "button[data-testid='like'] span[data-testid='app-text-transition-container'] > span > span";
-export const FOLLOWER_COUNT_SELECTOR_CSS = "a[href$='/verified_followers'] span"; // CSS có thể cần tinh chỉnh theo DOM thật của X
-
+// export const FOLLOWER_COUNT_SELECTOR_CSS = "a[href$='/verified_followers'] span"; // CSS có thể cần tinh chỉnh theo DOM thật của X
+export const FOLLOWER_COUNT_SELECTOR_CSS = "a[href$='/followers'] span";
 // Filesystem Paths (relative to package root, e.g., packages/x-scraper/)
 export const COOKIES_DIR_RELATIVE = "./cookies";
 export const COOKIES_FILENAME = "x-scraper_cookies.json";

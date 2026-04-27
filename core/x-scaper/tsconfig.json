@@ -3,6 +3,7 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "src",
+    "ignoreDeprecations": "6.0",
     
     // QUAN TRỌNG: Không được có dòng "typeRoots" ở đây!
     // TypeScript sẽ tự leo lên root để tìm types.

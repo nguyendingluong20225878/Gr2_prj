@@ -1,141 +1,174 @@
 import { finBertProbs } from "./finbert";
-import { zscores, quantile, clamp } from "./stats";
+import { zscores, weightedAvg, quantile, clamp } from "./stats";
 import { aggregateTwitterSignals, PreScoredEvidence } from "./twitter-aggregator";
-import { DetectorParams, QuantSignalResponse } from "./types"; // Cần đảm bảo file types.ts có SingleSignal
+import { aggregateNewsByToken } from "./news-aggregator";
+import { DetectorParams, PreScoredNewsEvidence } from "./types";
 
-// Các hàm regex heuristic của bạn giữ nguyên
+// ==========================================
+// QuantOutput
+// ==========================================
+export interface QuantOutput {
+  tokenSymbol: string;
+  quantScore: number;         // Z-Score tổng hợp cuối cùng
+  sentimentType: "positive" | "negative" | "neutral";
+  newsEvidences: string[];    // Danh sách URL bài báo
+  tweetEvidences: string[];   // Danh sách URL bài tweet
+}
+
+// ==========================================
+// HÀM HELPER & REGEX
+// ==========================================
 function escapeRegex(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
+  return text.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&");
+}//Tránh lỗi khi symbol có ký tự đặc biệt
 
-function symbolMentionRegex(symbol: string): RegExp | null {
-  const s = symbol.trim();
-  if (!s) return null;
-  const escaped = escapeRegex(s);
-  return new RegExp(`(?:^|[^\\w])\\$?${escaped}(?:[^\\w]|$)`, "i");
-}
+function getRecencyMultiplier(publishedAt: Date | null): number {
+  if (!publishedAt) return 1;
+  const hoursOld = (Date.now() - new Date(publishedAt).getTime()) / (1000 * 60 * 60);
+  if (hoursOld < 2) return 2.0;   // Tin nóng: x2
+  if (hoursOld < 6) return 1.5;   // Tin mới: x1.5
+  if (hoursOld < 24) return 1.2;
+  return 1.0;
+}//time decay
 
-function robustEngagementMultiplier(engagement: number, p90Log1p: number): number {
-  if (!Number.isFinite(engagement) || engagement <= 0) return 1;
-  const denom = p90Log1p > 0 ? p90Log1p : 1;
-  return 1 + Math.log(1 + engagement) / denom;
-}
+// ==========================================
+// QUANT ENGINE (DUAL-TRACK)
+// ==========================================
+export async function detectSignalWithFinBertQuant(params: DetectorParams): Promise<QuantOutput[]> {
+  const { formattedNews, formattedTweets, knownTokens } = params;
 
-export async function detectSignalWithFinBertQuant(params: DetectorParams) {
-  const { formattedTweets, knownTokens } = params;
+  // Chuẩn bị Regex Token
+  const tokenMatchers = knownTokens.map(t => ({
+    symbol: t.symbol,
+    regex: new RegExp(`(?:^|[^\\w])\\$?${escapeRegex(t.symbol)}(?:[^\\w]|$)`, "i")
+  }));
 
-  // 1. TÍNH TOÁN P90 CHO TRỌNG SỐ ENGAGEMENT
-  const engagementLogs = formattedTweets
-    .map((t) => (t.replyCount ?? 0) + (t.retweetCount ?? 0) + (t.likeCount ?? 0))
-    .map((eng) => Math.log(1 + Math.max(0, eng)));
-  const p90Log1p = quantile(engagementLogs, 0.9) ?? 1;
+  // ==========================================
+  // TRACK 1: XỬ LÝ NEWS
+  // ==========================================
+  const rawNewsEvidences: PreScoredNewsEvidence[] = [];
+  
+  for (const n of formattedNews) {
+    if (!n.detectedTokens || n.detectedTokens.length === 0) continue;
 
-  // 2. CHUẨN BỊ BỘ LỌC TOKEN (Tối ưu biên dịch Regex 1 lần)
-  const tokenMatchers = knownTokens
-    .map((t) => ({
-      token: t,
-      symbolRe: symbolMentionRegex(t.symbol),
-      nameLower: t.name?.toLowerCase?.() ?? "",
-    }))
-    .filter((x) => Boolean(x.symbolRe || x.nameLower));
+    const textForAi = `${n.title}. ${n.summary}`;
+    const probs = await finBertProbs(textForAi);//output : baseScore [-1,1]
 
-  // 3. GỌI FINBERT API SONG SONG (Fix lỗi Thắt cổ chai)
-  // Thực tế nếu data > 500 tweets, bạn nên dùng thư viện p-limit để chia batch, tránh nghẽn API.
-  const scoredTweets = await Promise.all(
-    formattedTweets.map(async (tweet) => {
-      const text = tweet.text ?? "";
-      if (!text.trim()) return { ...tweet, baseScore: 0, matchedTokens: [] };
+    const siteWeight = n.siteUrl.includes("coindesk") || n.siteUrl.includes("cointelegraph") ? 2 : 1;
+    const finalWeight = siteWeight * getRecencyMultiplier(n.publishedAt);
 
-      const matchedTokens = tokenMatchers
-        .filter(m => (m.symbolRe && m.symbolRe.test(text)) || (m.nameLower && text.toLowerCase().includes(m.nameLower)))
-        .map(m => m.token);
+    for (const token of n.detectedTokens) {
+      rawNewsEvidences.push({
+        tokenKey: token,
+        articleUrl: n.articleUrl,
+        zScore: 0, 
+        rawScore: probs.baseScore * finalWeight, // Điểm nháp chờ chuẩn hóa
+        finalWeight
+      });
+    }
+  }//rawScore : trước normalize
 
-      if (matchedTokens.length === 0) return { ...tweet, baseScore: 0, matchedTokens: [] };
+  // Chuẩn hóa Z-Score cho News
+  const newsScoresArray = rawNewsEvidences.map((x: any) => x.rawScore);
+  const newsZ = zscores(newsScoresArray, 0.1);
+  //z = (x - mean) / std
+  rawNewsEvidences.forEach((n, idx) => n.zScore = newsZ[idx]);
 
-      try {
-        const probs = await finBertProbs(text);
-        return { ...tweet, baseScore: probs.baseScore, matchedTokens };
-      } catch (e) {
-        console.error(`[FinBERT] Failed for tweet ${tweet.id}`, e);
-        return { ...tweet, baseScore: 0, matchedTokens };
-      }
-    })
-  );
+  // Gom nhóm News
+  const aggregatedNews = aggregateNewsByToken(rawNewsEvidences);
 
-  // 4. ÁP DỤNG TRỌNG SỐ CHO TỪNG SỰ KIỆN (EVENT-LEVEL)
-  const rawEvidences: (PreScoredEvidence & { rawScore: number })[] = [];
 
-  for (const tweet of scoredTweets) {
-    if (tweet.matchedTokens.length === 0 || tweet.baseScore === 0) continue;
+  // ==========================================
+  // TRACK 2: XỬ LÝ TWEETS
+  // ==========================================
+  const rawTweetEvidences: PreScoredEvidence[] = [];
+  
+  const engagementLogs = formattedTweets.map(t => (t.replyCount || 0) + (t.retweetCount || 0) + (t.likeCount || 0));
+  const p90Log1p = engagementLogs.length > 0 ? Math.log(1 + quantile(engagementLogs, 0.9)) : 1;
+  //Dùng P90 để tránh outlier
 
-    const engagement = (tweet.replyCount ?? 0) + (tweet.retweetCount ?? 0) + (tweet.likeCount ?? 0);
-    const engagementMultiplier = robustEngagementMultiplier(engagement, p90Log1p);
-    const authorWeight = tweet.authorWeight ?? 1.0;
-    
-    const finalWeight = authorWeight * engagementMultiplier;
-    const rawScore = tweet.baseScore * finalWeight;
+  for (const t of formattedTweets) {
+    const mentionedTokens = tokenMatchers.filter(m => m.regex.test(t.text)).map(m => m.symbol);
+    if (mentionedTokens.length === 0) continue;
 
-    for (const token of tweet.matchedTokens) {
-      rawEvidences.push({
-        tweetId: tweet.id,
-        tokenKey: token.symbol,
-        url: tweet.url,
-        finalWeight,
-        rawScore, // Tạm thời giữ lại để chuẩn hóa
-        zScore: 0 // Sẽ điền sau
+    const probs = await finBertProbs(t.text);
+
+    const engagement = (t.replyCount || 0) + (t.retweetCount || 0) + (t.likeCount || 0);
+    const denom = p90Log1p > 0 ? p90Log1p : 1;
+    const engagementMultiplier = 1 + Math.log(1 + engagement) / denom;
+    //1 + log(1 + engagement) / denom
+    const finalWeight = (t.authorWeight || 1) * engagementMultiplier;
+
+    for (const token of mentionedTokens) {
+      rawTweetEvidences.push({
+        tweetId: t.id,
+        tokenKey: token,
+        url: t.url || `https://x.com/i/status/${t.id}`,
+        zScore: 0,
+        rawScore: probs.baseScore * finalWeight, // Điểm nháp chờ chuẩn hóa
+        finalWeight
       });
     }
   }
 
-  // 5. CHUẨN HÓA EVENT-LEVEL (Z-SCORE MỨC TWEET TOÀN CỤC)
-  // Sử dụng zscores đã có cơ chế chống khuếch đại nhiễu (minStd = 0.05)
-  const allRawScores = rawEvidences.map(e => e.rawScore);
-  const allZ = zscores(allRawScores, 0.05); 
+  // Chuẩn hóa Z-Score cho Tweets
+  const tweetScoresArray = rawTweetEvidences.map((x: any) => x.rawScore);
+  const tweetZ = zscores(tweetScoresArray, 0.1);
+  //z = (x - mean) / std
+  rawTweetEvidences.forEach((t, idx) => t.zScore = tweetZ[idx]);
+
+  // Gom nhóm Tweets
+  const aggregatedTweets = aggregateTwitterSignals(rawTweetEvidences);
+
+
+  // ==========================================
+  // MERGE THEO TOKEN (CROSS-AGGREGATION)
+  // ==========================================
+  const results: QuantOutput[] = [];
   
-  const normalizedEvidences: PreScoredEvidence[] = rawEvidences.map((e, i) => ({
-    tweetId: e.tweetId,
-    tokenKey: e.tokenKey,
-    finalWeight: e.finalWeight,
-    zScore: allZ[i]
-  }));
+  // Có thể thay đổi các hằng số này sau khi chạy Backtest
+  const WEIGHT_NEWS = 0.60;    // 60% sức mạnh từ Báo chí
+  const WEIGHT_TWITTER = 0.40; // 40% sức mạnh từ Mạng xã hội
 
-  // 6. GOM NHÓM THEO TOKEN QUA STAGE 2
-  const twitterResults = aggregateTwitterSignals(normalizedEvidences);
+  const allTokens = Array.from(new Set([
+    ...Array.from(aggregatedNews.keys()),
+    ...Array.from(aggregatedTweets.byTokenKey.keys())
+  ]));
 
-  // 7. XUẤT KẾT QUẢ CUỐI CÙNG QUA CROSS-TOKEN Z-SCORE
-  const signals: QuantSignalResponse[] = [];
-  const tokenSymbols = Array.from(twitterResults.byTokenKey.keys());
-  const tokenScores = tokenSymbols.map(sym => twitterResults.byTokenKey.get(sym)!.twitterScore);
-  
-  const tokenScoreZ = zscores(tokenScores, 0.1); 
+  for (const symbol of allTokens) {
+    const newsData = aggregatedNews.get(symbol);
+    const tweetData = aggregatedTweets.byTokenKey.get(symbol);
 
-  for (let i = 0; i < tokenSymbols.length; i++) {
-    const symbol = tokenSymbols[i];
-    const data = twitterResults.byTokenKey.get(symbol)!;
-    const z = tokenScoreZ[i];
-    const n = data.nTweets;
+    let finalQuantScore = 0;
+    const newsUrls = newsData ? newsData.topUrls : [];
+    const tweetUrls = tweetData ? tweetData.topTweetIds : [];
 
-    const action = z > 1 ? "buy" : z < -1 ? "sell" : "hold";
-    
-    const confRaw = Math.abs(z) * Math.log10(Math.min(n + 1, 100)); 
-    const confidence = Math.round(100 * clamp(Math.tanh(confRaw), 0, 1));
+    if (newsData && tweetData) {
+      // Nếu có cả 2 nguồn: Áp dụng tỷ lệ %
+      finalQuantScore = (newsData.newsScore * WEIGHT_NEWS) + (tweetData.twitterScore * WEIGHT_TWITTER);
+    } else if (newsData) {
+      // Chỉ có News: Lấy 100% sức mạnh của News
+      finalQuantScore = newsData.newsScore;
+    } else if (tweetData) {
+      // Chỉ có Twitter: Lấy 100% sức mạnh của Twitter
+      finalQuantScore = tweetData.twitterScore;
+    }
 
-    if (action === "hold" && confidence < 25) continue;
+    let sentimentType: "positive" | "negative" | "neutral" = "neutral";
+    if (finalQuantScore > 1.0) sentimentType = "positive";
+    else if (finalQuantScore < -1.0) sentimentType = "negative";
 
-    // Đẩy thẳng symbol vào, không cần map ra address nữa
-    signals.push({
-      signalDetected: true,
-      tokenSymbol: symbol, // <-- Ghi nhận trực tiếp Token Symbol
-      sources: [], 
-      sentimentScore: clamp(z / 3, -1, 1), 
-      suggestionType: action,
-      strength: confidence,           
-      confidence: confidence / 100,   
-      reasoning: `Hệ thống Quant Z-Score: ${symbol} đạt điểm ${data.twitterScore.toFixed(3)}, Z-Score chéo: ${z.toFixed(2)}. Tín hiệu tự động chống nhiễu.`,
-      relatedTweetIds: data.topTweetIds,
-      impactScore: null,
-    });
+    // Lọc tín hiệu nhiễu (Chỉ lấy |Z-Score| > 0.5)
+    if (Math.abs(finalQuantScore) > 0.5) {
+      results.push({
+        tokenSymbol: symbol,
+        quantScore: finalQuantScore,
+        sentimentType,
+        newsEvidences: newsUrls,
+        tweetEvidences: tweetUrls
+      });
+    }
   }
 
-  return { signals };
+  return results;
 }
