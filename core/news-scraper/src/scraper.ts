@@ -1,4 +1,5 @@
 import FirecrawlApp from "@mendable/firecrawl-js";
+import { XMLParser } from "fast-xml-parser";
 
 export type ScrapedNewsArticle = {
   siteUrl: string;
@@ -10,61 +11,74 @@ export type ScrapedNewsArticle = {
   raw: unknown;
 };
 
-//Lay noi dung chinh
+/**
+ * Lấy nội dung chính từ Markdown
+ */
 function extractMainContent(md: string): string {
   if (!md) return "";
 
   const start = md.indexOf("# ");
 
-  // Normalize helpers: Cointelegraph sometimes uses NBSP or different casing.
   const normalizeForSearch = (s: string) =>
     s
       .replace(/\u00a0/g, " ") // NBSP -> space
-      //NBSP : Non-breaking space -> 1 kí tự khoảng trắng đặc biệt ngăn trình duyệt xuống dòng 
-      //vd: a b -> space giữa nếu đang là 1 NBSP thì sẽ không bị tách dòng.
       .toLowerCase();
 
   const endMarkers = [
     "More For You",
-    // Cointelegraph / others often use these section break labels
     "Read more:",
     "Read more",
     "READ MORE",
     "Read More",
   ];
 
-  let end = md.length; //neu k tim thay marker -> lay toan bo content
+  let end = md.length; 
   
-  //Tìm vị trí của marker trong content
   for (const marker of endMarkers) {
-    // Case-insensitive search over normalized text
     const idx = normalizeForSearch(md).indexOf(normalizeForSearch(marker));
     if (idx !== -1 && idx > start) {
-      end = Math.min(end, idx);//nhiều marker -> lấy cái gần nhất
+      end = Math.min(end, idx);
     }
   }
 
-  return start !== -1 ? md.slice(start, end) : md;
+  // [FIX] Sử dụng Math.max(0, start) để đảm bảo vẫn cắt được footer ngay cả khi không có H1 (# )
+  return md.slice(Math.max(0, start), end).trim();
 }
 
+/**
+ * Làm sạch nội dung, loại bỏ ảnh, link và các block rác video
+ */
 function cleanContent(md: string): string {
-  return md
+  let cleaned = md
     .replace(/!\[.*?\]\(.*?\)/g, "") // Xóa ảnh
     .replace(/\[(.*?)\]\(.*?\)/g, "$1") // Giữ text, bỏ link
     .replace(/https?:\/\/\S+/g, "") // Xóa url thuần
-    // .replace(/\$\d+[,\d.]*/g, "") // GIỮ NGUYÊN COMMENT ĐỂ KHÔNG MẤT SỐ TIỀN
-    .replace(/Share this article[\s\S]*?\n/g, "") // Xoá block “Share this article”
-    // 👇 3 dòng dưới đây chuyên trị dọn rác Video của Cointelegraph
-    .replace(/More Videos[\s\S]*?This video file cannot be played[^\n]*/gi, "")
-    .replace(/Press shift question mark[\s\S]*?Increase Caption Size[^\n]*/gi, "")
-    .replace(/Keyboard ShortcutsEnabledDisabled[\s\S]*?Seek %0-9/gi, "")
+    .replace(/Share this article[\s\S]*?\n/g, ""); // Xoá block “Share this article”
+
+  // [FIX ISSUE 4]: Tối ưu CPU bằng cách kiểm tra sự tồn tại của chuỗi nhận diện trước khi dùng Regex phức tạp
+  // Giúp tránh hiện tượng Catastrophic Backtracking trên các văn bản lớn.
+  if (cleaned.includes("More Videos") || cleaned.includes("video file cannot be played")) {
+    cleaned = cleaned.replace(/More Videos[\s\S]*?This video file cannot be played[^\n]*/gi, "");
+  }
+
+  if (cleaned.includes("Press shift question mark") || cleaned.includes("Increase Caption Size")) {
+    cleaned = cleaned.replace(/Press shift question mark[\s\S]*?Increase Caption Size[^\n]*/gi, "");
+  }
+
+  if (cleaned.includes("Keyboard Shortcuts") || cleaned.includes("Seek %0-9")) {
+    cleaned = cleaned.replace(/Keyboard ShortcutsEnabledDisabled[\s\S]*?Seek %0-9/gi, "");
+  }
+
+  return cleaned
     .replace(/[•●▪]/g, "-") // Chuẩn hoá bullet
     .replace(/[ \t]+/g, " ") // Xoá space thừa
     .replace(/\n{2,}/g, "\n\n") // Chuẩn hoá xuống dòng
-    .trim(); // xóa đầu cuối
+    .trim();
 }
 
-//Lọc url
+/**
+ * Kiểm tra URL hợp lệ để tránh cào các trang tag, author, sitemap
+ */
 function isValidArticleUrl(url: string): boolean {
   return (
     (
@@ -74,35 +88,30 @@ function isValidArticleUrl(url: string): boolean {
       url.includes("/policy/") ||
       url.includes("/news/")
     ) &&
-    !url.includes("/fr/") && //tiếng Pháp
-    !url.includes("/es/") && //tiếng TBN
-    !url.includes("sitemap") && // sitemap.xml
-    !url.includes("feed") && //RSS feed
-    !url.includes("/tag/") && //tag
-    !url.includes("/author/") && //author
-    !url.includes("/price/") && //giá
-    !url.endsWith(".xml") //file XMl
+    !url.includes("/fr/") &&
+    !url.includes("/es/") &&
+    !url.includes("sitemap") &&
+    !url.includes("feed") &&
+    !url.includes("/tag/") &&
+    !url.includes("/author/") &&
+    !url.includes("/price/") &&
+    !url.endsWith(".xml")
   );
 }
 
-// SCRAPER
-
-
 export class NewsScraper {
-  private app: FirecrawlApp;//dùng API Firecrawl
-  // tên biến : kiểu dlieu
+  private app: FirecrawlApp;
 
   constructor(apiKey: string) {
     this.app = new FirecrawlApp({ apiKey });
   }
 
-
-//Tìm bài
- async discoverArticles(siteUrl: string): Promise<string[]> {
+  /**
+   * Khám phá URL bài viết từ trang chủ/trang danh mục
+   */
+  async discoverArticles(siteUrl: string): Promise<string[]> {
     try {
       const res = await this.app.mapUrl(siteUrl, { limit: 130 });
-      //mapUrl là một method của Firecrawl SDK (FirecrawlApp)
-      //quét siteURL và trả về các url bên trong, tối đa 130 limit
 
       if (!res.success) {
         throw new Error(res.error);
@@ -111,152 +120,146 @@ export class NewsScraper {
       const urls: string[] = res.links ?? [];
 
       return [...new Set(urls.filter(isValidArticleUrl))];
-      //filter -> Loại trùng -> convert array 
     } catch (err) {
       console.error(`Discover error ${siteUrl}`, err);
       return [];
     }
   }
 
- //lấy dsach bài viết từ RSS feed
+  /**
+   * Lấy danh sách URL bài viết từ RSS feed (Dùng Fast XML Parser)
+   */
   async discoverFromRSS(rssUrl: string): Promise<string[]> {
     try {
       const res = await fetch(rssUrl);
-      const xml = await res.text();
+      if (!res.ok) return [];
+      
+      const xmlText = await res.text();
+      const parser = new XMLParser({ ignoreAttributes: false });
+      const jsonObj = parser.parse(xmlText);
 
-      // 🚀 BẮT ĐỒNG THỜI CẢ <guid> VÀ <link>
-      // Thẻ <guid> của Cointelegraph chứa URL nguyên thủy, sạch 100% không bị dính mã tracking
-      const guidMatches = [...xml.matchAll(/<guid[^>]*>([\s\S]*?)<\/guid>/gi)];
-      const linkMatches = [...xml.matchAll(/<link>([\s\S]*?)<\/link>/gi)];
+      const urls = new Set<string>();
 
-      let allUrls = [...guidMatches, ...linkMatches].map((m) => {
-         // Làm sạch CDATA
-         let cleanUrl = m[1].replace(/<!\[CDATA\[/g, "").replace(/\]\]>/g, "").trim();
-         
-         // Fix triệt để: Cắt bỏ mọi tham số theo dõi (?utm_source...)
-         const questionMarkIndex = cleanUrl.indexOf("?");
-         if (questionMarkIndex !== -1) {
-           cleanUrl = cleanUrl.substring(0, questionMarkIndex);
-         }
-         
-         return cleanUrl;
-      });
+      const items = jsonObj?.rss?.channel?.item || jsonObj?.feed?.entry || [];
+      const itemArray = Array.isArray(items) ? items : [items];
 
-      // Lọc trùng lặp URL và chỉ giữ lại link đúng định dạng bài báo
-      allUrls = [...new Set(allUrls)].filter((url) => isValidArticleUrl(url));
+      for (const item of itemArray) {
+        if (item.link) {
+          const link = typeof item.link === 'string' ? item.link : item.link['@_href'];
+          if (link) urls.add(link);
+        } else if (item.guid && typeof item.guid === 'string' && item.guid.startsWith("http")) {
+          urls.add(item.guid);
+        }
+      }
 
-      console.log(`[DEBUG RSS] Đã bắt được ${allUrls.length} link bài viết hợp lệ từ ${rssUrl}`);
-      return allUrls;
-    } catch (err) {
-      console.error("RSS error:", err);
+      return Array.from(urls);
+    } catch (error) {
+      console.error(`[RSS Discovery Error] ${rssUrl}:`, error);
       return [];
     }
   }
-  //in:url -> out: object chuẩn hóa
+
+  /**
+   * Cào chi tiết bài viết và trích xuất Metadata
+   */
   async scrapeArticle(articleUrl: string): Promise<ScrapedNewsArticle> {
     const MAX_RETRY = 2;
 
     for (let i = 0; i < MAX_RETRY; i++) {
-      try {//API scrape trong FireCrawl
-       const res = await this.app.scrapeUrl(articleUrl, {
-          formats: ["markdown"], //trả về nội dung dạng Markdown
-          timeout: 30000,        // Tăng lên 30s cho chắc chắn
-          waitFor: 3000,         // CẢI TIẾN: Đợi 3 giây để chống Lazy Load (tránh cụt đuôi)
-          mobile: false          // CẢI TIẾN: Giả lập PC để web trả về full text dễ hơn
+      try {
+        const res = await this.app.scrapeUrl(articleUrl, {
+          formats: ["markdown"],
+          timeout: 30000,
+          waitFor: 3000,
+          mobile: false
         });
 
         if (!res.success) throw new Error(res.error);
 
-        /* CLEAN PIPELINE */
         const raw = res.markdown ?? "";
         const main = extractMainContent(raw);
-        const content = cleanContent(main);
+        
+        /**
+         * [FIX ISSUE 1]: Giới hạn kích thước Content tối đa
+         * Cắt bớt content nếu vượt quá 50,000 ký tự để bảo vệ MongoDB BSON limit (16MB)
+         * và tối ưu hóa bộ nhớ cho Quant Engine phía sau.
+         */
+        const content = cleanContent(main).slice(0, 50000);
 
         if (!content || content.length < 200) {
           throw new Error("Content too short");
         }
 
-       /* METADATA VÀ TÌM KIẾM NGÀY XUẤT BẢN TỔNG QUÁT (WATERFALL EXTRACTION) */
         const meta = res.metadata as any;
         const title = meta?.title ?? "";
         const summary = meta?.description ?? "";
-        const rawMarkdown = res.markdown ?? "";
 
         // ==========================================
         // 🕰️ MÔ HÌNH THÁC NƯỚC: TRÍCH XUẤT NGÀY (3 LỚP)
         // ==========================================
         let publishedAt: Date | null = null;
 
-        // Lớp 1: Lấy từ Firecrawl Metadata (Mở rộng toàn bộ các thẻ SEO chuẩn)
+        // Lớp 1: Metadata từ Firecrawl
         const rawMeta = meta?.publishedTime || 
                         meta?.published_at || 
                         meta?.datePublished || 
                         meta?.['article:published_time'] || 
                         meta?.['og:published_time'] || 
-                        meta?.['og:article:published_time'] || 
                         meta?.date;
         if (rawMeta) {
           const parsed = new Date(rawMeta);
           if (!Number.isNaN(parsed.getTime())) publishedAt = parsed;
         }
 
-        // Lớp 2: Tìm từ URL (Chuyên trị CoinDesk: /2026/04/24/)
+        const headText = content.slice(0, 1000);
+
+        // Lớp 2: Tìm text ngày tháng trong văn bản
         if (!publishedAt) {
-          const urlDateMatch = articleUrl.match(/\/(\d{4})\/(\d{1,2})\/(\d{1,2})\//);
-          if (urlDateMatch) {
-            // urlDateMatch[1] = Năm, [2] = Tháng, [3] = Ngày
-            const parsed = new Date(`${urlDateMatch[1]}-${urlDateMatch[2]}-${urlDateMatch[3]}`);
-            if (!Number.isNaN(parsed.getTime())) publishedAt = parsed;
+          // [FIX ISSUE 2]: Mở rộng Regex để bắt cả format US (Apr 19, 2026) và EU/ASIA (19 Apr 2026)
+          const dateRe = /(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2},? \d{4})|(?:\d{1,2} (?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{4})/i;
+          const mDate = dateRe.exec(headText);
+          if (mDate) {
+            const parsed = new Date(`${mDate[0]} UTC`);
+            if (!Number.isNaN(parsed.getTime())) {
+              publishedAt = parsed;
+            }
           }
         }
-
-        // Lớp 3: Tìm trong Nội dung văn bản (🚀 QUÉT TOÀN BỘ VĂN BẢN, BỎ GIỚI HẠN 4000 KÝ TỰ)
-        if (!publishedAt && res.markdown) {
-          const headText = res.markdown; // Quét 100% nội dung bài báo
-          
-          // Regex 3.1: Dạng dính chữ của Cointelegraph (VD: PublishedApr 19, 2026 hoặc Published April 19th, 2026)
-          const ctMatch = headText.match(/Published\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z\.]*\s+(\d{1,2})(?:st|nd|rd|th)?,\s+(\d{4})/i);
-          if (ctMatch) {
-            // Chỉ lấy đúng Tháng, Ngày, Năm ghép lại -> Vượt qua mọi lỗi định dạng thừa
-            const parsed = new Date(`${ctMatch[1]} ${ctMatch[2]}, ${ctMatch[3]}`);
-            if (!Number.isNaN(parsed.getTime())) publishedAt = parsed;
-          }
-
-          // Regex 3.2: Dạng chuẩn (VD: Apr 19, 2026 hoặc April 19th, 2026)
-          if (!publishedAt) {
-            const standardMatch = headText.match(/(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z\.]*\s+\d{1,2}(?:st|nd|rd|th)?,\s+\d{4}/i);
-            if (standardMatch) {
-              // Ép khoảng trắng chuẩn và xóa đuôi ordinal (st, nd, rd, th) để Date() không bị lỗi
-              const cleanDateStr = standardMatch[0].replace(/\s+/g, " ").replace(/(st|nd|rd|th),/i, ",");
-              const parsed = new Date(cleanDateStr);
-              if (!Number.isNaN(parsed.getTime())) publishedAt = parsed;
-            }
-          }
-          
-          // Regex 3.3: Định dạng ISO (VD: 2026-04-24)
-          if (!publishedAt) {
-            const isoMatch = headText.match(/\d{4}-\d{2}-\d{2}/);
-            if (isoMatch) {
-              const parsed = new Date(isoMatch[0]);
-              if (!Number.isNaN(parsed.getTime())) publishedAt = parsed;
-            }
+        
+        // Lớp 3: Tìm từ cấu trúc URL
+        if (!publishedAt) {
+          const urlDateRe = /\/(\d{4})\/(\d{2})\/(\d{2})\//;
+          const mUrl = urlDateRe.exec(articleUrl);
+          if (mUrl) {
+             // [FIX ISSUE 3]: Dùng T12:00:00Z làm mốc trung vị để giảm thiểu sai số lệch ngày do Timezone
+             const parsed = new Date(`${mUrl[1]}-${mUrl[2]}-${mUrl[3]}T12:00:00Z`);
+             if (!Number.isNaN(parsed.getTime())) {
+               publishedAt = parsed;
+             }
           }
         }
 
         // ==========================================
-        // 🛡️ BỘ LỌC THỜI GIAN (CHẶN TIN CŨ VÀ TƯƠNG LAI)
+        // 🛡️ BỘ LỌC THỜI GIAN VÀ CHỐNG TÍN HIỆU TƯƠNG LAI
         // ==========================================
         if (publishedAt) {
           const now = new Date();
-          const diffMs = Math.abs(now.getTime() - publishedAt.getTime());
+          const diffMs = now.getTime() - publishedAt.getTime();
           const diffDays = diffMs / (1000 * 60 * 60 * 24);
           
+          // [FIX ISSUE 1]: Chống Look-ahead Bias bằng cách chặn tin từ tương lai.
+          // Cho phép sai lệch tối đa 2 giờ (do lệch đồng hồ server/múi giờ chưa đồng bộ hoàn toàn)
+          if (diffMs < -2 * 60 * 60 * 1000) {
+            throw new Error(`Future article detected (publishedAt: ${publishedAt.toISOString()}). Skipping...`);
+          }
+
           if (diffDays > 3) {
              throw new Error(`Article too old (${diffDays.toFixed(1)} days diff). Skipping...`);
           }
         } else {
-          throw new Error(`Cannot find published date from Metadata, Text, or URL. Skipping to ensure data freshness...`);
+          throw new Error(`Cannot find published date. Skipping to ensure data freshness...`);
         }
+
         return {
           siteUrl: articleUrl,
           articleUrl,
@@ -269,28 +272,24 @@ export class NewsScraper {
               : null,
           raw: res,
         };
-     } catch (err: any) {
-        // Lấy thông báo lỗi
+      } catch (err: any) {
         const errorMessage = err instanceof Error ? err.message : String(err);
 
-        // 🚀 CẢI TIẾN: KHÔNG RETRY VỚI CÁC LỖI DO BỘ LỌC CHỦ ĐỘNG ĐÁ VĂNG
+        // Không retry nếu lỗi thuộc về Logic bộ lọc
         if (
           errorMessage.includes("Article too old") ||
+          errorMessage.includes("Future article") ||
           errorMessage.includes("Cannot find published date") ||
           errorMessage.includes("Content too short")
         ) {
-          throw err; // Ném thẳng ra ngoài cho process.ts xử lý luôn, KHÔNG RETRY!
+          throw err; 
         }
 
-        // CHỈ RETRY NẾU LÀ LỖI MẠNG HOẶC LỖI FIRE CRAWL
-        console.error(`Scrape error ${articleUrl} attempt ${i + 1}`);
-
+        console.error(`Scrape error ${articleUrl} attempt ${i + 1}: ${errorMessage}`);
         if (i === MAX_RETRY - 1) throw err;
-
         await new Promise((r) => setTimeout(r, 1000));
       }
     }
-
     throw new Error("Unreachable");
   }
 }

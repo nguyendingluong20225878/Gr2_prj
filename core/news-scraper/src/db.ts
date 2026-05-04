@@ -1,12 +1,24 @@
-import { connectToDatabase } from "@gr2/shared/db/connection";
+import mongoose from "mongoose"; // Thêm mongoose để check connection state
+import { connectToDatabase as sharedConnect } from "@gr2/shared/db/connection";
 import { newsSiteTable } from "@gr2/shared/db/schema/news_sites";
 import { tokensTable } from "@gr2/shared/db/schema/tokens";
 import { newsArticlesTable } from "@gr2/shared/db/schema/news_articles";
 
+/**
+ * [FIX ISSUE 3]: Đảm bảo kết nối Singleton
+ * Tránh việc mở hàng trăm kết nối ảo khi chạy mapLimit concurrency cao
+ */
+export async function connectToDatabase() {
+  // 0: disconnected, 1: connected, 2: connecting, 3: disconnecting
+  if (mongoose.connection.readyState === 1) {
+    return;
+  }
+  await sharedConnect();
+}
+
 export async function loadNewsSites() {
   await connectToDatabase();
   return newsSiteTable.find().lean();
-  //find: lấy dl mongo, lean; convert sang obj thường
 }
 
 export async function loadTokens() {
@@ -14,11 +26,28 @@ export async function loadTokens() {
   return tokensTable.find().lean();
 }
 
+/**
+ * [FIX ISSUE 2]: Sử dụng cơ chế Upsert thông minh
+ * - $set: Cập nhật các nội dung có thể thay đổi (title, content, tags...)
+ * - $setOnInsert: Chỉ ghi một lần duy nhất lúc tạo mới (scrapedAt, createdAt)
+ */
 export async function upsertNewsArticle(article: any) {
   await connectToDatabase();
+  
+  const { articleUrl, scrapedAt, ...updateFields } = article;
+
   return newsArticlesTable.updateOne(
-    { articleUrl: article.articleUrl },
-    { $set: article },
+    { articleUrl: articleUrl },
+    { 
+      $set: { 
+        ...updateFields, 
+        updatedAt: new Date() 
+      },
+      $setOnInsert: { 
+        scrapedAt: scrapedAt || new Date(),
+        createdAt: new Date() 
+      } 
+    },
     { upsert: true }
   );
 }
@@ -37,8 +66,8 @@ export async function findExistingArticleUrls(urls: string[]): Promise<Set<strin
 
 export async function updateNewsSiteContent(siteId: string, content: string) {
   await connectToDatabase();
-  await newsSiteTable.updateOne(
-    { _id: siteId as any },
-    { $set: { content, lastScraped: new Date() } }
+  return newsSiteTable.updateOne(
+    { _id: siteId },
+    { $set: { lastScrapedContent: content, lastScrapedAt: new Date() } }
   );
 }

@@ -1,7 +1,6 @@
 import * as db from "./db";
 import { NewsScraper } from "./scraper";
-import { connectToDatabase } from "@gr2/shared/db/connection";
-import { newsArticlesTable } from "@gr2/shared/db/schema/news_articles";
+// [FIX ISSUE 5] Xóa bỏ hàm findExistingArticleUrls thừa ở đây vì đã gọi db.findExistingArticleUrls
 
 //Định nghĩa kiểu return
 type ProcessResult = {
@@ -22,17 +21,22 @@ function escapeRegex(text: string): string {
 
 // STRICT SYMBOL MATCH 
 function buildStrictSymbolRegex(symbol: string): RegExp | null {
-  const s = symbol?.trim();//có gtri thì trim k thì bỏ qua
-  if (!s) return null;
-  // symbol quá ngắn
-  if (s.length < 2) return null;
+  const s = symbol?.trim();
+  if (!s || s.length < 2) return null;
 
   const escaped = escapeRegex(s);
 
- 
+  /**
+   * Giải thích Regex:
+   * (?<![A-Za-z0-9]) : Phía trước không được là chữ cái hoặc số (Negative Lookbehind)
+   * \$?              : Cho phép ký hiệu $ ở trước (tùy chọn)
+   * ${escaped}       : Symbol của Token
+   * (?![A-Za-z0-9])  : Phía sau không được là chữ cái hoặc số (Negative Lookahead)
+   */
   const isAllUpperLetters = /^[A-Z]{2,}$/.test(s);
   const flags = isAllUpperLetters ? "" : "i";
-  return new RegExp(`(^|[^A-Za-z0-9])\\$?${escaped}([^A-Za-z0-9]|$)`, flags);
+  
+  return new RegExp(`(?<![A-Za-z0-9])\\$?${escaped}(?![A-Za-z0-9])`, flags);
 }
 
 /* =========================
@@ -70,7 +74,7 @@ function detectTokenSymbols(text: string, matchers: TokenMatcher[], opts?: { deb
     let matchIndex = -1;
 
     if (m.symbolRe) {
-      m.symbolRe.lastIndex = 0;
+      // [FIX ISSUE 6]: Xóa dòng m.symbolRe.lastIndex = 0; vì không dùng flag /g hoặc /y
       const exec = m.symbolRe.exec(text);
       if (exec) {
         matchedBy = "symbol";
@@ -113,17 +117,6 @@ async function mapLimit<T, R>(items: T[], concurrency: number, fn: (item: T) => 
   return results;
 }
 
-async function findExistingArticleUrls(urls: string[]): Promise<Set<string>> {
-  await connectToDatabase();
-  if (!urls.length) return new Set<string>();
-
-  const existing = await newsArticlesTable
-    .find({ articleUrl: { $in: urls } })
-    .select({ articleUrl: 1 })
-    .lean();
-
-  return new Set(existing.map((d: any) => String(d.articleUrl)));
-}
 
 /* =========================
     MAIN PROCESS
@@ -186,12 +179,11 @@ export async function processNewsScraping(
           continue;
         }
 
-        // cap per site to reduce cost/time
-        articleUrls = articleUrls.slice(0, maxArticlesPerSite);
-
-        // skip already-scraped urls
-        const existing = await findExistingArticleUrls(articleUrls);
-        const pendingUrls = articleUrls.filter((u) => !existing.has(u));
+        // [FIX ISSUE 2]: Check Data tồn tại TRƯỚC, cắt giới hạn (slice) SAU để tránh Pagination lỗi
+        const existingUrls = await db.findExistingArticleUrls(articleUrls);
+        const pendingUrls = articleUrls
+          .filter((u) => !existingUrls.has(u))
+          .slice(0, maxArticlesPerSite); // cap per site to reduce cost/time
 
         if (pendingUrls.length === 0) {
           results.push({
@@ -237,7 +229,7 @@ export async function processNewsScraping(
 
             savedCount++;
             return "saved";
-        } catch (err) {
+          } catch (err) {
             // Lấy thông báo lỗi ngắn gọn
             const errMsg = err instanceof Error ? err.message : String(err);
             // Log ra gọn gàng
@@ -278,4 +270,3 @@ export async function processNewsScraping(
     };
   }
 }
-//function
