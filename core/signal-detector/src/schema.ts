@@ -9,51 +9,47 @@ export const sourceSchema = new Schema({
   label: { type: String, required: true },
 });
 
-// Schema chính cho LLM Signal
+// Schema chính cho Quant Signal V3
 export const quantSignalSchema = new Schema(
   {
     signalDetected: { type: Boolean, required: true },
     tokenAddress: { type: String, required: true },
     sources: { type: [sourceSchema], required: true },
-    sentimentScore: { type: Number, required: true, min: -1, max: 1 },
+    
+    // Điểm số V3
+    quantScore: { type: Number, required: true }, 
+    volatilityFlag: { type: Number, required: true }, 
+    sentimentType: { type: String, required: true }, 
+    
     suggestionType: {
       type: String,
       enum: suggestionEnum,
       required: true,
     },
-    strength: { type: Number, min: 0, max: 100, default: null },
     confidence: { type: Number, min: 0, max: 1, default: null },
-    reasoning: { type: String, required: true },
-    relatedTweetIds: { type: [String], required: true },
-    reasonInvalid: { type: String, default: null },
-    impactScore: { type: Number, min: 1, max: 10, default: null },
+    rationaleSummary: { type: String, required: true },
+    reasoning: { type: String, default: "" }, // Giữ lại để tương thích ngược nếu cần
+    
+    relatedTweetIds: { type: [String], default: [] },
+    metadata: { type: Schema.Types.Mixed, default: {} },
   },
-  { timestamps: true } // tạo createdAt và updatedAt
+  { timestamps: true }
 );
-
-// Middleware để kiểm tra `strength`
-quantSignalSchema.pre("save", async function (this: LlmSignalDocument) {
-  if (this.signalDetected && (this.strength === null || this.strength < 1)) {
-    throw new Error("Strength must be between 1-100…");
-  }
-  if (!this.signalDetected && this.strength !== 0 && this.strength !== null) {
-    throw new Error("Strength must be 0 or null…");
-  }
-});
 
 // Interface TypeScript cho document
 export interface LlmSignalDocument extends Document {
   signalDetected: boolean;
   tokenAddress: string;
   sources: { url: string; label: string }[];
-  sentimentScore: number;
+  quantScore: number;
+  volatilityFlag: number;
+  sentimentType: string;
   suggestionType: typeof suggestionEnum[number];
-  strength: number | null;
   confidence: number | null;
+  rationaleSummary: string;
   reasoning: string;
   relatedTweetIds: string[];
-  reasonInvalid?: string | null;
-  impactScore: number | null;
+  metadata?: any;
 }
 
 // Model

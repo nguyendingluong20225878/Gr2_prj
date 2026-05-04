@@ -1,96 +1,37 @@
-import { QuantSignalResponse } from "./types"; 
+/// <reference types="node" />
+import { QuantSignalResponse } from "./types.js"; 
 
-export function mapQuantToMongoInsert(resp: any) {
+export function mapQuantToMongoInsert(resp: QuantSignalResponse) {
   const detectedAt = new Date();
+  const expiresAt = new Date(detectedAt.getTime() + 7 * 24 * 60 * 60 * 1000); // Tín hiệu sống 7 ngày
 
-  // 1. Map Suggestion Type & Sentiment Type
-  const rawAction = resp.action ? resp.action.toUpperCase() : "HOLD";
-  
-  let suggestionType = "hold";
-  let sentimentType: "positive" | "negative" | "neutral" = "neutral";
-  // Lấy sentimentScore từ AI, giới hạn -1 đến 1
-  let sentimentScore = typeof resp.sentimentScore === "number" ? Math.max(-1, Math.min(1, resp.sentimentScore)) : 0;
+  // Map Token 
+  const tokenSymbol = resp.tokenSymbol || "UNKNOWN";
+  const tokenAddress = resp.tokenAddress || "unknown_address";
 
-  if (rawAction === "BUY") {
-    suggestionType = "buy";
-    sentimentType = "positive";
-  } else if (rawAction === "SELL") {
-    suggestionType = "sell";
-    sentimentType = "negative";
-  }
-
-  // 2. Xử lý Confidence & Strength
-  // AI trả về resp.confidence là số từ 0 đến 100
-  const aiConfidence = typeof resp.confidence === 'number' ? resp.confidence : 0;
-
-  // Strength: Schema yêu cầu 1-100
-  const strength = aiConfidence; 
-
-  // Confidence: Schema thường dùng 0.0 - 1.0
-  const confidence = aiConfidence > 1 ? aiConfidence / 100 : aiConfidence;
-
-  // 3. Map Sources & Reason
-  // Lấy lý do từ AI
-  const rawReason = (resp.reason || "").slice(0, 5000); 
-  
-  const relatedTweetIds = Array.isArray(resp.relatedTweetIds) ? resp.relatedTweetIds : [];
-
-  // === FIX: Ưu tiên lấy sources từ resp (đã được detector xử lý) ===
-  let sources = [];
-  if (resp.sources && Array.isArray(resp.sources) && resp.sources.length > 0) {
-      sources = resp.sources;
-  } else {
-      // Fallback cũ (chỉ chạy nếu detector không truyền sources)
-      sources = relatedTweetIds.map((id: string) => ({
-          label: "Twitter/X",
-          url: `https://x.com/i/web/status/${id}`
-      }));
-  }
-  // ===============================================================
-
-  const expiresAt = new Date(detectedAt.getTime() + 7 * 24 * 60 * 60 * 1000);
-
-  // 4. Object Insert 
-  // Đảm bảo tokenAddress luôn có giá trị (đã truyền từ run-detection)
-  const tokenName = resp.tokenName || resp.tokenSymbol || "unknown_token";
-  // Nếu không có tokenAddress, dùng tokenSymbol
-  let tokenAddress = resp.tokenAddress;
-  if (!tokenAddress || tokenAddress === "unknown" || tokenAddress === "unknown_address") {
-    tokenAddress = resp.tokenSymbol || "unknown_token";
-  }
+  // Object Insert chuẩn Quant V3
   const insert = {
-    tokenName,
+    tokenName: tokenSymbol,
     tokenAddress,
     signalDetected: true,
     detectedAt,
     expiresAt,
 
-    // Các trường dữ liệu phân tích
-    suggestionType, 
-    sentimentType,  
-    sentimentScore, 
+    // Điểm số đặc trưng của V3
+    quantScore: resp.quantScore || 0,
+    volatilityFlag: resp.volatilityFlag || 0,
+    sentimentType: resp.sentimentType || "neutral",
+    suggestionType: resp.suggestionType || "hold",
+    confidence: resp.confidence || 0,
     
-    strength,       
-    confidence,     
-    
-    // === FIX QUAN TRỌNG TẠI ĐÂY ===
-    // Schema Shared đòi 'rationaleSummary', Schema Local đòi 'reasoning'
-    // Ta truyền cả 2 để tương thích mọi phiên bản DB
-    reasoning: rawReason,
-    rationaleSummary: rawReason, 
-    // ==============================
+    // Lý do & Nguồn
+    rationaleSummary: resp.rationaleSummary || "",
+    reasoning: resp.rationaleSummary || "", // Giữ lại để schema cũ không lỗi
+    sources: resp.sources || [],        
+    relatedTweetIds: resp.relatedTweetIds || [],
 
-    reasonInvalid: null,
-
-    // Nguồn dữ liệu
-    sources,        
-    relatedTweetIds,
-
-    // Metadata
     metadata: resp.metadata ?? {
-      tweetCount: resp.tweetCount,
-      tokenSymbol: resp.tokenSymbol,
-      type: resp.type || "social_aggregation",
+      type: "quant_v3_aggregation",
     },
   };
 
@@ -101,36 +42,32 @@ export function mapQuantToMongoInsert(resp: any) {
  * Lưu tín hiệu vào MongoDB
  */
 export async function saveSignalToDb(resp: any) {
-  if (!resp.signalDetected) return null;
+  resp.signalDetected = true; 
 
   const mongoUri = process.env.MONGODB_URI || process.env.DATABASE_URL;
   if (!mongoUri) {
     console.warn("[Persistence] MONGODB_URI not set; skipping persistence");
     return null;
   }
-  
-  // Dynamic Import Shared Module
+  // @ts-ignore
   const shared = await import("@gr2/shared");
   const { connectToDatabase, signalsTable, logProcessing, logSuccess, logFailed } = shared as any;
 
   try {
     await connectToDatabase();
-
     const insertData = mapQuantToMongoInsert(resp);
 
     await logProcessing(
       "Signal-Detector",
-      `Saving ${insertData.suggestionType.toUpperCase()} signal for ${resp.tokenSymbol}...`,
+      `Saving QUANT V3 signal for ${insertData.tokenName}...`,
       { tokenAddress: insertData.tokenAddress }
     );
 
-    // Chỉ coi là duplicate nếu suggestionType giống nhau trong 1h (bỏ kiểm tra tokenAddress)
-    // Luôn lưu signal, không skip nếu thiếu tokenAddress
     const created = await signalsTable.create(insertData);
 
     await logSuccess(
       "Signal-Detector",
-      `Saved Signal: ${insertData.suggestionType.toUpperCase()} ${resp.tokenSymbol}`,
+      `Saved Signal V3: ${insertData.tokenName} | Alpha: ${insertData.quantScore.toFixed(2)}`,
       { 
         signalId: created._id,
         tokenAddress: insertData.tokenAddress
@@ -138,19 +75,9 @@ export async function saveSignalToDb(resp: any) {
     );
 
     return created;
-
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error("[Persistence] DB Save Error:", errorMessage);
-    
-    try {
-        await logFailed(
-            "Signal-Detector",
-            `Failed to save signal: ${errorMessage}`,
-            { tokenAddress: resp.tokenAddress }
-        );
-    } catch (e) { /* Ignore */ }
-
     throw error;
   }
 }

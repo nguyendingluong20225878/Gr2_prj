@@ -1,7 +1,6 @@
 import dotenv from "dotenv";
 dotenv.config();
 
-// Sửa lại đường dẫn import DB cho đúng với thư mục thực tế của bạn
 import { 
   connectToDatabase, 
   newsArticlesTable, 
@@ -10,40 +9,48 @@ import {
   signalsTable 
 } from "@gr2/shared";
 
-// Import hàm từ file quant-engine ta vừa sửa
 import { detectSignalWithFinBertQuant } from "../src/quant-engine.js"; 
 
 async function main() {
   console.log("🚀 KHỞI ĐỘNG HỆ THỐNG QUANT ĐỊNH LƯỢNG NDL...");
   await connectToDatabase();
 
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
+  // NỚI LỎNG THỜI GIAN: Lấy data trong 3 ngày qua (Bao gồm cả bài báo ngày 25/04)
+  const timeWindow = new Date();
+  timeWindow.setDate(timeWindow.getDate() - 3);
 
-  // 1. KÉO DỮ LIỆU TỪ MONGODB
-  console.log("Đang lấy dữ liệu 24h qua...");
-  const rawNews = await newsArticlesTable.find({ publishedAt: { $gte: yesterday } }).lean();
+  console.log(`Đang tìm kiếm Data từ mốc: ${timeWindow.toISOString()}...`);
+
+  // ==========================================
+  // 1. KÉO CẢ NEWS VÀ TWEETS TỪ MONGODB
+  // ==========================================
+  const rawNews = await newsArticlesTable.find({ 
+    publishedAt: { $gte: timeWindow } 
+  }).lean();
   
-  // Chỉ lấy Tweet chưa từng tạo Signal (isSignalGenerated: false)
   const rawTweets = await tweetTable.find({ 
-    createdAt: { $gte: yesterday },
-    isSignalGenerated: false 
-} as any).lean(); 
+    createdAt: { $gte: timeWindow },
+    isSignalGenerated: { $ne: true } 
+  } as any).lean();
   
   const rawTokens = await tokensTable.find().lean();
 
   if (rawNews.length === 0 && rawTweets.length === 0) {
-    console.log("Không có dữ liệu mới để phân tích. Hệ thống tự động thoát.");
+    console.log("Không có News hay Tweets mới để phân tích. Hệ thống tự động thoát.");
     process.exit(0);
   }
 
+  console.log(`Đã tìm thấy ${rawNews.length} bài News và ${rawTweets.length} Tweets mới!`);
+
+  // ==========================================
   // 2. ÉP KIỂU SANG FORMAT CỦA QUANT ENGINE
+  // ==========================================
   const formattedNews = rawNews.map((n: any) => ({
-    siteUrl: n.siteUrl,
-    articleUrl: n.articleUrl,
-    title: n.title,
-    summary: n.summary,
-    content: n.content,
+    siteUrl: n.siteUrl || "",
+    articleUrl: n.articleUrl || n.url, 
+    title: n.title || "",
+    summary: n.summary || "",
+    content: n.content || "",
     publishedAt: n.publishedAt,
     scrapedAt: n.scrapedAt,
     detectedTokens: n.detectedTokens || [],
@@ -67,41 +74,63 @@ async function main() {
     name: tk.name,
   }));
 
+  // ==========================================
   // 3. CHẠY QUANT ENGINE
-  console.log(`Đang chạy FinBERT Quant cho ${formattedNews.length} News và ${formattedTweets.length} Tweets...`);
+  // ==========================================
+  console.log(`Đang bơm dữ liệu vào AI FinBERT và xử lý Z-Score...`);
   const quantResults = await detectSignalWithFinBertQuant({
     formattedNews,
     formattedTweets,
     knownTokens
   });
 
-  // 4. LƯU TÍN HIỆU NHÁP (RAW) VÀO DB ĐỂ CHỜ LLM
-  console.log(`Đã phân tích xong. Đang lưu ${quantResults.length} Tín hiệu Thô vào Database...`);
+  // ==========================================
+  // 4. LƯU TÍN HIỆU VÀO DATABASE (KHỚP SCHEMA)
+  // ==========================================
+  console.log(`Đã phân tích xong! Lưu ${quantResults.length} Tín hiệu Thô vào Database...`);
+  
+  // Tính ngày hết hạn mặc định là 7 ngày sau khi phát hiện
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + 7);
+
   for (const result of quantResults) {
+    const matchedToken = knownTokens.find(tk => tk.symbol === result.tokenSymbol);
+    const tokenAddress = matchedToken ? matchedToken.address : "unknown";
+
+    // Đóng gói mảng sources đúng chuẩn { label, url }
+    const mappedSources = [
+      ...result.newsEvidences.map(url => ({ label: "News Article", url })),
+      ...result.tweetEvidences.map(url => ({ label: "X/Twitter", url }))
+    ];
+
     await signalsTable.updateOne(
-      { tokenSymbol: result.tokenSymbol, status: "RAW" }, // Giả sử bảng signals của bạn có cột status
+      { tokenSymbol: result.tokenSymbol, status: "RAW" }, 
       { 
         $set: {
           tokenSymbol: result.tokenSymbol,
-          sentimentScore: result.quantScore, // Mượn cột sentimentScore lưu Z-Score
-          suggestionType: "hold",            // Tạm để hold, LLM sẽ ghi đè sau
-          reasoning: "Chờ LLM xử lý",
-          relatedTweetIds: [...result.newsEvidences, ...result.tweetEvidences], // Đổ hết link vào đây
+          tokenAddress: tokenAddress,
+          quantScore: result.quantScore,
+          sentimentType: result.sentimentType,
+          suggestionType: "hold",            
+          confidence: 0,                         // Điền tạm 0, LLM sẽ tính toán và ghi đè
+          rationaleSummary: "Đang chờ AI Phân Tích Lý Do...", // Điền tạm chuỗi
+          sources: mappedSources,                // Đưa mảng sources chuẩn vào
           status: "RAW",
+          expiresAt: expiresAt,
           updatedAt: new Date()
         },
         $setOnInsert: { 
-            signalDetected: true,
-            tokenAddress: "unknown_yet",
-            sources: [],
+            detectedAt: new Date(),
             createdAt: new Date() 
         }
       },
-      { upsert: true }
+      { upsert: true, runValidators: true } // Kích hoạt runValidators để chắc chắn đúng Schema
     );
   }
 
-  // 5. ĐÓNG DẤU TWEET ĐÃ XỬ LÝ (Chống lặp)
+  // ==========================================
+  // 5. ĐÓNG DẤU HOÀN THÀNH CHO TWEETS
+  // ==========================================
   const tweetIds = rawTweets.map((t: any) => t._id);
   if (tweetIds.length > 0) {
     await tweetTable.updateMany(
@@ -110,7 +139,7 @@ async function main() {
     );
   }
 
-  console.log("✅ HoÀN TẤT! Data đã nằm trong Database, sẵn sàng cho Mô hình LLM phán xử!");
+  console.log("✅ HOÀN TẤT PIPELINE! Dữ liệu đã sẵn sàng cho bước suy luận LLM.");
   process.exit(0);
 }
 

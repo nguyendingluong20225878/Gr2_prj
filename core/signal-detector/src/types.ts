@@ -72,20 +72,51 @@ export type SuggestionType = "buy" | "sell" | "hold" | "close_position" | "stake
 export interface QuantSignalResponse {
   signalDetected: boolean;
   tokenSymbol: string;
+  tokenAddress?: string; 
   sources: Source[];
-  sentimentScore: number;
+  
+  // Các chỉ số chuẩn của V3
+  quantScore: number;       
+  volatilityFlag: number;   
+  sentimentType: "positive" | "negative" | "neutral";
+  
   suggestionType: SuggestionType;
-  strength: number | null;
-  confidence: number | null;
-  reasoning: string;
-  relatedTweetIds: string[];
-  reasonInvalid?: string;
-  impactScore: number | null;
+  confidence: number;
+  rationaleSummary: string;
+  relatedTweetIds?: string[];
+  metadata?: any;
 }
 
-// Params cho Orchestrator (Detector cũ)
-export type DetectorParams = {
-  formattedNews: FormattedNews[];
-  formattedTweets: FormattedTweet[];
+
+// ==========================================
+// QUANT V3 INTERNAL PIPELINE TYPES
+// ==========================================
+
+// Thêm vào types.ts
+export interface DetectorParams {
+  formattedTweets: FormattedTweet[]; // Dùng đúng Type V2 của bạn
+  formattedNews: FormattedNews[];    // Dùng đúng Type V2 của bạn
   knownTokens: KnownTokenType[];
-};
+  historicalData?: Record<string, any[]>; 
+}
+
+// Interface dùng nội bộ trong V3 (Đã gom chung News & Tweet)
+export interface ScoredDoc {
+  tokenSymbol: string;
+  directionScore: number;
+  entropy: number;
+  finalWeight: number;
+  url: string;
+  type: 'tweet' | 'news';
+}
+
+export interface TokenQuantState {
+  symbol: string;
+  unifiedRaw: number;
+  volatilityFlag: number;
+  timeZ?: number;
+  pureAlphaZ?: number;
+  crossZ?: number;
+  finalScore?: number;
+  sources: string[];
+}

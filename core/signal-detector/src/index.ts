@@ -1,18 +1,20 @@
-// Public types
-export type { KnownTokenType, QuantSignalResponse, Source } from "./types";
+// ==========================================
+// 1. PUBLIC TYPES (Các interface dùng chung)
+// ==========================================
+export type { 
+  KnownTokenType, 
+  QuantSignalResponse, 
+  Source,
+  DetectorParams 
+} from "./types.js";
 
+// ==========================================
+// 3. MAIN ENGINE (Nhạc trưởng Quant V3)
+// ==========================================
+export { detectSignalWithFinBertQuant } from "./quant-engine.js";
 
-// Model factory
-//export { defaultSignalChatModel } from "./model";
+// ==========================================
+// 4. DATABASE MAPPING & PERSISTENCE (Lưu DB)
+// ==========================================
+export { mapQuantToMongoInsert, saveSignalToDb } from "./db-mapper.js";
 
-// Prompt template and helpers
-export { buildKnownTokensBlock, signalPromptTemplate } from "./prompt";
-
-// Main detection function
-// export { detectSignalWithLlm } from "./quant-engine";
-export { detectSignalWithFinBertQuant } from "./quant-engine";
-// export { computeStage2Signals } from "./twitter-aggregator";
-// Persistence helpers (optional): map and save to shared Mongo signals collection
-export { mapQuantToMongoInsert, saveSignalToDb } from "./db-mapper";
-
-// End of public API
