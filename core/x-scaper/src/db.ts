@@ -9,7 +9,7 @@ import {
 } from "@gr2/shared";
 import { XAccount } from "../../shared/src/types/x-account";
 
-// Define Tweet interface locally if not fully exported from shared, or import it
+// FIX 1: Cập nhật Data Contract để đón dữ liệu Retweet từ Scraper
 interface Tweet {
   time: string;
   data: string;
@@ -18,6 +18,8 @@ interface Tweet {
   replyCount?: number | null;
   retweetCount?: number | null;
   likeCount?: number | null;
+  isRetweet?: boolean;
+  originalUsername?: string;
 }
 
 const log = new Logger("XScaper");
@@ -30,14 +32,9 @@ async function initDB() {
   }
 }
 
-// =============================
-//      LẤY DANH SÁCH ACCOUNT
-// =============================
 export const getAllXAccounts = async (): Promise<XAccount[]> => {
   await initDB();
-
   const docs = await xAccountTable.find().lean();
-
   return docs.map((d: any) => ({
     id: d._id,
     displayName: d.displayName ?? undefined,
@@ -46,53 +43,51 @@ export const getAllXAccounts = async (): Promise<XAccount[]> => {
   }));
 };
 
-// =============================
-//          LƯU TWEETS
-// =============================
-// FIX: Thêm tham số followerCount để lưu vào xAccountTable
 export const saveTweets = async (
   accountId: string,
   tweets: Tweet[],
   followerCount?: number | null
 ): Promise<Date | null> => {
   await initDB();
-
   if (!tweets.length) return null;
 
   try {
     await logProcessing("X-Scraper", `Saving ${tweets.length} tweets for ${accountId}`);
 
-    // 1. Chuẩn bị documents
-    const tweetDocuments = tweets.map((t) => ({
-      tweetId: t.url.split("/status/")[1] || t.url,
-      authorId: accountId,               // Bắt buộc là authorId
-      url: t.url,
-      replyCount: t.replyCount ?? 0,     // Dùng 0 thay vì null để Quant Engine không bị lỗi
-      retweetCount: t.retweetCount ?? 0, 
-      likeCount: t.likeCount ?? 0,
-      content: t.data,
-      tweetTime: new Date(t.time),
-      isSignalGenerated: false,          // Đánh dấu data thô mới tinh
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    }));
+    const tweetDocuments = tweets.map((t) => {
+      const rawId = t.url.split("/status/")[1];
+      const cleanTweetId = rawId ? rawId.split("?")[0] : t.url;
 
-    // Bắt lỗi rành mạch để biết tại sao không vào DB:
-   try {
+      return {
+        tweetId: cleanTweetId,
+        authorId: accountId, // Vẫn là account mục tiêu (timeline)
+        
+        // FIX 1: Lưu trữ cờ Retweet và Author gốc để Quant phân tích Sentiment
+        isRetweet: t.isRetweet || false,
+        originalAuthorUsername: t.originalUsername || accountId, 
+        
+        url: t.url,
+        replyCount: t.replyCount ?? 0,
+        retweetCount: t.retweetCount ?? 0, 
+        likeCount: t.likeCount ?? 0,
+        content: t.data,
+        tweetTime: new Date(t.time), // Bug 2 đã được chặn từ tầng Scraper, Date ở đây đảm bảo 100% hợp lệ
+        isSignalGenerated: false,
+      };
+    });
+
+    try {
       const result = await tweetTable.insertMany(tweetDocuments, { ordered: false });
-      // Xử lý thông minh: Trả về số lượng tuỳ theo phiên bản Mongoose
-      const insertedCount = Array.isArray(result) ? result.length : (result as any).insertedCount || 1;
-      console.log(`[DB SUCCESS] Đã chèn mới thành công ${insertedCount} tweets vào MongoDB!`);
+      console.log(`[DB SUCCESS] Đã chèn mới thành công ${result.length} tweets vào MongoDB!`);
     } catch (err: any) {
-      // Bắt chính xác lỗi BulkWrite (trùng lặp ID)
       if (err.code === 11000 || (err.writeErrors && err.writeErrors.some((e: any) => e.code === 11000))) {
-        console.log(`[DB INFO] Hệ thống đã loại bỏ các bài bị trùng lặp (Duplicate Key) an toàn.`);
+        const inserted = err.insertedDocs ? err.insertedDocs.length : 0;
+        console.log(`[DB INFO] Duplicate Key: Đã lưu ${inserted} bài viết mới, hệ thống tự động bỏ qua các bài cũ.`);
       } else {
         console.error(`[DB FATAL ERROR] Lỗi Mongoose:`, err.message);
       }
     }
 
-    // 3. Cập nhật thời gian và Follower Count cho Account
     const newest = tweets
       .map((t) => new Date(t.time))
       .sort((a, b) => b.getTime() - a.getTime())[0];
@@ -100,7 +95,7 @@ export const saveTweets = async (
     const updateData: any = {};
     if (newest) updateData.lastTweetUpdatedAt = newest;
     if (followerCount !== undefined && followerCount !== null) {
-      updateData.followerCount = followerCount; // <-- ĐÃ FIX: Cập nhật Follower để tính AuthorWeight
+      updateData.followerCount = followerCount; 
     }
 
     if (Object.keys(updateData).length > 0) {
