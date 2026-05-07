@@ -1,6 +1,5 @@
-import * as db from "./db";
-import { NewsScraper } from "./scraper";
-// [FIX ISSUE 5] Xóa bỏ hàm findExistingArticleUrls thừa ở đây vì đã gọi db.findExistingArticleUrls
+import * as db from "./db.js";
+import { NewsScraper } from "./scraper.js";
 
 //Định nghĩa kiểu return
 type ProcessResult = {
@@ -11,7 +10,6 @@ type ProcessResult = {
 
 declare const process: { env: Record<string, string | undefined> };
 
-
 /* =========================
        REGEX UTILS
 ========================= */
@@ -19,81 +17,24 @@ function escapeRegex(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-// STRICT SYMBOL MATCH 
-function buildStrictSymbolRegex(symbol: string): RegExp | null {
-  const s = symbol?.trim();
-  if (!s || s.length < 2) return null;
+/**
+ * Xây dựng Regex tổng hợp O(1)
+ * Quét toàn bộ Token trong 1 lần duy nhất thay vì loop n lần.
+ * VD trả về: /(?<!\w)\$?(BTC|ETH|SOL)(?!\w)/gi
+ */
+function buildAggregateRegex(tokens: Array<{ symbol?: string | null }>): RegExp | null {
+  const validSymbols = tokens
+    .map(t => (t.symbol ?? "").trim())
+    .filter(s => s.length >= 2);
 
-  const escaped = escapeRegex(s);
+  if (validSymbols.length === 0) return null;
 
-  /**
-   * Giải thích Regex:
-   * (?<![A-Za-z0-9]) : Phía trước không được là chữ cái hoặc số (Negative Lookbehind)
-   * \$?              : Cho phép ký hiệu $ ở trước (tùy chọn)
-   * ${escaped}       : Symbol của Token
-   * (?![A-Za-z0-9])  : Phía sau không được là chữ cái hoặc số (Negative Lookahead)
-   */
-  const isAllUpperLetters = /^[A-Z]{2,}$/.test(s);
-  const flags = isAllUpperLetters ? "" : "i";
+  const pattern = validSymbols
+    .map(sym => escapeRegex(sym))
+    .join("|");
   
-  return new RegExp(`(?<![A-Za-z0-9])\\$?${escaped}(?![A-Za-z0-9])`, flags);
-}
-
-/* =========================
-   TOKEN DETECTION
-========================= */
-type TokenMatcher = {
-  symbol: string;
-  symbolRe: RegExp | null;
-};
-
-function buildTokenMatchers(tokens: Array<{ symbol?: string | null; name?: string | null }>): TokenMatcher[] {
-  const matchers: TokenMatcher[] = [];
-  for (const t of tokens) {
-    const symbol = (t.symbol ?? "").trim();
-    const symbolRe = symbol ? buildStrictSymbolRegex(symbol) : null;
-    if (!symbolRe) continue;
-    // store canonical symbol (UPPER) for detectedTokens
-    matchers.push({ symbol, symbolRe });
-  }
-  return matchers;
-}
-
-function detectTokenSymbols(text: string, matchers: TokenMatcher[], opts?: { debug?: boolean }): string[] {
-  const matched = new Set<string>();
-
-  function snippetAround(src: string, index: number, radius = 60): string {
-    if (!Number.isFinite(index) || index < 0) return "";
-    const start = Math.max(0, index - radius);
-    const end = Math.min(src.length, index + radius);
-    return src.slice(start, end);
-  }
-
-  for (const m of matchers) {
-    let matchedBy: "symbol" | null = null;
-    let matchIndex = -1;
-
-    if (m.symbolRe) {
-      // [FIX ISSUE 6]: Xóa dòng m.symbolRe.lastIndex = 0; vì không dùng flag /g hoặc /y
-      const exec = m.symbolRe.exec(text);
-      if (exec) {
-        matchedBy = "symbol";
-        matchIndex = exec.index;
-      }
-    }
-
-    if (matchedBy) {
-      const sym = m.symbol;
-      if (sym) matched.add(sym.toUpperCase());
-      if (opts?.debug) {
-        const matchSnippet = snippetAround(text, matchIndex);
-        console.log(
-          `[token-match] by=${matchedBy} token=${sym.toUpperCase()} matchIndex=${matchIndex} matchSnippet=${JSON.stringify(matchSnippet)}`
-        );
-      }
-    }
-  }
-  return [...matched];
+  // Sử dụng \w boundary để chuẩn xác hơn (Bắt được cả token có số như 1INCH)
+  return new RegExp(`(?<!\\w)\\$?(${pattern})(?!\\w)`, "gi");
 }
 
 function getEnvInt(name: string, fallback: number): number {
@@ -136,11 +77,12 @@ export async function processNewsScraping(
     const scraper = new NewsScraper(apiKey);
     const sites = await db.loadNewsSites();
     const tokens = await db.loadTokens();
-    const tokenMatchers = buildTokenMatchers(tokens as any[]);
+    
+    // Build 1 lần dùng cho cả tiến trình
+    const aggregateRegex = buildAggregateRegex(tokens as any[]);
 
     const maxArticlesPerSite = getEnvInt("NEWS_MAX_ARTICLES_PER_SITE", 10);
     const concurrency = getEnvInt("NEWS_SCRAPE_CONCURRENCY", 3);
-    const debugTokenMatch = process.env.DEBUG_TOKEN_MATCH === "1";
 
     const filteredSites = options?.specificSiteId
       ? sites.filter((s: any) => String(s._id) === options.specificSiteId)
@@ -164,6 +106,7 @@ export async function processNewsScraping(
 
         let articleUrls: string[] = [];
 
+        // Ưu tiên RSS để tiết kiệm mapUrl credit
         if ((site as any).rss) {
           articleUrls = await scraper.discoverFromRSS((site as any).rss);
         } else {
@@ -179,7 +122,7 @@ export async function processNewsScraping(
           continue;
         }
 
-        // [FIX ISSUE 2]: Check Data tồn tại TRƯỚC, cắt giới hạn (slice) SAU để tránh Pagination lỗi
+        // Lọc những bài đã có trong DB TRƯỚC, sau đó mới cắt Slice (Pagination)
         const existingUrls = await db.findExistingArticleUrls(articleUrls);
         const pendingUrls = articleUrls
           .filter((u) => !existingUrls.has(u))
@@ -208,11 +151,15 @@ export async function processNewsScraping(
               .filter(Boolean)
               .join("\n");
 
-            const detectedTokens = detectTokenSymbols(fullText, tokenMatchers, {
-              debug: debugTokenMatch,
-            });
+            // Quét Token cực nhanh bằng Regex tổng hợp
+            let detectedTokens: string[] = [];
+            if (aggregateRegex) {
+              const matches = fullText.match(aggregateRegex) || [];
+              // Làm sạch matches (xóa dấu $ và in hoa) rồi loại trùng lặp
+              detectedTokens = [...new Set(matches.map(m => m.replace(/\$/g, '').toUpperCase()))];
+            }
 
-            //  hard cleanup: skip nếu không có token
+            // hard cleanup: skip nếu không có token
             if (detectedTokens.length === 0) return "skipped";
 
             await db.upsertNewsArticle({
@@ -232,7 +179,10 @@ export async function processNewsScraping(
           } catch (err) {
             // Lấy thông báo lỗi ngắn gọn
             const errMsg = err instanceof Error ? err.message : String(err);
-            // Log ra gọn gàng
+            //  THÊM ĐOẠN NÀY: Ném thẳng lỗi Fatal ra ngoài để đánh sập mapLimit ngay lập tức
+            if (errMsg.includes("FATAL_FIRECRAWL_OUT_OF_CREDITS")) {
+            throw err; 
+           }
             console.log(`[Bộ lọc] Đã bỏ qua bài viết ${articleUrl}: ${errMsg}`);
             return "error";
           }

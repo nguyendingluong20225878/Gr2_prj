@@ -1,11 +1,11 @@
-import mongoose from "mongoose"; // Thêm mongoose để check connection state
+import mongoose from "mongoose";
 import { connectToDatabase as sharedConnect } from "@gr2/shared/db/connection";
 import { newsSiteTable } from "@gr2/shared/db/schema/news_sites";
 import { tokensTable } from "@gr2/shared/db/schema/tokens";
 import { newsArticlesTable } from "@gr2/shared/db/schema/news_articles";
 
 /**
- * [FIX ISSUE 3]: Đảm bảo kết nối Singleton
+ * Đảm bảo kết nối Singleton
  * Tránh việc mở hàng trăm kết nối ảo khi chạy mapLimit concurrency cao
  */
 export async function connectToDatabase() {
@@ -27,14 +27,14 @@ export async function loadTokens() {
 }
 
 /**
- * [FIX ISSUE 2]: Sử dụng cơ chế Upsert thông minh
- * - $set: Cập nhật các nội dung có thể thay đổi (title, content, tags...)
- * - $setOnInsert: Chỉ ghi một lần duy nhất lúc tạo mới (scrapedAt, createdAt)
+ * Sử dụng cơ chế Upsert thông minh
+ * - $set: Cập nhật các nội dung có thể thay đổi
+ * - $setOnInsert: Chỉ ghi một lần duy nhất lúc tạo mới (để giữ nguyên scrapedAt lịch sử)
  */
 export async function upsertNewsArticle(article: any) {
   await connectToDatabase();
   
-  const { articleUrl, scrapedAt, ...updateFields } = article;
+  const { articleUrl, scrapedAt, siteUrl, ...updateFields } = article;
 
   return newsArticlesTable.updateOne(
     { articleUrl: articleUrl },
@@ -44,6 +44,8 @@ export async function upsertNewsArticle(article: any) {
         updatedAt: new Date() 
       },
       $setOnInsert: { 
+        articleUrl: articleUrl,
+        siteUrl: siteUrl,
         scrapedAt: scrapedAt || new Date(),
         createdAt: new Date() 
       } 
