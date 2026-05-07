@@ -63,22 +63,19 @@ export const saveTweets = async (
     await logProcessing("X-Scraper", `Saving ${tweets.length} tweets for ${accountId}`);
 
     // 1. Chuẩn bị documents
-    const tweetDocuments = tweets.map((t) => {
-      const idMatch = t.url.match(/\/status\/(\d+)/);
-      return {
-        tweetId: idMatch ? idMatch[1] : t.url,
-        authorId: accountId,
-        url: t.url,
-        replyCount: t.replyCount ?? null,
-        retweetCount: t.retweetCount ?? null, 
-        likeCount: t.likeCount ?? null,
-        content: t.data,
-        tweetTime: new Date(t.time),
-        isSignalGenerated: false,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-    });
+    const tweetDocuments = tweets.map((t) => ({
+      tweetId: t.url.split("/status/")[1] || t.url,
+      authorId: accountId,               // Bắt buộc là authorId
+      url: t.url,
+      replyCount: t.replyCount ?? 0,     // Dùng 0 thay vì null để Quant Engine không bị lỗi
+      retweetCount: t.retweetCount ?? 0, 
+      likeCount: t.likeCount ?? 0,
+      content: t.data,
+      tweetTime: new Date(t.time),
+      isSignalGenerated: false,          // Đánh dấu data thô mới tinh
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }));
 
     // Bắt lỗi rành mạch để biết tại sao không vào DB:
    try {
