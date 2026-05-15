@@ -1,60 +1,45 @@
-import mongoose, {
-  HydratedDocument,
-  InferSchemaType,
-  Schema,
-  model,
-  Model,
-} from "mongoose";
+// shared/src/db/schema/signal.ts
+import mongoose, { Schema, model } from "mongoose";
 
-export type SignalSource = { label: string; url: string };
+const SENTIMENT_TYPES = ["positive", "negative", "neutral", "mixed"]; 
+const SUGGESTION_TYPES = ["buy", "sell", "hold", "stake", "close_position"];
+const STATUS_TYPES = ["RAW", "PROCESSED", "FAILED"]; 
 
-const SENTIMENT_TYPES = ["positive", "negative", "neutral"] as const;
-const SUGGESTION_TYPES = ["buy", "sell", "hold", "stake", "close_position"] as const;
-const STATUS_TYPES = ["RAW", "PROCESSED", "FAILED"] as const; // <-- Thêm danh sách trạng thái
-
-const signalSchema = new Schema(
-  {
-    tokenSymbol: { type: String, required: true, index: true }, // <-- Thêm Symbol
+const signalSchema = new Schema({
+    tokenSymbol: { type: String, required: true, index: true }, 
     tokenAddress: { type: String, required: true, index: true },
     detectedAt: { type: Date, default: Date.now, required: true },
     sources: {
-      type: [
-        {
-          label: { type: String, required: true },
-          url: { type: String, required: true },
-        },
-      ],
-      required: true,
+        type: [
+            {
+                label: { type: String, required: true },
+                url: { type: String, required: true },
+            },
+        ],
+        required: true,
     },
     sentimentType: {
-      type: String,
-      enum: SENTIMENT_TYPES,
-      required: true,
+        type: String,
+        enum: SENTIMENT_TYPES,
+        required: true,
     },
     suggestionType: {
-      type: String,
-      enum: SUGGESTION_TYPES,
-      required: true,
+        type: String,
+        enum: SUGGESTION_TYPES,
+        required: true,
     },
-    quantScore: { type: Number, required: true }, // <-- Thêm điểm Toán học (Z-Score)
+    directionScore: { type: Number, required: true, default: 0 }, 
+    quantScore: { type: Number, required: true }, 
     confidence: { type: Number, required: true },
-    rationaleSummary: { type: String, required: true },
-    expiresAt: { type: Date, required: true, index: true },
-    status: { type: String, enum: STATUS_TYPES, default: "RAW", required: true }, // <-- Thêm Status
-    // Optional: store quantitative features for backtesting/audit
+    rationaleSummary: { type: String, required: false, default: "Đang chờ AI phân tích..." },
+    expiresAt: { type: Date, required: false, index: true }, 
+    status: { type: String, enum: STATUS_TYPES, default: "RAW", required: true }, 
     metadata: { type: Schema.Types.Mixed, required: false, default: null },
-  },
-  {
+}, {
     collection: "signals",
     timestamps: { createdAt: "createdAt", updatedAt: "updatedAt" },
-  }
-);
+});
 
-export type SignalSchema = InferSchemaType<typeof signalSchema>;
-export type SignalDocument = HydratedDocument<SignalSchema>;
-export type SignalSelect = SignalDocument;
-export type SignalInsert = SignalSchema;
+signalSchema.index({ tokenSymbol: 1, createdAt: -1 });
 
-export const signalsTable: Model<SignalSchema> =
-  (mongoose.models.Signal as Model<SignalSchema>) ??
-  model<SignalSchema>("Signal", signalSchema);
+export const signalsTable = mongoose.models.Signal ?? model("Signal", signalSchema);

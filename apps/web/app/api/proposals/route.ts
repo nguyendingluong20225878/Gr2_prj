@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import mongoose from 'mongoose';
-import { ProposalModel as RawProposalModel } from '../../../../../core/proposal-generator/src/db/schema/proposals';
+import { ProposalModel as RawProposalModel } from '../../../../../core/layer3/src/db/schema/proposals';
 
 const ProposalModel = RawProposalModel as mongoose.Model<any>;
 

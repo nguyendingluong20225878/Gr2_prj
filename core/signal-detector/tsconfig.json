@@ -2,11 +2,15 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "src",
+    "rootDir": ".",
     "composite": true,
-    "ignoreDeprecations": "6.0"
+    "ignoreDeprecations": "6.0",
+
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "target": "ES2020"
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "scripts/**/*"],
   "exclude": ["node_modules", "dist", "**/*.test.ts"],
   "references": [
     { "path": "../shared" }

@@ -1,8 +1,7 @@
 import { finBertProbs } from "./finbert.js";
 import { calcNormEntropy, calcDecay } from "./quant-math.js";
-import { ScoredDoc, FormattedTweet, FormattedNews } from "./types.js";
+import { ScoredDoc } from "./types.js"; // Đã xóa import thừa tránh lỗi noUnusedLocals
 
-// Hàm parse thời gian an toàn (Hỗ trợ cả chuẩn ISO và Mongoose {$date})
 function parseDateRobust(dateVal: any): number {
   if (!dateVal) return Date.now();
   if (typeof dateVal === 'object' && dateVal.$date) {
@@ -11,15 +10,29 @@ function parseDateRobust(dateVal: any): number {
   return new Date(dateVal).getTime();
 }
 
-function findToken(text: string, knownTokens: any[]): any | null {
-  if (!text) return null;
-  const upperText = text.toUpperCase();
-  for (const token of knownTokens) {
-    if (upperText.includes(token.symbol.toUpperCase()) || upperText.includes(token.name.toUpperCase())) {
-      return token;
+function escapeRegex(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+interface CompiledToken {
+  symbol: string;
+  name: string;
+  address?: string;
+  symbolRegex: RegExp;
+  nameRegex: RegExp;
+}
+
+// [FIX ISSUE 1]: Hàm quét Token động dành riêng cho Tweets (Trả về mảng nhiều Token)
+function findTokensInText(text: string, compiledTokens: CompiledToken[]): CompiledToken[] {
+  if (!text) return [];
+  const found: CompiledToken[] = [];
+
+  for (const token of compiledTokens) {
+    if (token.symbolRegex.test(text) || token.nameRegex.test(text)) {
+      found.push(token);
     }
   }
-  return null;
+  return found;
 }
 
 function chunkArray<T>(array: T[], size: number): T[][] {
@@ -31,78 +44,129 @@ function chunkArray<T>(array: T[], size: number): T[][] {
 }
 
 export async function processDocuments(
-  allDocs: any[], // Mảng đã trộn chung Tweets và News
+  allDocs: any[],
   knownTokens: any[]
 ): Promise<ScoredDoc[]> {
-  const scoredDocuments: ScoredDoc[] = [];
-  const userWeightUsage = new Map<string, number>();
+
   const MAX_WEIGHT_PER_USER = 5.0;
+  const userWeightUsage = new Map<string, number>();
+  const scoredDocuments: ScoredDoc[] = [];
 
-  // 1. Chuẩn hóa Input: Gom chữ từ Tweet và News
-  const relevantDocs = allDocs.map(doc => {
+  // 🚀 [FINAL FIX - PERFORMANCE]: Khởi tạo Cache để tránh gọi API trùng lặp
+  const textScoreCache = new Map<string, any>();
+
+  const compiledTokens: CompiledToken[] = knownTokens.map(token => {
+    const symStr = token.symbol.trim();
+    const symUpper = escapeRegex(symStr.toUpperCase());
+    const symLower = escapeRegex(symStr.toLowerCase());
+    
+    // Name: Chuẩn hóa để bắt chữ HOA ĐẦU (Chainlink) hoặc HOA TOÀN BỘ (CHAINLINK)
+    const nameStr = token.name.trim();
+    const nameCapitalized = escapeRegex(nameStr.charAt(0).toUpperCase() + nameStr.slice(1).toLowerCase());
+    const nameUpper = escapeRegex(nameStr.toUpperCase());
+
+    return {
+      ...token,
+      // 🚀 Regex Symbol (Bỏ cờ 'i'): Chấp nhận $LINK, $link, #LINK, #link, hoặc LINK (bắt buộc viết hoa)
+      symbolRegex: new RegExp(`(?<![a-zA-Z0-9])(?:[\\$#]${symUpper}|[\\$#]${symLower}|${symUpper})(?![a-zA-Z0-9])`, 'g'),
+      
+      // 🚀 Regex Name (Bỏ cờ 'i'): Chấp nhận Chainlink hoặc CHAINLINK. Tránh false positive với "link" thường.
+      nameRegex: new RegExp(`(?<![a-zA-Z0-9])(?:${nameCapitalized}|${nameUpper})(?![a-zA-Z0-9])`, 'g')
+    };
+  });
+
+  // 🚨 VÁ LỖI TYPE SCRIPT: Định danh cứng cấu trúc mảng để TS không bối rối (Thủ phạm gây lỗi null prototype)
+  const relevantDocs: Array<{ doc: any; token: CompiledToken }> = [];
+
+  // [BỔ SUNG KIẾN TRÚC]: Tách biệt luồng nhận diện Token giữa Tweet và News
+  for (const doc of allDocs) {
     const isTweet = doc.docType === 'tweet';
-    // Gộp title và content đối với News để AI đọc hiểu ngữ cảnh tốt hơn
-    const text = isTweet ? doc.text : `${doc.title || ''}. ${doc.summary || ''}. ${doc.content || ''}`;
-    const token = findToken(text, knownTokens);
-    return { doc, text, token, isTweet };
-  }).filter(item => item.token !== null);
+    let matchedTokens: CompiledToken[] = [];
 
-  // 2. Chia nhỏ gọi API FinBERT (Mỗi lượt 10 bài để chống lỗi Timeout)
+    if (isTweet) {
+      // Tweets: Quét văn bản trực tiếp bằng Regex
+      const textToSearch = doc.text || "";
+      matchedTokens = findTokensInText(textToSearch, compiledTokens);
+    } else {
+      // News: Tận dụng mảng detectedTokens đã được hệ thống Scraper trích xuất sẵn trong DB
+      if (doc.detectedTokens && Array.isArray(doc.detectedTokens)) {
+        const detectedUpper = doc.detectedTokens.map((t: string) => t.toUpperCase());
+        // Map mảng string thành mảng CompiledToken object
+        matchedTokens = compiledTokens.filter(t => detectedUpper.includes(t.symbol.toUpperCase()));
+      }
+    }
+
+    // Nếu bài báo/tweet nhắc đến 3 Token, nhân bản thành 3 record độc lập
+    for (const token of matchedTokens) {
+      relevantDocs.push({ doc, token });
+    }
+  }
+
   const chunks = chunkArray(relevantDocs, 10);
-  
+
   for (const chunk of chunks) {
-    const promises = chunk.map(async ({ doc, text, token, isTweet }) => {
+    for (const { doc, token } of chunk) {
       try {
-        // [GĐ 1] Gọi AI chấm điểm Cảm xúc & Biến động
-        const { pPos, pNeg, pNeu } = await finBertProbs(text);
-        const directionScore = pPos - pNeg;
-        const entropy = calcNormEntropy(pPos, pNeg, pNeu);
+        const isTweet = doc.docType === 'tweet';
+        const textToScore = isTweet ? doc.text : `${doc.title}\n${doc.summary}`;
 
-        // [GĐ 2.1] Tính toán Decay Thời gian
-        // Lấy đúng field thời gian của V2
-        const dateRaw = isTweet ? (doc.time || doc.tweetTime) : (doc.publishedAt || doc.createdAt);
-        const docDateMs = parseDateRobust(dateRaw);
-        const hoursOld = (Date.now() - docDateMs) / (1000 * 60 * 60);
-        const decay = calcDecay(hoursOld, 12); // Nửa đời phân rã 12 tiếng
+        let probs;
 
-        // [GĐ 2.2] Tính Sức nặng (Trọng số)
+        // 🚀 [FINAL FIX - PERFORMANCE]: Kiểm tra Cache trước khi gọi API HuggingFace
+        if (textScoreCache.has(textToScore)) {
+          probs = textScoreCache.get(textToScore);
+        } else {
+          probs = await finBertProbs(textToScore);
+          textScoreCache.set(textToScore, probs); // Lưu kết quả vào Cache
+        }
+
+        const directionScore = probs.pPos - probs.pNeg;
+        const entropy = calcNormEntropy(probs.pPos, probs.pNeg, probs.pNeu);
+
+        const publishTime = isTweet ? parseDateRobust(doc.time) : parseDateRobust(doc.publishedAt);
+        const hoursOld = (Date.now() - publishTime) / (1000 * 60 * 60);
+        const decay = calcDecay(hoursOld, 12);
+
         let rawWeight = 1.0;
         if (isTweet) {
           const engagement = (doc.replyCount || 0) + (doc.retweetCount || 0) + (doc.likeCount || 0);
-          rawWeight = 1 + Math.log(1 + engagement); // Cộng điểm cho tweet viral
+          rawWeight = 1 + Math.log(1 + engagement);
         } else {
-          rawWeight = 2.0; // News uy tín hơn tweet lẻ, mặc định x2 sức nặng
+          rawWeight = 2.0;
         }
 
         let finalWeight = rawWeight * decay;
 
-        // [GĐ 2.3] Chặn Bot Spam (Chỉ chặn trên Twitter)
-        if (isTweet && doc.author) { // V2 Tweet dùng trường `author`
+        if (isTweet && doc.author) {
           const currentUsage = userWeightUsage.get(doc.author) || 0;
           const allowedWeight = Math.min(finalWeight, Math.max(0, MAX_WEIGHT_PER_USER - currentUsage));
           userWeightUsage.set(doc.author, currentUsage + allowedWeight);
           finalWeight = allowedWeight;
         }
 
-        // Lấy URL chuẩn
         const finalUrl = isTweet ? doc.url : (doc.articleUrl || doc.siteUrl);
 
-        if (finalWeight > 0.01) { // Lọc bỏ các bài quá cũ (weight < 0.01)
+        if (finalWeight > 0.01) {
           scoredDocuments.push({
             tokenSymbol: token.symbol,
+            tokenAddress: token.address || "unknown_address",
             directionScore,
             entropy,
             finalWeight,
             url: finalUrl || "No_URL",
-            type: doc.docType
+            type: isTweet ? 'tweet' : 'news'
           });
         }
-      } catch (err) {
-        console.error(`[Document Processor] Bỏ qua 1 tài liệu do lỗi FinBERT:`, err instanceof Error ? err.message : err);
+      } catch (err: any) {
+        console.error(`[Quant V3] Lỗi xử lý tài liệu cho token ${token.symbol}:`, err?.message || err);
       }
-    });
 
-    await Promise.all(promises);
+      // 🚀 BỔ SUNG: Cho API nghỉ ngơi 300ms sau MỖI BÀI BÁO
+      await new Promise(resolve => setTimeout(resolve, 300));
+    }
+
+    // Sau khi chạy xong 1 lô (chunk 10 bài), nghỉ ngơi thêm 2 giây cho chắc ăn
+    await new Promise(resolve => setTimeout(resolve, 2000));
   }
 
   return scoredDocuments;

@@ -3,12 +3,12 @@ export * from "./db/index.js";
 export * from "./db/connection.js";
 
 // ===== PROPOSALS =====
-export { getProposalModel } from "./db/schema/proposals.js";
+export { getProposalModel } from "./db/schema/proposal.js";
 export type {
   Proposal,
   ProposalDocument,
   ProposalInsert,
-} from "./db/schema/proposals.js";
+} from "./db/schema/proposal.js";
 
 // ===== X / TWEETS =====
 export { tweetTable } from "./db/schema/tweets.js";

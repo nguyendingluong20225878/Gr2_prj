@@ -44,18 +44,17 @@ export type PreScoredNewsEvidence = {
   tokenKey: string; 
   articleUrl: string;
   zScore: number;       
-  rawScore?: number;    
-  finalWeight: number;  
+  rawScore?: number;
 };
 
 // ==========================================
-// 3. SHARED TYPES & SYSTEM CONFIG
+// 3. DICTIONARY & ENUMS
 // ==========================================
 
 export type KnownTokenType = {
-  address: string;
   symbol: string;
   name: string;
+  address?: string;
 };
 
 export type Source = {
@@ -66,16 +65,15 @@ export type Source = {
 export type SuggestionType = "buy" | "sell" | "hold" | "close_position" | "stake";
 
 // ==========================================
-// 4. FINAL OUTPUT (Tín hiệu cuối cùng lưu xuống DB)
+// 3. FINAL OUTPUT (Tín hiệu cuối cùng lưu xuống DB)
 // ==========================================
 
 export interface QuantSignalResponse {
   signalDetected: boolean;
   tokenSymbol: string;
   tokenAddress?: string; 
-  sources: Source[];
+  sources: Source[]; // Bằng chứng (Evidence) cho LLM trích dẫn
   
-  // Các chỉ số chuẩn của V3
   quantScore: number;       
   volatilityFlag: number;   
   sentimentType: "positive" | "negative" | "neutral";
@@ -87,22 +85,20 @@ export interface QuantSignalResponse {
   metadata?: any;
 }
 
-
 // ==========================================
 // QUANT V3 INTERNAL PIPELINE TYPES
 // ==========================================
 
-// Thêm vào types.ts
 export interface DetectorParams {
-  formattedTweets: FormattedTweet[]; // Dùng đúng Type V2 của bạn
-  formattedNews: FormattedNews[];    // Dùng đúng Type V2 của bạn
+  formattedTweets: FormattedTweet[]; 
+  formattedNews: FormattedNews[];    
   knownTokens: KnownTokenType[];
   historicalData?: Record<string, any[]>; 
 }
 
-// Interface dùng nội bộ trong V3 (Đã gom chung News & Tweet)
 export interface ScoredDoc {
   tokenSymbol: string;
+  tokenAddress: string; 
   directionScore: number;
   entropy: number;
   finalWeight: number;
@@ -112,11 +108,14 @@ export interface ScoredDoc {
 
 export interface TokenQuantState {
   symbol: string;
+  tokenAddress: string; 
+  docsCount: number;
   unifiedRaw: number;
-  volatilityFlag: number;
+  avgEntropy: number;
+  // [FIX BUG 1]: Bổ sung mảng sources để lưu vết bằng chứng
+  sources: Source[]; 
   timeZ?: number;
   pureAlphaZ?: number;
   crossZ?: number;
   finalScore?: number;
-  sources: string[];
 }

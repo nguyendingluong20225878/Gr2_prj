@@ -10,3 +10,5 @@ export * from "./user_balances.js";
 export * from "./token_prices.js";
 export * from "./signals.js";
 export * from "./logs.js";
+// export * from "./backtest_results.js";
+export * from "./proposal.js";

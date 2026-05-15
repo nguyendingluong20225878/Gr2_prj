@@ -2,23 +2,12 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "..", 
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    
-    // === THÊM ĐOẠN NÀY ĐỂ TRỎ @gr2/shared VỀ SOURCE CODE ===
-    "baseUrl": ".",
-    "paths": {
-      "@gr2/shared": ["../shared/src/index.ts"]
-    }
-    // =====================================================
+    "rootDir": ".", 
+    "types": ["node"],
+    "declaration": true,
+    "sourceMap": true,
+    "ignoreDeprecations": "6.0"
   },
-  "include": [
-    "src/**/*", 
-    "scripts/**/*"
-  ],
-  "exclude": [
-    "node_modules", 
-    "dist"
-  ]
+  "include": ["src/**/*", "scripts/**/*"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts"]
 }

@@ -3,7 +3,7 @@ import connectDB from '@/lib/mongodb';
 import mongoose from 'mongoose';
 
 // Import Proposal Model (DB Local)
-import { ProposalModel as RawProposalModel } from '../../../../../core/proposal-generator/src/db/schema/proposals';
+import { ProposalModel as RawProposalModel } from '../../../../../core/layer3/src/db/schema/proposals';
 const ProposalModel = RawProposalModel as unknown as mongoose.Model<any>;
 
 /** Helper: Normalize number (15.0000 -> 15) */

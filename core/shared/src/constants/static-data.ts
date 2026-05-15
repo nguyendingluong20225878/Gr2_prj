@@ -1,5 +1,5 @@
 import type { TokenSchema } from "../db/schema/tokens.js";
-import type { ProposalInsert } from "../db/schema/proposals.js";
+import type { ProposalInsert } from "../db/schema/proposal.js";
 
 /**
  * Internal-only types

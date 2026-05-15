@@ -1,8 +1,5 @@
 import mongoose from "mongoose";
-import { connectToDatabase as sharedConnect } from "@gr2/shared/db/connection";
-import { newsSiteTable } from "@gr2/shared/db/schema/news_sites";
-import { tokensTable } from "@gr2/shared/db/schema/tokens";
-import { newsArticlesTable } from "@gr2/shared/db/schema/news_articles";
+import { connectToDatabase as sharedConnect, newsSiteTable, tokensTable, newsArticlesTable } from "@gr2/shared";
 
 /**
  * Đảm bảo kết nối Singleton

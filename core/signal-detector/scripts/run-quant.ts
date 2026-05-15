@@ -1,149 +1,148 @@
-import dotenv from "dotenv";
+import dotenv from 'dotenv';
+import mongoose from 'mongoose';
+import { detectSignalWithFinBertQuant } from '../src/quant-engine.js';
+
 dotenv.config();
 
-import { 
-  connectToDatabase, 
-  newsArticlesTable, 
-  tweetTable, 
-  tokensTable, 
-  signalsTable 
-} from "@gr2/shared";
-
-import { detectSignalWithFinBertQuant } from "../src/quant-engine.js"; 
-
 async function main() {
-  console.log("🚀 KHỞI ĐỘNG HỆ THỐNG QUANT ĐỊNH LƯỢNG NDL...");
-  await connectToDatabase();
+  console.log("🚀 [NDL QUANT] Bắt đầu phiên làm việc...");
 
-  // NỚI LỎNG THỜI GIAN: Lấy data trong 3 ngày qua (Bao gồm cả bài báo ngày 25/04)
-  const timeWindow = new Date();
-  timeWindow.setDate(timeWindow.getDate() - 3);
+  try {
+    // 1. Kết nối DB
+    await mongoose.connect(process.env.MONGODB_URI!);
+    console.log("📡 Đã kết nối MongoDB.");
 
-  console.log(`Đang tìm kiếm Data từ mốc: ${timeWindow.toISOString()}...`);
+    const db = mongoose.connection.db;
+    if (!db) throw new Error("Không thể lấy instance Database!");
 
-  // ==========================================
-  // 1. KÉO CẢ NEWS VÀ TWEETS TỪ MONGODB
-  // ==========================================
-  const rawNews = await newsArticlesTable.find({ 
-    publishedAt: { $gte: timeWindow } 
-  }).lean();
-  
-  const rawTweets = await tweetTable.find({ 
-    createdAt: { $gte: timeWindow },
-    isSignalGenerated: { $ne: true } 
-  } as any).lean();
-  
-  const rawTokens = await tokensTable.find().lean();
+    // 🚀 [QUYẾT ĐỊNH]: Cố định bảng signals theo yêu cầu của bạn
+    const targetCollection = 'signals';
 
-  if (rawNews.length === 0 && rawTweets.length === 0) {
-    console.log("Không có News hay Tweets mới để phân tích. Hệ thống tự động thoát.");
-    process.exit(0);
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    // 2. QUERY DỮ LIỆU ĐẦU VÀO
+    const rawNews = await db.collection('news_articles').find({ publishedAt: { $gte: oneDayAgo } }).toArray();
+    const rawTweets = await db.collection('tweets').find({ tweetTime: { $gte: oneDayAgo } }).toArray();
+    const knownTokensRaw = await db.collection('tokens').find({ type: { $in: ['coin', 'spl'] } }).toArray();
+
+    const formattedNews = rawNews.map((n: any) => ({
+      ...n,
+      docType: 'news',
+      publishedAt: n.publishedAt ?? n.scrapedAt ?? new Date()
+    }));
+
+    const formattedTweets = rawTweets.map((t: any) => ({
+      docType: 'tweet',
+      id: t._id?.toString() ?? t.url ?? '',
+      text: t.content || t.text || '',
+      author: t.authorId ?? '',
+      time: t.tweetTime || t.createdAt || new Date(),
+      ...t
+    }));
+
+    const knownTokens = knownTokensRaw.map((tk: any) => ({
+      ...tk,
+      address: tk.address ?? undefined
+    }));
+
+    console.log(`📥 Đã tải: ${rawNews.length} tin tức, ${rawTweets.length} tweets.`);
+
+    // 3. NẠP LỊCH SỬ TỪ BẢNG SIGNALS (Dùng tokenSymbol)
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const pastSignals = await db.collection(targetCollection).find({
+      createdAt: { $gte: sevenDaysAgo }
+    }).project({ tokenSymbol: 1, quantScore: 1, createdAt: 1 }).toArray();
+
+    const historicalData: Record<string, any[]> = {};
+    pastSignals.forEach((sig: any) => {
+      const sym = sig.tokenSymbol as string;
+      if (!sym) return;
+
+      if (!historicalData[sym]) historicalData[sym] = [];
+      historicalData[sym].push({
+        unifiedRaw: sig.quantScore || 0,
+        timestamp: new Date(sig.createdAt).getTime()
+      });
+    });
+    console.log(`📚 Đã nạp lịch sử cho ${Object.keys(historicalData).length} tokens từ bảng [${targetCollection}].`);
+
+    // 4. CHẠY ENGINE
+    const results = await detectSignalWithFinBertQuant({
+      formattedNews,
+      formattedTweets,
+      knownTokens,
+      historicalData
+    });
+
+    // 5. LƯU KẾT QUẢ VÀO BẢNG SIGNALS
+    if (results.length > 0) {
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+
+      const bulkOps = results.map((res: any) => {
+        const symbol = res.tokenSymbol as string || "UNKNOWN";
+        const tokenInfo = knownTokens.find((t: any) => t.symbol === symbol);
+        const finalAddress = tokenInfo?.address || tokenInfo?._id?.toString() || "unknown";
+
+        return {
+          updateOne: {
+            filter: {
+              tokenSymbol: symbol, // Chỉ dùng tokenSymbol như bạn yêu cầu
+              createdAt: { $gte: startOfDay }
+            },
+            update: {
+              $set: {
+                tokenSymbol: symbol,
+                tokenAddress: finalAddress,
+                quantScore: res.quantScore || 0,
+                confidence: res.confidence || 0,
+                suggestionType: res.suggestionType || 'hold',
+                sentimentType: res.sentimentType || 'neutral',
+                sources: res.sources || [],
+                metadata: {
+                  sampleSize: historicalData[symbol]?.length || 0,
+                  isNewToken: (historicalData[symbol]?.length || 0) < 3,
+                  volatilityFlag: res.volatilityFlag || 0, 
+                  processedAt: new Date(),
+                  ...(res.metadata || {})
+                },
+                status: "RAW",
+                updatedAt: new Date()
+              },
+              $setOnInsert: {
+                createdAt: new Date()
+              }
+            },
+            upsert: true
+          }
+        };
+      });
+
+      // THỰC THI VÀ LOG CHI TIẾT ĐỂ KIỂM CHỨNG
+      console.log(`⏳ Đang thực hiện BulkWrite ${bulkOps.length} lệnh vào bảng [${targetCollection}]...`);
+      const writeResult = await db.collection(targetCollection).bulkWrite(bulkOps);
+      
+      console.log("--------------------------------------------------");
+      console.log(`✅ KẾT QUẢ GHI DATABASE THỰC TẾ:`);
+      console.log(`   - Số bản ghi mới (Inserted): ${writeResult.upsertedCount}`);
+      console.log(`   - Số bản ghi cập nhật (Modified): ${writeResult.modifiedCount}`);
+      console.log(`   - Tổng số bản ghi khớp filter: ${writeResult.matchedCount}`);
+      console.log("--------------------------------------------------");
+
+      if (writeResult.upsertedCount > 0 || writeResult.modifiedCount > 0) {
+        console.log("🎉 THÀNH CÔNG: Dữ liệu đã được ghi nhận xuống đĩa.");
+      }
+
+    } else {
+      console.log("💡 Không có tín hiệu nào đủ mạnh để tạo ra.");
+    }
+
+  } catch (error) {
+    console.error("❌ Lỗi thực thi hệ thống Quant:", error);
+  } finally {
+    await mongoose.disconnect();
+    console.log("🏁 Đã ngắt kết nối DB. Hoàn tất.");
   }
-
-  console.log(`Đã tìm thấy ${rawNews.length} bài News và ${rawTweets.length} Tweets mới!`);
-
-  // ==========================================
-  // 2. ÉP KIỂU SANG FORMAT CỦA QUANT ENGINE
-  // ==========================================
-  const formattedNews = rawNews.map((n: any) => ({
-    siteUrl: n.siteUrl || "",
-    articleUrl: n.articleUrl || n.url, 
-    title: n.title || "",
-    summary: n.summary || "",
-    content: n.content || "",
-    publishedAt: n.publishedAt,
-    scrapedAt: n.scrapedAt,
-    detectedTokens: n.detectedTokens || [],
-  }));
-
-  const formattedTweets = rawTweets.map((t: any) => ({
-    id: t._id.toString(),
-    text: t.content,
-    author: t.authorId,
-    time: t.tweetTime,
-    url: t.url,
-    replyCount: t.replyCount || 0,
-    retweetCount: t.retweetCount || 0,
-    likeCount: t.likeCount || 0,
-    authorWeight: 1, 
-  }));
-
-  const knownTokens = rawTokens.map((tk: any) => ({
-    address: tk._id.toString(),
-    symbol: tk.symbol,
-    name: tk.name,
-  }));
-
-  // ==========================================
-  // 3. CHẠY QUANT ENGINE
-  // ==========================================
-  console.log(`Đang bơm dữ liệu vào AI FinBERT và xử lý Z-Score...`);
-  const quantResults = await detectSignalWithFinBertQuant({
-    formattedNews,
-    formattedTweets,
-    knownTokens
-  });
-
-  // ==========================================
-  // 4. LƯU TÍN HIỆU VÀO DATABASE (KHỚP SCHEMA)
-  // ==========================================
-  console.log(`Đã phân tích xong! Lưu ${quantResults.length} Tín hiệu Thô vào Database...`);
-  
-  // Tính ngày hết hạn mặc định là 7 ngày sau khi phát hiện
-  const expiresAt = new Date();
-  expiresAt.setDate(expiresAt.getDate() + 7);
-
-  for (const result of quantResults) {
-    const matchedToken = knownTokens.find(tk => tk.symbol === result.tokenSymbol);
-    const tokenAddress = matchedToken ? matchedToken.address : "unknown";
-
-    // Đóng gói mảng sources đúng chuẩn { label, url }
-    const mappedSources = [
-      ...result.newsEvidences.map(url => ({ label: "News Article", url })),
-      ...result.tweetEvidences.map(url => ({ label: "X/Twitter", url }))
-    ];
-
-    await signalsTable.updateOne(
-      { tokenSymbol: result.tokenSymbol, status: "RAW" }, 
-      { 
-        $set: {
-          tokenSymbol: result.tokenSymbol,
-          tokenAddress: tokenAddress,
-          quantScore: result.quantScore,
-          sentimentType: result.sentimentType,
-          suggestionType: "hold",            
-          confidence: 0,                         // Điền tạm 0, LLM sẽ tính toán và ghi đè
-          rationaleSummary: "Đang chờ AI Phân Tích Lý Do...", // Điền tạm chuỗi
-          sources: mappedSources,                // Đưa mảng sources chuẩn vào
-          status: "RAW",
-          expiresAt: expiresAt,
-          updatedAt: new Date()
-        },
-        $setOnInsert: { 
-            detectedAt: new Date(),
-            createdAt: new Date() 
-        }
-      },
-      { upsert: true, runValidators: true } // Kích hoạt runValidators để chắc chắn đúng Schema
-    );
-  }
-
-  // ==========================================
-  // 5. ĐÓNG DẤU HOÀN THÀNH CHO TWEETS
-  // ==========================================
-  const tweetIds = rawTweets.map((t: any) => t._id);
-  if (tweetIds.length > 0) {
-    await tweetTable.updateMany(
-      { _id: { $in: tweetIds } },
-      { $set: { isSignalGenerated: true } }
-    );
-  }
-
-  console.log("✅ HOÀN TẤT PIPELINE! Dữ liệu đã sẵn sàng cho bước suy luận LLM.");
-  process.exit(0);
 }
 
-main().catch((err) => {
-  console.error("❌ LỖI NGHIÊM TRỌNG TRONG RUNNER:", err);
-  process.exit(1);
-});
+main();

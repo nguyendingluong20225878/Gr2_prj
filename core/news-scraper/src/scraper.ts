@@ -14,13 +14,13 @@ export type ScrapedNewsArticle = {
 };
 
 /**
- * CƠ CHẾ TỔNG QUÁT: Cắt bỏ toàn bộ rác (Menu, Ticker, Ads) nằm trước Tiêu đề bài báo.
+ * ==================================================
+ * LỚP 1: CHẶT ĐẦU (Diệt Ticker, Menu, Ads Header)
+ * ==================================================
  */
 function cutBeforeTitle(content: string, title: string): string {
   if (!title || !content) return content;
   try {
-    // [FIX TỬ HUYỆT]: Dùng \p{L} và \p{N} để giữ lại đúng Chữ cái (Đa ngôn ngữ) và Số.
-    // Thay thế toàn bộ dấu câu ($, phẩy, chấm) thành khoảng trắng để split.
     const cleanTitleWords = title
       .replace(/[^\p{L}\p{N}\s]/gu, " ") 
       .trim()
@@ -29,8 +29,6 @@ function cutBeforeTitle(content: string, title: string): string {
        
     if (cleanTitleWords.length < 3) return content; 
 
-    // [FIX TỬ HUYỆT]: Cho phép giữa các từ trong Title có thể chứa tối đa 40 ký tự rác 
-    // (khoảng trắng, markdown, dấu $, dấu phẩy, v.v.). Điều này giúp Regex KHÔNG BAO GIỜ TRƯỢT!
     const regexStr = cleanTitleWords.join("[^\\p{L}\\p{N}]{1,40}");
     const regex = new RegExp(regexStr, "iu");
     
@@ -83,10 +81,16 @@ function isValidArticleUrl(url: string): boolean {
   }
 }
 
+/**
+ * ==================================================
+ * LỚP 2: CHẶT ĐUÔI (Diệt "More For You", Footer)
+ * ==================================================
+ */
 function extractMainContent(md: string): string {
   if (!md) return "";
 
-  const start = md.indexOf("# ");
+  // 🚀 [FIX]: Do Lớp 1 đã chặt đầu, nội dung chính bắt đầu ngay tại index 0. Bỏ tìm "# "
+  const start = 0;
   const normalizeForSearch = (s: string) => s.replace(/\u00a0/g, " ").toLowerCase();
 
   const endMarkers = [
@@ -109,53 +113,33 @@ function extractMainContent(md: string): string {
     }
   }
 
-  return md.slice(Math.max(0, start), end).trim();
+  return md.slice(start, end).trim();
 }
 
+/**
+ * ==================================================
+ * LỚP 3: DỌN DẸP (Kẻ Hủy Diệt Rác Nội Dụng)
+ * ==================================================
+ */
 function cleanContent(md: string): string {
-  // 1. Dọn dẹp Link và Image Markdown cơ bản (Hỗ trợ multiline link an toàn)
   let cleaned = md
     .replace(/!\[[\s\S]{0,200}?\]\([\s\S]{0,200}?\)/g, "") 
     .replace(/\[([\s\S]{0,200}?)\]\([\s\S]{0,200}?\)/g, "$1") 
     .replace(/https?:\/\/\S+/g, "") 
     .replace(/Share this article[^\n]*\n/g, ""); 
 
-  // ==================================================
-  // LỚP PHÒNG THỦ 2: QUÉT SẠCH OVERLAY, WIDGET & EMBED RÁC
-  // ==================================================
-  
-  // [MỚI] Kẻ Hủy Diệt Twitter / X Embeds
   cleaned = cleaned.replace(/(?:Twitter Embed|Visit this post on X)[\s\S]{1,1500}?(?:Copy link|Read [\d,]+ replies|X Ads info and privacy)[^\n]*/gi, "");
-
-  // [MỚI] Kẻ Hủy Diệt YouTube / Video Embeds
   cleaned = cleaned.replace(/(?:[^\n]*?(?:YouTube|Tap to unmute)\n)[\s\S]{1,300}?(?:Watch on|subscribers)[^\n]*/gi, "");
-
-  // Kẻ Hủy Diệt Form Social Login / Điều khoản sử dụng
   cleaned = cleaned.replace(/(?:Continue|Sign in|Log in)?\s*with (?:Google|Facebook|Apple|Email)[\s\S]{1,300}?(?:Terms of Service|Privacy Policy)[\s\S]{1,150}?(?:Sign up(?: for free)?|Continue|Agree|Accept)[^\n]*/gi, "");
-  
-  // Kẻ Hủy Diệt Widget Cá cược / Prediction Markets
   cleaned = cleaned.replace(/(?:[^\n]{1,100}\n+){0,3}?(?:###\s*[^\n]+\n+)?[\s\S]{1,800}?(?:profit from predicting|predicting future events|Points and USD.*?markets|depending on your country)[\s\S]{1,200}?(?:Continue|Sign up|Play Now)[^\n]*/gi, "");
-
-  // Kẻ Hủy Diệt "Bài Viết Đề Xuất" (Truncated Preview Cards)
   cleaned = cleaned.replace(/(?:^|\n)#{2,4}\s+[^\n]+\n+(?:[^\n]+\n+){0,4}?[^\n]{10,600}?(?:…|\.\.\.)\s*(?=\n|$)/g, "");
-
-  // Dọn dẹp Footer Mini rác chèn ngang giữa bài
   cleaned = cleaned.replace(/(?:Privacy Policy[\s·|•\-]+Terms & Conditions|Terms of Service[\s·|•\-]+Privacy Policy)/gi, "");
-
-  // TIÊU DIỆT TICKER BAR GIÁ COIN TỔNG QUÁT
   cleaned = cleaned.replace(/(?:###\s*)?[^\n]{1,30}[\s\n]+\$[\d,.]+[\s\n]+[-+]?[\d,.]+\s*%/gi, "");
-  
-  // Xóa tiêu đề "# Coin Prices" trơ trọi
   cleaned = cleaned.replace(/#\s*(?:Coin Prices|Market Data|Crypto Prices)\s*\n+/gi, "");
 
-  // ==================================================
-  // [FIX LỖI NUỐT BÀI] Giới hạn khoảng cách [\s\S]*? thành {1,300} để không tạo "Hố đen"
-  // ==================================================
   cleaned = cleaned.replace(/The Decrypt News roundup[\s\S]{1,300}?(?:Terms & Conditions|Copy link)/gi, "");
   cleaned = cleaned.replace(/Price data by[\s\S]{1,300}?Reading/gi, "");
   cleaned = cleaned.replace(/Log in or Sign up[\s\S]{1,300}?(?:Continue with Google|OR)/gi, "");
-
-  // Dọn rác Video của Cointelegraph (Giới hạn vùng quét)
   cleaned = cleaned.replace(/More Videos[\s\S]{1,300}?This video file cannot be played[^\n]*/gi, "");
   cleaned = cleaned.replace(/Press shift question mark[\s\S]{1,300}?Increase Caption Size[^\n]*/gi, "");
   cleaned = cleaned.replace(/Keyboard ShortcutsEnabledDisabled[\s\S]{1,300}?Seek %0-9/gi, "");
@@ -365,10 +349,15 @@ export class NewsScraper {
         let rawData: any = null;
 
         if (cheapData) {
-          contentToProcess = cheapData.content;
           finalTitle = cheapData.title;
           metaForDate = cheapData.metaData;
           rawData = { method: "cheerio" }; 
+
+          // 🚀 [FIX LỚN]: Đưa Cheerio qua phễu lọc 3 Lớp (Chặt Đầu -> Chặt Đuôi -> Dọn Rác)
+          let step1 = cutBeforeTitle(cheapData.content, finalTitle);
+          let step2 = extractMainContent(step1);
+          contentToProcess = cleanContent(step2).slice(0, 50000); 
+
         } else {
           const res = await this.app.scrapeUrl(cleanArticleUrl, {
             formats: ["markdown"], 
@@ -379,20 +368,21 @@ export class NewsScraper {
 
           if (!res.success) throw new Error(res.error);
 
-          const raw = res.markdown ?? "";
-          contentToProcess = cleanContent(extractMainContent(raw)).slice(0, 50000); 
-          
           metaForDate = res.metadata as any;
           finalTitle = metaForDate?.title ?? "";
           finalSummary = metaForDate?.description ?? "";
           rawData = res;
+
+          // 🚀 Đưa Firecrawl qua đúng phễu lọc tương tự
+          const raw = res.markdown ?? "";
+          let step1 = cutBeforeTitle(raw, finalTitle);
+          let step2 = extractMainContent(step1);
+          contentToProcess = cleanContent(step2).slice(0, 50000); 
         }
 
         if (!contentToProcess || contentToProcess.length < 200) {
           throw new Error("Content too short");
         }
-
-        contentToProcess = cutBeforeTitle(contentToProcess, finalTitle);
 
         const publishedAt = extractPublishedDate(cleanArticleUrl, contentToProcess, metaForDate);
 

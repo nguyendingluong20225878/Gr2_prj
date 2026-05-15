@@ -1,18 +1,22 @@
 import { median } from "./quant-math.js";
-import { ScoredDoc, TokenQuantState } from "./types.js";
+import { ScoredDoc, TokenQuantState, Source } from "./types.js";
 
 export function aggregateAndNormalize(scoredDocuments: ScoredDoc[]): Map<string, TokenQuantState> {
   const tokenGroups = new Map<string, ScoredDoc[]>();
-  
+  const addressMap = new Map<string, string>();
+
   scoredDocuments.forEach(doc => {
-    if (!tokenGroups.has(doc.tokenSymbol)) tokenGroups.set(doc.tokenSymbol, []);
+    if (!tokenGroups.has(doc.tokenSymbol)) {
+      tokenGroups.set(doc.tokenSymbol, []);
+      addressMap.set(doc.tokenSymbol, doc.tokenAddress);
+    }
     tokenGroups.get(doc.tokenSymbol)!.push(doc);
   });
 
-  // Tìm Median Market Attention
   const allWeights = Array.from(tokenGroups.values()).map(docs => docs.reduce((sum, d) => sum + d.finalWeight, 0));
-  const medianMarketWeight = median(allWeights) || 1e-9;
-  const marketNormFactor = Math.log(1 + medianMarketWeight);
+  const medianMarketWeight = median(allWeights) || 0;
+  
+  const marketNormFactor = Math.max(Math.log(1 + medianMarketWeight), 0.1);
 
   const tokenStates = new Map<string, TokenQuantState>();
 
@@ -21,15 +25,31 @@ export function aggregateAndNormalize(scoredDocuments: ScoredDoc[]): Map<string,
     const weightedBase = docs.reduce((sum, d) => sum + (d.directionScore * d.finalWeight), 0) / (totalWeight || 1e-9);
     const avgEntropy = docs.reduce((sum, d) => sum + d.entropy, 0) / docs.length;
 
-    // Chuẩn hóa volume V3
     const volumeBoost = Math.log(1 + totalWeight) / marketNormFactor;
-    const unifiedRaw = weightedBase * volumeBoost;
+    const unifiedRaw = weightedBase * (1 + volumeBoost);
+
+    // =========================================================================
+    // 🚀 [FINAL FIX BUG 1]: SẮP XẾP BẰNG CHỨNG THEO ĐỘ UY TÍN (WEIGHT)
+    // Sắp xếp mảng giảm dần theo finalWeight trước khi cắt (slice). 
+    // Giúp LLM ở Layer 3 luôn đọc được những bài báo/tweet có sức nặng nhất.
+    // =========================================================================
+    const sources: Source[] = [...docs]
+      .sort((a, b) => b.finalWeight - a.finalWeight)
+      .slice(0, 5) 
+      .map(d => ({
+        url: d.url,
+        label: d.type === 'tweet' ? 'X (Twitter)' : 'News Article'
+      }));
 
     tokenStates.set(symbol, {
       symbol,
+      tokenAddress: addressMap.get(symbol) || "unknown_address",
+      docsCount: docs.length,
       unifiedRaw,
-      volatilityFlag: avgEntropy,
-      sources: [...new Set(docs.map(d => d.url))].slice(0, 5)
+      avgEntropy,
+      sources, // Đã lưu vết thành công với dữ liệu xịn nhất
+      timeZ: 0,
+      pureAlphaZ: 0
     });
   }
 

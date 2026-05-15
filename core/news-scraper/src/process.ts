@@ -13,14 +13,24 @@ function escapeRegex(text: string): string {
 }
 
 function buildAggregateRegex(tokens: Array<{ symbol?: string | null }>): RegExp | null {
-  const validSymbols = tokens
-    .map(t => (t.symbol ?? "").trim())
-    .filter(s => s.length >= 2);
+  // Lọc ra các symbol hợp lệ và ép VIẾT HOA toàn bộ
+  const validSymbols = [...new Set(tokens
+    .map(t => (t.symbol ?? "").trim().toUpperCase())
+    .filter(s => s.length >= 2))];
 
   if (validSymbols.length === 0) return null;
 
-  const pattern = validSymbols.map(sym => escapeRegex(sym)).join("|");
-  return new RegExp(`(?<!\\w)\\$?(${pattern})(?!\\w)`, "gi");
+  // Xây dựng 3 trường hợp cho mỗi symbol: $LINK, $link, và LINK
+  const matchers = validSymbols.map(sym => {
+    const symUpper = escapeRegex(sym);
+    const symLower = escapeRegex(sym.toLowerCase());
+    return `\\$${symUpper}|\\$${symLower}|${symUpper}`;
+  });
+
+  const pattern = matchers.join("|");
+  
+  // 🚀 QUAN TRỌNG: Chỉ dùng cờ "g" (Global), XÓA BỎ cờ "i" (Case-Insensitive)
+  return new RegExp(`(?<![a-zA-Z0-9])(?:${pattern})(?![a-zA-Z0-9])`, "g");
 }
 
 function getEnvInt(name: string, fallback: number): number {
@@ -90,8 +100,7 @@ export async function processNewsScraping(options?: { specificSiteId?: string })
 
         const existingUrls = await db.findExistingArticleUrls(articleUrls);
         
-        let pendingUrls = articleUrls.filter((u) => !existingUrls.has(u));
-
+        let pendingUrls = articleUrls.filter((u) => !existingUrls.has(u))
         // BẮT BUỘC PHẢI CÓ ĐOẠN NÀY ĐỂ ƯU TIÊN LINK MỚI NHẤT TỪ FIRECRAWL MAP
         pendingUrls.sort((a, b) => {
           const matchA = a.match(/\/(\d{4})\/(\d{2})\/(\d{2})\//);

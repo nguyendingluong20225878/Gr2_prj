@@ -1,0 +1,5 @@
+NẾU log ghi là STOP: AI đã viết xong một cách tự nhiên. (Lỗi cụt chữ đã được sửa hoàn toàn nhờ tăng tokens và tắt bộ lọc).
+
+NẾU log ghi là SAFETY: Google đã chặn câu đó (nhưng nhờ cài BLOCK_NONE ở trên, điều này 99% sẽ không xảy ra nữa).
+
+NẾU log ghi là MAX_TOKENS: Văn bản quá dài, bị cắt ngang (rất hiếm khi xảy ra với mức 2048 tokens).

@@ -9,7 +9,8 @@
     "format": "prettier --write .",
     "start": "node dist/index.js",
     "generate": "tsx scripts/generateProposal.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "layer3": "tsx scripts/run-layer3.ts"
   },
   "license": "MIT",
   "dependencies": {
