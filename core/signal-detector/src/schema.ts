@@ -9,7 +9,7 @@ export const sourceSchema = new Schema({
   label: { type: String, required: true },
 });
 
-// Schema chính cho Quant Signal V3
+// Schema cho Quant Signal V3
 export const quantSignalSchema = new Schema(
   {
     signalDetected: { type: Boolean, required: true },
@@ -17,8 +17,8 @@ export const quantSignalSchema = new Schema(
     sources: { type: [sourceSchema], required: true },
     
     // Điểm số V3
-    quantScore: { type: Number, required: true }, 
-    volatilityFlag: { type: Number, required: true }, 
+    quantScore: { type: Number, required: true }, // Điểm tổng hợp cuối cùng
+    volatilityFlag: { type: Number, required: true }, // Cờ chỉ thị độ biến động
     sentimentType: { type: String, required: true }, 
     
     suggestionType: {

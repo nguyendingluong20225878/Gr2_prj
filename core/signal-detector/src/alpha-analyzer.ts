@@ -1,23 +1,25 @@
 import { calcMAD, median } from "./quant-math.js";
-import { TokenQuantState, QuantSignalResponse } from "./types.js";
+import { DetectorHyperParams, TokenQuantState, QuantSignalResponse } from "./types.js";
 
+//Phân tích tín hiệu alpha và chuẩn hóa chéo cho từng token
 export function evaluateAlphaAndCross(
-  tokenStates: Map<string, TokenQuantState>, 
-  historicalData: Record<string, any[]>
-): Partial<QuantSignalResponse>[] {
+  tokenStates: Map<string, TokenQuantState>,//quant của token  
+  historicalData: Record<string, any[]>,//Dữ liệu lịch sử của token
+  hyperParams: DetectorHyperParams//tham số điều chỉnh
+): Partial<QuantSignalResponse>[] {//out: mảng tín hiệu quant cuối cùng chỉ gồm token có tín hiệu mạnh
   
-  // ======================================================================
-  // GIAI ĐOẠN 4: Z-Score & Beta (Time-Series Alpha)
-  // ======================================================================
+
+  // Z-Score & Beta (Time-Series Alpha)
+  // Đo xem unifiedRaw hiện tại của token lệch
+  // bao nhiêu so với lịch sử gần nhất của chính nó
   let btcTimeZ = 0;
   for (const [symbol, state] of tokenStates.entries()) {
     const history = historicalData[symbol] || [];
     
-    // Bảo vệ Token non trẻ (N < 3): Ngồi ngoài cuộc chơi Beta
+    // Nếu token có ít hơn 3 điểm lịch sử (token mới)
+    // thì timeZ = unifiedRaw (không chuẩn hóa, để lọt qua bộ lọc, sẽ phạt confidence
     if (history.length < 3) {
-      // 🚀 [GIẢI PHÁP COLD START TỐI ƯU]: 
-      // Giữ nguyên điểm gốc để lọt qua bộ lọc > 0.5 và được lưu vào DB.
-      // Hình phạt sẽ được áp dụng vào biến 'confidence' ở Giai đoạn 5.
+
       state.timeZ = state.unifiedRaw; 
     } else {
       const ema7 = history.length > 1 ? history[history.length - 2].unifiedRaw : state.unifiedRaw; 
@@ -28,29 +30,25 @@ export function evaluateAlphaAndCross(
 
     if (symbol === 'BTC') btcTimeZ = state.timeZ;
   }
-  // =========================================================================
-  // 🚀 [FINAL TOUCH - BUG 1]: TRẢM BỎ FALLBACK DỊ BỘ (NO NEWS IS FLAT NEWS)
-  // Xóa bỏ toàn bộ khối lệnh bới móc dữ liệu quá khứ của BTC. 
-  // Nếu lô cào hiện tại không có tin về BTC, btcTimeZ = 0. 
-  // Đảm bảo không lấy "Bóng ma của hôm qua" áp đặt lên "Thế trận của hôm nay".
-  // =========================================================================
 
   // Beta Neutralization: Trừ đi tác động của thị trường chung (BTC)
+  // Trung hòa tác động thị trường chung
   for (const [symbol, state] of tokenStates.entries()) {
     const history = historicalData[symbol] || [];
     
-    // Bảo vệ Token non trẻ (N < 3): Ngồi ngoài cuộc chơi Beta
+    // Nếu token mới (<3 điểm): pureAlphaZ = timeZ.
     if (history.length < 3) {
       state.pureAlphaZ = state.timeZ; 
     } else {
-      state.pureAlphaZ = symbol === 'BTC' ? state.timeZ : state.timeZ! - (0.75 * btcTimeZ);
+      state.pureAlphaZ = symbol === 'BTC'
+        ? state.timeZ //Nếu là BTC: pureAlphaZ = timeZ.
+        : state.timeZ! - (hyperParams.betaToBtc * btcTimeZ); // Token khác: pureAlphaZ = timeZ - (betaToBtc * btcTimeZ)
     }
   }
 
-  // GIAI ĐOẠN 5: Cross-Sectional Z-Score & Final Filter
-  
-  // [BẢN VÁ BUG 2]: Cách ly Benchmark BTC và Token non trẻ khỏi mảng so sánh chéo
-  const validAlphas = Array.from(tokenStates.values())
+  // Cross-Sectional Z-Score & Final Filter
+  // So sánh alpha của từng token với các token khác cùng thời điểm (loại trừ BTC và token mới).
+  const validAlphas = Array.from(tokenStates.values())//tạo arr gồm pureAlphaZ của các token (trừ BTC và token mới)
     .filter(s => s.symbol !== 'BTC' && (historicalData[s.symbol]?.length || 0) >= 3)
     .map(s => s.pureAlphaZ!);
 
@@ -58,7 +56,7 @@ export function evaluateAlphaAndCross(
   const crossMean = validAlphas.reduce((a, b) => a + b, 0) / len;
   const rawCrossStd = Math.sqrt(validAlphas.reduce((acc, val) => acc + Math.pow(val - crossMean, 2), 0) / len) || 1e-9;
 
-  // KẸP ĐÁY PHƯƠNG SAI CHÉO (MICRO-VOLATILITY)
+  // KẸP ĐÁY PHƯƠNG SAI CHÉO (MICRO-VOLATILITY) tránh chia cho 0
   const safeCrossStd = Math.max(rawCrossStd, 0.05);
 
   const finalSignals: Partial<QuantSignalResponse>[] = [];
@@ -66,22 +64,21 @@ export function evaluateAlphaAndCross(
   for (const [symbol, state] of tokenStates.entries()) {
     const history = historicalData[symbol] || [];
 
-    // BTC và Token < 3 ngày tuổi không tham gia Cross-Sectional Z-Score
+    // BTC và Token < 3  không tham gia Cross-Sectional Z-Score
     if (history.length < 3 || symbol === 'BTC') {
       state.crossZ = 0;
       state.finalScore = state.pureAlphaZ; 
     } else if (validAlphas.length >= 3) {
       state.crossZ = (state.pureAlphaZ! - crossMean) / safeCrossStd;
-      state.finalScore = (0.7 * state.pureAlphaZ!) + (0.3 * state.crossZ);
+      state.finalScore = (hyperParams.alphaBlend * state.pureAlphaZ!) + ((1 - hyperParams.alphaBlend) * state.crossZ);
     } else {
       state.crossZ = 0;
       state.finalScore = state.pureAlphaZ;
     }
 
-    // ======================================================================
-    // [BỘ LỌC CUỐI CÙNG]: Trích xuất các tín hiệu thực sự có giá trị giao dịch
-    // ======================================================================
-    if (Math.abs(state.finalScore!) > 0.5) {
+  
+    //  Trích xuất các tín hiệu thực sự có giá trị giao dịch
+    if (Math.abs(state.finalScore!) > hyperParams.signalThreshold) {
       const history = historicalData[symbol] || [];
       const isNewToken = history.length < 3; // Kiểm tra lính mới
       
@@ -93,17 +90,32 @@ export function evaluateAlphaAndCross(
         quantScore: state.finalScore,
         volatilityFlag: state.avgEntropy,
         sentimentType: state.finalScore! > 0 ? "positive" : "negative",
-        suggestionType: state.finalScore! > 1.5 ? "buy" : (state.finalScore! < -1.5 ? "sell" : "hold"),
+        suggestionType: state.finalScore! > hyperParams.actionThreshold ? "buy" : (state.finalScore! < -hyperParams.actionThreshold ? "sell" : "hold"),
         
-        // 🚀 CƠ CHẾ PHẠT TỰ TIN: Lính mới tối đa 40%, Lính cũ tối đa 100%
+        //  CƠ CHẾ PHẠT TỰ TIN: Lính mới tối đa 40%, Lính cũ tối đa 100%
         confidence: isNewToken 
-            ? Math.min(Math.abs(state.finalScore!) / 5, 0.4) 
-            : Math.min(Math.abs(state.finalScore!) / 3, 1),
+            ? Math.min(Math.abs(state.finalScore!) / hyperParams.coldStartConfidenceDivisor, 0.4) 
+            : Math.min(Math.abs(state.finalScore!) / hyperParams.confidenceDivisor, 1),
             
-        // 🚀 LÝ DO MINH BẠCH DÀNH CHO DASHBOARD LAYER 3
+        //  LÝ DO MINH BẠCH DÀNH CHO DASHBOARD LAYER 3
         rationaleSummary: isNewToken 
             ? `[Cold Start] Tín hiệu dựa vào ${state.finalScore! > 0 ? 'bullish' : 'bearish'} sentiment mạnh mẽ hôm nay, nhưng thiếu dữ liệu lịch sử đối chiếu.` 
             : `Quant V3 detected a significant ${state.finalScore! > 0 ? 'bullish' : 'bearish'} alpha divergence.`,
+        metadata: {
+          type: "quant_v3_aggregation",
+          hyperParams,
+          scoreComponents: {
+            unifiedRaw: state.unifiedRaw,
+            timeZ: state.timeZ,
+            pureAlphaZ: state.pureAlphaZ,
+            crossZ: state.crossZ,
+            finalScore: state.finalScore,
+            btcTimeZ,
+            crossMean,
+            crossStd: safeCrossStd,
+          },
+          sourceKeys: state.sources.map(source => source.sourceKey).filter(Boolean),
+        },
       });
     }
   }

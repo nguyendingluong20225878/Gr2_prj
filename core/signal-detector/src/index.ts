@@ -1,20 +1,21 @@
-// ==========================================
-// 1. PUBLIC TYPES (Các interface dùng chung)
-// ==========================================
+
+// PUBLIC TYPES (Các interface dùng chung)
 export type { 
   KnownTokenType, 
   QuantSignalResponse, 
   Source,
-  DetectorParams 
+  DetectorParams,
+  DetectorHyperParams,
+} from "./types.js";
+export {
+  DEFAULT_HYPER_PARAMS,
+  resolveHyperParams,
 } from "./types.js";
 
-// ==========================================
-// 3. MAIN ENGINE (Nhạc trưởng Quant V3)
-// ==========================================
+
+// MAIN ENGINE (Phần lõi của bộ phát hiện tín hiệu, nơi tập hợp tất cả các thành phần lại với nhau)
 export { detectSignalWithFinBertQuant } from "./quant-engine.js";
 
-// ==========================================
-// 4. DATABASE MAPPING & PERSISTENCE (Lưu DB)
-// ==========================================
+// DATABASE MAPPING & PERSISTENCE (Lưu DB)
 export { mapQuantToMongoInsert, saveSignalToDb } from "./db-mapper.js";
 
