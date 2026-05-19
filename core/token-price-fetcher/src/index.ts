@@ -1,2 +1,5 @@
 export { processTokenPrices } from "./process.js";
-export { TokenPriceService } from "./services/token-price-service.js";
+export {
+  TokenPriceService,
+  type BackfillTokenPriceHistoryOptions,
+} from "./services/token-price-service.js";

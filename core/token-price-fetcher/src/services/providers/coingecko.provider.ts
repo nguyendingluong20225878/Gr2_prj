@@ -57,3 +57,34 @@ export async function fetchPricesFromCoingecko(ids: string[]) {
 
   return prices;
 }
+
+/**
+ * Lấy lịch sử giá theo CoinGecko id trong khoảng thời gian Unix seconds.
+ */
+export async function fetchMarketChartRangeFromCoingecko(
+  id: string,
+  fromUnixSeconds: number,
+  toUnixSeconds: number
+) {
+  const url =
+    `${BASE_URL}/coins/${encodeURIComponent(id)}/market_chart/range` +
+    `?vs_currency=usd` +
+    `&from=${fromUnixSeconds}` +
+    `&to=${toUnixSeconds}`;
+
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`CoinGecko market_chart/range error for ${id}: ${res.status} ${res.statusText}`);
+  }
+
+  const data = await res.json() as {
+    prices?: Array<[number, number]>;
+  };
+
+  return (data.prices ?? [])
+    .map(([timestampMs, priceUsd]) => ({
+      timestamp: new Date(timestampMs),
+      priceUsd,
+    }))
+    .filter((point) => Number.isFinite(point.priceUsd) && point.priceUsd > 0);
+}
