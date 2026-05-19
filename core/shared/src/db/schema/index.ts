@@ -11,4 +11,6 @@ export * from "./token_prices.js";
 export * from "./signals.js";
 export * from "./logs.js";
 // export * from "./backtest_results.js";
+export * from "./backtest_results.js";
+export * from "./hyperparameter_configs.js";
 export * from "./proposal.js";

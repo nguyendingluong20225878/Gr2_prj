@@ -3,7 +3,7 @@ export * from "./db/index.js";
 export * from "./db/connection.js";
 
 // ===== PROPOSALS =====
-export { getProposalModel } from "./db/schema/proposal.js";
+export { getProposalModel, proposalsTable } from "./db/schema/proposal.js";
 export type {
   Proposal,
   ProposalDocument,
@@ -58,3 +58,7 @@ export { tokenPrice24hAgoView } from "./db/schema/token_price_24h_ago_view.js";
 
 // ===== TOKEN PRICES =====
 export * from "./db/schema/token_prices.js";
+
+// ===== BACKTEST =====
+export * from "./db/schema/backtest_results.js";
+export * from "./db/schema/hyperparameter_configs.js";

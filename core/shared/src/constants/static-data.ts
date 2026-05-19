@@ -41,7 +41,7 @@ export const staticProposals =
       title: "Test Proposal: Reduce SOL Exposure",
       summary: "Test summary",
       reason: ["Reason 1", "Reason 2"],
-      sources: [{ name: "Test Source", url: "#" }],
+      sources: [{ label: "Test Source", url: "#" }],
       type: "risk",
       proposedBy: "GR2 AI",
       expiresAt: new Date(Date.now() + STATIC_EXPIRATION_DATE),
