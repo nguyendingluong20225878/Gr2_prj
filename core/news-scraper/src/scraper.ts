@@ -194,10 +194,22 @@ async function extractWithCheerio(url: string) {
     
     content = content.replace(/\n{2,}/g, "\n\n").replace(/[ \t]+/g, " ").trim();
 
-    const publishedTime = 
+    const jsonLdDate = $('script[type="application/ld+json"]')
+      .map((_, el) => $(el).text())
+      .get()
+      .join("\n")
+      .match(/"(?:datePublished|dateCreated|uploadDate)"\s*:\s*"([^"]+)"/i)?.[1];
+
+    const publishedTime =
       $('meta[property="article:published_time"]').attr('content') ||
       $('meta[name="date"]').attr('content') ||
-      $('meta[property="og:published_time"]').attr('content');
+      $('meta[name="pubdate"]').attr('content') ||
+      $('meta[name="parsely-pub-date"]').attr('content') ||
+      $('meta[property="og:published_time"]').attr('content') ||
+      $('meta[property="og:article:published_time"]').attr('content') ||
+      $('time[datetime]').first().attr('datetime') ||
+      $('[datetime]').first().attr('datetime') ||
+      jsonLdDate;
 
     if (content.length > 600) {
       return { title, content: content.slice(0, 50000), metaData: { publishedTime } };
@@ -211,7 +223,15 @@ async function extractWithCheerio(url: string) {
 function extractPublishedDate(articleUrl: string, contentText: string, metaData?: any): Date | null {
   let publishedAt: Date | null = null;
 
-  const rawMeta = metaData?.publishedTime || metaData?.published_at || metaData?.datePublished || metaData?.['article:published_time'] || metaData?.date;
+  const rawMeta =
+    metaData?.publishedTime ||
+    metaData?.published_at ||
+    metaData?.datePublished ||
+    metaData?.dateCreated ||
+    metaData?.["article:published_time"] ||
+    metaData?.["og:published_time"] ||
+    metaData?.["og:article:published_time"] ||
+    metaData?.date;
   if (rawMeta) {
     const normalizedMeta =
       typeof rawMeta === "string" && !rawMeta.endsWith("Z") && !rawMeta.match(/[+-]\d{2}:\d{2}$/)
@@ -222,13 +242,18 @@ function extractPublishedDate(articleUrl: string, contentText: string, metaData?
     if (!Number.isNaN(parsed.getTime())) publishedAt = parsed;
   }
 
-  const headText = contentText.slice(0, 1000);
+  const headText = contentText.slice(0, 20000);
 
   if (!publishedAt) {
-    const dateRe = /(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2},? \d{4})|(?:\d{1,2} (?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{4})/i;
+    const dateRe = /(?:Published\s*)?(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z.]*\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4})|(?:\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z.]*\s+\d{4})/i;
     const mDate = dateRe.exec(headText);
     if (mDate) {
-      const parsed = new Date(`${mDate[0]} UTC`);
+      const cleanDate = mDate[0]
+        .replace(/^Published\s*/i, "")
+        .replace(/(st|nd|rd|th)/gi, "")
+        .replace(/\s+/g, " ")
+        .trim();
+      const parsed = new Date(`${cleanDate} UTC`);
       if (!Number.isNaN(parsed.getTime())) publishedAt = parsed;
     }
   }
@@ -283,6 +308,7 @@ export class NewsScraper {
 
       return Array.from(urls).filter(isValidArticleUrl).slice(0, 20);
     } catch (e) {
+      console.log(`[Discovery HTML] Không lấy được link từ ${siteUrl}: ${e instanceof Error ? e.message : String(e)}`);
       return [];
     }
   }
@@ -296,6 +322,7 @@ export class NewsScraper {
       const cleanedUrls = urls.map(cleanUrl).filter(isValidArticleUrl);
       return [...new Set(cleanedUrls)];
     } catch (err) {
+      console.log(`[Discovery Firecrawl] Không map được ${siteUrl}: ${err instanceof Error ? err.message : String(err)}`);
       return [];
     }
   }
@@ -309,7 +336,10 @@ export class NewsScraper {
         },
       });
 
-      if (!res.ok) return [];
+      if (!res.ok) {
+        console.log(`[Discovery RSS] RSS trả status ${res.status} cho ${rssUrl}`);
+        return [];
+      }
       
       const xmlText = await res.text();
       const parser = new XMLParser({ ignoreAttributes: false });
@@ -330,6 +360,7 @@ export class NewsScraper {
 
       return Array.from(urls).filter(isValidArticleUrl);
     } catch (error) {
+      console.log(`[Discovery RSS] Không đọc được RSS ${rssUrl}: ${error instanceof Error ? error.message : String(error)}`);
       return [];
     }
   }
@@ -384,7 +415,29 @@ export class NewsScraper {
           throw new Error("Content too short");
         }
 
-        const publishedAt = extractPublishedDate(cleanArticleUrl, contentToProcess, metaForDate);
+        let publishedAt = extractPublishedDate(cleanArticleUrl, contentToProcess, metaForDate);
+
+        if (!publishedAt && rawData?.method === "cheerio") {
+          const res = await this.app.scrapeUrl(cleanArticleUrl, {
+            formats: ["markdown"],
+            timeout: 30000,
+            waitFor: 3000,
+            mobile: false
+          });
+
+          if (!res.success) throw new Error(res.error);
+
+          metaForDate = res.metadata as any;
+          finalTitle = metaForDate?.title ?? finalTitle;
+          finalSummary = metaForDate?.description ?? finalSummary;
+          rawData = res;
+
+          const raw = res.markdown ?? "";
+          let step1 = cutBeforeTitle(raw, finalTitle);
+          let step2 = extractMainContent(step1);
+          contentToProcess = cleanContent(step2).slice(0, 50000);
+          publishedAt = extractPublishedDate(cleanArticleUrl, raw || contentToProcess, metaForDate);
+        }
 
         if (publishedAt) {
           const now = new Date();

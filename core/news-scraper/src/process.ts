@@ -12,30 +12,90 @@ function escapeRegex(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function buildAggregateRegex(tokens: Array<{ symbol?: string | null }>): RegExp | null {
-  // Lọc ra các symbol hợp lệ và ép VIẾT HOA toàn bộ
-  const validSymbols = [...new Set(tokens
-    .map(t => (t.symbol ?? "").trim().toUpperCase())
-    .filter(s => s.length >= 2))];
+type TokenMatcher = { symbol: string; regex: RegExp };
 
-  if (validSymbols.length === 0) return null;
+function buildTokenMatchers(tokens: Array<{ symbol?: string | null; name?: string | null }>): TokenMatcher[] {
+  const matchers: TokenMatcher[] = [];
+  const seen = new Set<string>();
 
-  // Xây dựng 3 trường hợp cho mỗi symbol: $LINK, $link, và LINK
-  const matchers = validSymbols.map(sym => {
-    const symUpper = escapeRegex(sym);
-    const symLower = escapeRegex(sym.toLowerCase());
-    return `\\$${symUpper}|\\$${symLower}|${symUpper}`;
-  });
+  for (const token of tokens) {
+    const symbol = (token.symbol ?? "").trim().toUpperCase();
+    if (!symbol || symbol.length < 2 || seen.has(symbol)) continue;
+    seen.add(symbol);
 
-  const pattern = matchers.join("|");
-  
-  // 🚀 QUAN TRỌNG: Chỉ dùng cờ "g" (Global), XÓA BỎ cờ "i" (Case-Insensitive)
-  return new RegExp(`(?<![a-zA-Z0-9])(?:${pattern})(?![a-zA-Z0-9])`, "g");
+    const symbolUpper = escapeRegex(symbol);
+    const symbolLower = escapeRegex(symbol.toLowerCase());
+    const parts = [`\\$${symbolUpper}`, `\\$${symbolLower}`, symbolUpper];
+
+    const name = (token.name ?? "").trim();
+    if (
+      name &&
+      name.length >= 4 &&
+      name.toUpperCase() !== symbol &&
+      !["THE", "AND", "USD", "USDT"].includes(name.toUpperCase())
+    ) {
+      parts.push(escapeRegex(name));
+    }
+
+    matchers.push({
+      symbol,
+      regex: new RegExp(`(?<![a-zA-Z0-9])(?:${parts.join("|")})(?![a-zA-Z0-9])`, "i"),
+    });
+  }
+
+  return matchers;
+}
+
+function detectTokenSymbols(text: string, matchers: TokenMatcher[]): string[] {
+  const matched = new Set<string>();
+  for (const matcher of matchers) {
+    matcher.regex.lastIndex = 0;
+    if (matcher.regex.test(text)) matched.add(matcher.symbol);
+  }
+  return [...matched];
 }
 
 function getEnvInt(name: string, fallback: number): number {
   const v = Number(process.env[name] ?? "");
   return Number.isFinite(v) && v > 0 ? Math.floor(v) : fallback;
+}
+
+function getEnvBool(name: string, fallback: boolean): boolean {
+  const raw = process.env[name];
+  if (raw === undefined) return fallback;
+  return ["1", "true", "yes", "on"].includes(raw.toLowerCase());
+}
+
+function uniquePreserveOrder(values: string[]): string[] {
+  return [...new Set(values)];
+}
+
+function urlDateTime(url: string): number | null {
+  const match = url.match(/\/(\d{4})\/(\d{1,2})\/(\d{1,2})\//);
+  if (!match) return null;
+  const parsed = new Date(`${match[1]}-${match[2].padStart(2, "0")}-${match[3].padStart(2, "0")}T12:00:00Z`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.getTime();
+}
+
+function sortNewestFirst(urls: string[]): string[] {
+  return urls
+    .map((url, index) => ({ url, index, dateTime: urlDateTime(url) }))
+    .sort((a, b) => {
+      if (a.dateTime !== null && b.dateTime !== null) return b.dateTime - a.dateTime;
+      if (a.dateTime !== null) return -1;
+      if (b.dateTime !== null) return 1;
+      return a.index - b.index;
+    })
+    .map((item) => item.url);
+}
+
+function takeUntilFirstExisting(urls: string[], existingUrls: Set<string>): string[] {
+  const pending: string[] = [];
+  for (const url of urls) {
+    if (existingUrls.has(url)) break;
+    pending.push(url);
+  }
+  return pending;
 }
 
 async function mapLimit<T, R>(items: T[], concurrency: number, fn: (item: T) => Promise<R>): Promise<R[]> {
@@ -63,9 +123,11 @@ export async function processNewsScraping(options?: { specificSiteId?: string })
     const sites = await db.loadNewsSites();
     const tokens = await db.loadTokens();
     
-    const aggregateRegex = buildAggregateRegex(tokens as any[]);
-    const maxArticlesPerSite = getEnvInt("NEWS_MAX_ARTICLES_PER_SITE", 10);
+    const tokenMatchers = buildTokenMatchers(tokens as any[]);
+    const maxArticlesPerSite = getEnvInt("NEWS_MAX_ARTICLES_PER_SITE", 50);
     const concurrency = getEnvInt("NEWS_SCRAPE_CONCURRENCY", 3);
+    const alwaysMap = getEnvBool("NEWS_ALWAYS_FIRECRAWL_MAP", false);
+    const stopAtFirstExisting = getEnvBool("NEWS_STOP_AT_FIRST_EXISTING", true);
 
     const filteredSites = options?.specificSiteId
       ? sites.filter((s: any) => String(s._id) === options.specificSiteId)
@@ -77,21 +139,30 @@ export async function processNewsScraping(options?: { specificSiteId?: string })
 
     for (const site of filteredSites) {
       try {
+        const discoveredBySource: Record<string, number> = {};
         let articleUrls: string[] = [];
 
         if ((site as any).rss) {
-          articleUrls = await scraper.discoverFromRSS((site as any).rss);
+          const rssUrls = await scraper.discoverFromRSS((site as any).rss);
+          discoveredBySource.rss = rssUrls.length;
+          articleUrls.push(...rssUrls);
         }
         
         if (articleUrls.length === 0) {
           console.log(`[Discovery Fallback 1] RSS trống. Cào link động bằng HTML cho ${site.url}...`);
-          articleUrls = await scraper.discoverLinksWithCheerio(site.url);
+          const htmlUrls = await scraper.discoverLinksWithCheerio(site.url);
+          discoveredBySource.html = htmlUrls.length;
+          articleUrls.push(...htmlUrls);
         }
 
-        if (articleUrls.length === 0) {
-          console.log(`[Discovery Fallback 2] Cào HTML thất bại. Gọi Firecrawl Map cho ${site.url}...`);
-          articleUrls = await scraper.discoverArticles(site.url);
+        if (articleUrls.length === 0 || alwaysMap) {
+          console.log(`[Discovery Fallback 2] Gọi Firecrawl Map cho ${site.url}...`);
+          const mappedUrls = await scraper.discoverArticles(site.url);
+          discoveredBySource.firecrawl = mappedUrls.length;
+          articleUrls.push(...mappedUrls);
         }
+
+        articleUrls = sortNewestFirst(uniquePreserveOrder(articleUrls));
 
         if (articleUrls.length === 0) {
           results.push({ siteUrl: site.url, status: "skipped", message: "No article URLs" });
@@ -99,28 +170,27 @@ export async function processNewsScraping(options?: { specificSiteId?: string })
         }
 
         const existingUrls = await db.findExistingArticleUrls(articleUrls);
-        
-        let pendingUrls = articleUrls.filter((u) => !existingUrls.has(u))
-        // BẮT BUỘC PHẢI CÓ ĐOẠN NÀY ĐỂ ƯU TIÊN LINK MỚI NHẤT TỪ FIRECRAWL MAP
-        pendingUrls.sort((a, b) => {
-          const matchA = a.match(/\/(\d{4})\/(\d{2})\/(\d{2})\//);
-          const matchB = b.match(/\/(\d{4})\/(\d{2})\/(\d{2})\//);
-          
-          if (matchA && matchB) return b.localeCompare(a); 
-          else if (matchA) return -1;
-          else if (matchB) return 1;
-          
-          return a.length - b.length; 
-        });
-
-        pendingUrls = pendingUrls.slice(0, maxArticlesPerSite);
+        const pendingBeforeCap = stopAtFirstExisting
+          ? takeUntilFirstExisting(articleUrls, existingUrls)
+          : articleUrls.filter((u) => !existingUrls.has(u));
+        const pendingUrls = pendingBeforeCap.slice(0, maxArticlesPerSite);
 
         if (pendingUrls.length === 0) {
-          results.push({ siteUrl: site.url, status: "skipped", message: "All discovered articles already scraped" });
+          results.push({
+            siteUrl: site.url,
+            status: "skipped",
+            message: "Newest discovered articles already scraped",
+            discovered: articleUrls.length,
+            discoveredBySource,
+            existing: existingUrls.size,
+          });
           continue;
         }
 
         let savedCount = 0;
+        let quantEligibleCount = 0;
+        let noTokenCount = 0;
+        let errorCount = 0;
 
         await mapLimit(pendingUrls, concurrency, async (articleUrl) => {
           try {
@@ -128,13 +198,9 @@ export async function processNewsScraping(options?: { specificSiteId?: string })
 
             const fullText = [scraped.title, scraped.summary, scraped.content].filter(Boolean).join("\n");
 
-            let detectedTokens: string[] = [];
-            if (aggregateRegex) {
-              const matches = fullText.match(aggregateRegex) || [];
-              detectedTokens = [...new Set(matches.map(m => m.replace(/\$/g, '').toUpperCase()))];
-            }
-
-            if (detectedTokens.length === 0) return "skipped";
+            const detectedTokens = detectTokenSymbols(fullText, tokenMatchers);
+            if (detectedTokens.length === 0) noTokenCount++;
+            else quantEligibleCount++;
 
             await db.upsertNewsArticle({
               siteUrl: site.url,
@@ -151,6 +217,7 @@ export async function processNewsScraping(options?: { specificSiteId?: string })
             savedCount++;
             return "saved";
           } catch (err) {
+            errorCount++;
             const errMsg = err instanceof Error ? err.message : String(err);
             console.log(`[Bộ lọc] Đã bỏ qua bài viết ${articleUrl}: ${errMsg}`);
             if (errMsg.includes("FATAL_FIRECRAWL_OUT_OF_CREDITS")) throw err;
@@ -159,7 +226,20 @@ export async function processNewsScraping(options?: { specificSiteId?: string })
         });
 
         await db.updateNewsSiteContent(String(site._id), `saved ${savedCount} articles`);
-        results.push({ siteUrl: site.url, status: "saved", count: savedCount });
+        results.push({
+          siteUrl: site.url,
+          status: "saved",
+          count: savedCount,
+          quantEligible: quantEligibleCount,
+          noToken: noTokenCount,
+          errors: errorCount,
+          discovered: articleUrls.length,
+          discoveredBySource,
+          existing: existingUrls.size,
+          pending: pendingBeforeCap.length,
+          attempted: pendingUrls.length,
+          capped: pendingBeforeCap.length > pendingUrls.length,
+        });
 
       } catch (error) {
         results.push({
