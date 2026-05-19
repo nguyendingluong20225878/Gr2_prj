@@ -1,7 +1,7 @@
 import dotenv from "dotenv";
 dotenv.config();
 
-import { finBertProbs } from "../src/finbert";
+import { finBertProbs } from "../src/finbert.js";
 
 (async () => {
   const text = "Bitcoin shows strong momentum and market sentiment is improving.";

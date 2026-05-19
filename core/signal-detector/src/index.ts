@@ -6,11 +6,18 @@ export type {
   Source,
   DetectorParams,
   DetectorHyperParams,
+  FormattedNews,
+  FormattedTweet,
 } from "./types.js";
 export {
   DEFAULT_HYPER_PARAMS,
   resolveHyperParams,
 } from "./types.js";
+export {
+  loadActiveHyperParams,
+  promoteCandidateConfig,
+  saveCandidateConfig,
+} from "./services/hyperparam-config-service.js";
 
 
 // MAIN ENGINE (Phần lõi của bộ phát hiện tín hiệu, nơi tập hợp tất cả các thành phần lại với nhau)

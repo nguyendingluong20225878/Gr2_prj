@@ -4,8 +4,9 @@ import { detectSignalWithFinBertQuant } from '../src/quant-engine.js';
 
 dotenv.config();
 
-async function main() {
+async function main(): Promise<number> {
   console.log("🚀 [NDL QUANT] Bắt đầu phiên làm việc...");
+  let exitCode = 0;
 
   try {
     // 1. Kết nối DB
@@ -139,10 +140,18 @@ async function main() {
 
   } catch (error) {
     console.error("❌ Lỗi thực thi hệ thống Quant:", error);
+    exitCode = 1;
   } finally {
     await mongoose.disconnect();
     console.log("🏁 Đã ngắt kết nối DB. Hoàn tất.");
   }
+
+  return exitCode;
 }
 
-main();
+main()
+  .then((exitCode) => process.exit(exitCode))
+  .catch((error) => {
+    console.error("❌ Lỗi không mong muốn khi kết thúc Quant:", error);
+    process.exit(1);
+  });

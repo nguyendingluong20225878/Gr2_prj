@@ -2,6 +2,7 @@ import { DetectorParams, resolveHyperParams } from "./types.js";
 import { processDocuments } from "./document-processor.js";
 import { aggregateAndNormalize } from "./token-aggregator.js";
 import { evaluateAlphaAndCross } from "./alpha-analyzer.js";
+import { loadActiveHyperParams } from "./services/hyperparam-config-service.js";
 
 /**
  * NHẠC TRƯỞNG QUANT ENGINE V3 (Modular)
@@ -16,7 +17,9 @@ export async function detectSignalWithFinBertQuant(params: DetectorParams) {
     throttleMs = 300,
     chunkDelayMs = 2000,
   } = params;
-  const hyperParams = resolveHyperParams(params.hyperParams);
+  const hyperParams = params.hyperParams
+    ? resolveHyperParams(params.hyperParams)
+    : await loadActiveHyperParams();
   
   const allDocs = [
     ...formattedTweets.map(t => ({ ...t, docType: 'tweet' as const })),

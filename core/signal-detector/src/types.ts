@@ -198,7 +198,7 @@ export interface ScoredDoc {
   sourceKey: string;
   author?: string;
   publishedAt: Date;
-}
+}//sau khi trích xuất và tính điểm 
 
 export interface TokenQuantState {
   symbol: string;

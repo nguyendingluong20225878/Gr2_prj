@@ -4,7 +4,6 @@
     "outDir": "dist",
     "rootDir": ".",
     "composite": true,
-    "ignoreDeprecations": "6.0",
 
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
