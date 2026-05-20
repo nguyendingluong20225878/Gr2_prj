@@ -2,9 +2,20 @@ import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import UserModel from '@/models/User';
 
+type CreateUserRequest = {
+  walletAddress?: string;
+  name?: string;
+  email?: string;
+  age?: number;
+  riskTolerance?: string;
+  tradeStyle?: string;
+  totalAssetUsd?: number | string;
+  cryptoInvestmentUsd?: number | string;
+};
+
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
+    const body = (await req.json()) as CreateUserRequest;
     await connectDB();
 
     if (!body.walletAddress) {
@@ -30,8 +41,9 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json(newUser, { status: 201 });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Create User Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Internal Server Error';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

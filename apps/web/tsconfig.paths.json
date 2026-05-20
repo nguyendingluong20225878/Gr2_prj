@@ -2,8 +2,8 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "@gr2/shared/*": ["../../../core/shared/src/*"],
-      "@gr2/shared": ["../../../core/shared/src/index"]
+      "@gr2/shared/*": ["../../../core/shared/dist/*"],
+      "@gr2/shared": ["../../../core/shared/dist/index.js"]
     }
   }
 }

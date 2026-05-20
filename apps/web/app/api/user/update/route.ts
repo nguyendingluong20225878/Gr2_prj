@@ -2,9 +2,18 @@ import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import UserModel from '@/models/User';
 
+type UserUpdateRequest = {
+  walletAddress?: string;
+  name?: string;
+  email?: string;
+  riskTolerance?: string;
+  tradeStyle?: string;
+  notificationEnabled?: boolean;
+};
+
 export async function PUT(req: Request) {
   try {
-    const body = await req.json();
+    const body = (await req.json()) as UserUpdateRequest;
     await connectDB();
 
     if (!body.walletAddress) {
@@ -32,8 +41,9 @@ export async function PUT(req: Request) {
     }
 
     return NextResponse.json(updatedUser);
-  } catch (error: any) {
+  } catch (error) {
     console.error('Update User Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Internal Server Error';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

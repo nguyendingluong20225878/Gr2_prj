@@ -29,5 +29,6 @@ const signalSchema = new Schema(
 );
 
 export type SignalSchema = InferSchemaType<typeof signalSchema>;
+export type Signal = SignalSchema & { _id: string };
 
 export const SignalModel = models.Signal || model("Signal", signalSchema);

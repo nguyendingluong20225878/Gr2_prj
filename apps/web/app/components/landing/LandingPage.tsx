@@ -10,6 +10,7 @@ import { Button } from '@/app/components/ui/button';
 export function LandingPage() {
   const { loading, setUser } = useAuth();
   const router = useRouter();
+  const showDevModeSkip = process.env.NODE_ENV !== 'production';
 
   const handleDevModeSkip = () => {
     // Create a mock user for development
@@ -61,19 +62,22 @@ export function LandingPage() {
                 <WalletMultiButton className="!bg-gradient-to-r !from-cyber-purple !to-cyber-cyan hover:!opacity-90 !transition-all !px-8 !py-4 !text-lg !font-semibold !rounded-lg" />
               </div>
               
-              {/* Dev Mode Skip Button */}
-              <Button
-                onClick={handleDevModeSkip}
-                variant="outline"
-                className="glass-card border-cyber-cyan/30 hover:border-cyber-cyan text-slate-300 hover:text-slate-100 transition-all px-6 py-3"
-              >
-                <Zap className="w-4 h-4 mr-2 text-cyber-cyan" />
-                Dev Mode - Skip to Dashboard
-              </Button>
-              
-              <p className="text-xs text-slate-500 max-w-xs mt-2">
-                Click "Skip to Dashboard" to test the app without connecting wallet
-              </p>
+              {showDevModeSkip && (
+                <>
+                  <Button
+                    onClick={handleDevModeSkip}
+                    variant="outline"
+                    className="glass-card border-cyber-cyan/30 hover:border-cyber-cyan text-slate-300 hover:text-slate-100 transition-all px-6 py-3"
+                  >
+                    <Zap className="w-4 h-4 mr-2 text-cyber-cyan" />
+                    Dev Mode - Skip to Dashboard
+                  </Button>
+
+                  <p className="text-xs text-slate-500 max-w-xs mt-2">
+                    Click "Skip to Dashboard" to test the app without connecting wallet
+                  </p>
+                </>
+              )}
             </>
           )}
         </div>

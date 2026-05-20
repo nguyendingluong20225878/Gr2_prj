@@ -45,7 +45,7 @@ export default function ProfilePage() {
     if (!publicKey) return toast.error("Please connect your wallet first!");
     setIsSyncing(true);
     try {
-      const balances: any[] = [];
+      const balances: Array<{ tokenAddress: string; balance: string; updatedAt: Date }> = [];
       const solBalance = await connection.getBalance(publicKey);
       balances.push({
         tokenAddress: "So11111111111111111111111111111111111111112",

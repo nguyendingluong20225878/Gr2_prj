@@ -1,7 +1,7 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
 
 // Interface cho mảng balances
-interface IUserBalance {
+export interface IUserBalance {
   tokenAddress: string;
   balance: string;
   updatedAt: Date;

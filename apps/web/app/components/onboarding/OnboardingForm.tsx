@@ -87,9 +87,10 @@ export function OnboardingForm() {
         router.push('/dashboard');
       }, 500);
 
-    } catch (error: any) {
+    } catch (error) {
       console.error('Onboarding error:', error);
-      alert('Failed to create account: ' + error.message);
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      alert('Failed to create account: ' + message);
     } finally {
       setLoading(false);
     }

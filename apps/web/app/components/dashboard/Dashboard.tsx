@@ -6,36 +6,24 @@ import { ProposalCardSocial } from './SignalCardSocial';
 import { Sparkles, TrendingUp, AlertCircle, Activity, ShieldAlert, PauseCircle } from 'lucide-react';
 import { Skeleton } from '@/app/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
+import { resolveTokenDisplay } from '@/lib/constants/tokens';
+import type { DashboardProposalCardData } from './SignalCardSocial';
+
+type SignalFilter = 'ALL' | 'BUY' | 'SELL' | 'HOLD';
 
 // 1. Định nghĩa Interface cho Props của Dashboard
 interface DashboardProps {
   onViewProposal?: (proposalId: string) => void;
 }
 
-// Helper: Rút gọn địa chỉ ví
-const shortenAddress = (addr: string) => {
-  if (!addr) return 'Unknown';
-  return `${addr.slice(0, 4)}...${addr.slice(-4)}`;
-};
-
-// Helper: Đoán tên Token từ địa chỉ
-const getTokenSymbol = (addr: string) => {
-  if (!addr) return 'TOKEN';
-  if (addr.startsWith('So111')) return 'SOL';
-  if (addr.startsWith('JUP')) return 'JUP';
-  if (addr.startsWith('EPj')) return 'USDC';
-  if (addr.startsWith('Dez')) return 'BONK';
-  return 'SOL-TOKEN'; 
-};
-
 // 2. Component Dashboard Chính
 export function Dashboard({ onViewProposal }: DashboardProps = {}) {
   const { signals, loading, error } = useSignals();
   // Thêm filter HOLD
-  const [filter, setFilter] = useState<'ALL' | 'BUY' | 'SELL' | 'HOLD'>('ALL');
+  const [filter, setFilter] = useState<SignalFilter>('ALL');
 
   // 3. MAPPING DỮ LIỆU
-  const mappedProposals = signals.map((s) => {
+  const mappedProposals: DashboardProposalCardData[] = signals.map((s) => {
     // Xác định hành động (Buy/Sell/Hold)
     let action: 'BUY' | 'SELL' | 'HOLD' = 'HOLD';
     const type = s.suggestionType?.toLowerCase();
@@ -51,12 +39,14 @@ export function Dashboard({ onViewProposal }: DashboardProps = {}) {
       ? (s.rationaleSummary ? s.rationaleSummary.slice(0, 100) + (s.rationaleSummary.length > 100 ? '...' : '') : 'Market Observation')
       : `${s.sentimentType.toUpperCase()} Signal Detected`;
 
+    const token = resolveTokenDisplay(s.tokenAddress);
+
     return {
       _id: s._id,
       signalId: s._id, // Quan trọng: Truyền ID signal để Card gọi API Proposal
       tokenAddress: s.tokenAddress,
-      tokenSymbol: getTokenSymbol(s.tokenAddress),
-      tokenName: shortenAddress(s.tokenAddress),
+      tokenSymbol: token.symbol,
+      tokenName: token.name,
       
       action: action,
       
@@ -65,11 +55,17 @@ export function Dashboard({ onViewProposal }: DashboardProps = {}) {
       reason: [s.rationaleSummary],
       
       confidence: confidencePercent,
+      financialImpact: {
+        currentValue: 0,
+        projectedValue: 0,
+        percentChange: 0,
+        riskLevel: 'MEDIUM',
+      },
       
       sentimentType: s.sentimentType,
       sources: s.sources ? s.sources.map(src => src.url) : [],
       createdAt: s.detectedAt,
-      expiresAt: s.expiresAt
+      expiresAt: s.expiresAt,
     };
   });
 
@@ -150,7 +146,7 @@ export function Dashboard({ onViewProposal }: DashboardProps = {}) {
       </div>
 
       {/* --- TABS & CONTENT --- */}
-      <Tabs defaultValue="ALL" className="w-full" onValueChange={(value) => setFilter(value as any)}>
+      <Tabs defaultValue="ALL" className="w-full" onValueChange={(value) => setFilter(value as SignalFilter)}>
         <TabsList className="glass-card bg-black/40 p-1 border border-white/10 w-full md:w-auto inline-flex h-auto">
           <TabsTrigger value="ALL" className="px-6 py-2 border border-transparent">All ({signals?.length || 0})</TabsTrigger>
           <TabsTrigger value="BUY" className="px-6 py-2 data-[state=active]:text-green-400 border border-transparent">Buy ({buyCount})</TabsTrigger>
@@ -178,7 +174,7 @@ export function Dashboard({ onViewProposal }: DashboardProps = {}) {
               {filteredProposals.map((proposal) => (
                 <ProposalCardSocial 
                   key={proposal._id} 
-                  proposal={proposal as any} 
+                  proposal={proposal} 
                   onViewDetails={onViewProposal} 
                 />
               ))}

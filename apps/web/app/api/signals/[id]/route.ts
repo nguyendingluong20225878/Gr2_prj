@@ -1,6 +1,17 @@
 import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
-import mongoose from 'mongoose';
+import mongoose, { Model } from 'mongoose';
+
+type SignalDetailRecord = {
+  symbol?: string;
+  direction?: string;
+  confidence?: number;
+  sentimentType?: string;
+  rationaleSummary?: string;
+  sources?: Array<{ label?: string; url?: string }>;
+  detectedAt?: Date;
+  expiresAt?: Date;
+};
 
 // --- ĐỊNH NGHĨA MODEL SIGNAL ---
 const SignalSchema = new mongoose.Schema({
@@ -18,9 +29,8 @@ const SignalSchema = new mongoose.Schema({
   strict: false 
 });
 
-// FIX LỖI "Expression is not callable":
-// Ép kiểu (mongoose.models.Signal || ...) về mongoose.Model<any> để TypeScript hiểu đây là một Model chuẩn.
-const SignalModel = (mongoose.models.Signal || mongoose.model('Signal', SignalSchema)) as mongoose.Model<any>;
+const SignalModel = (mongoose.models.Signal ||
+  mongoose.model<SignalDetailRecord>('Signal', SignalSchema)) as Model<SignalDetailRecord>;
 
 export async function GET(req: Request, { params }: { params: { id: string } }) {
   try {
@@ -39,8 +49,9 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     }
 
     return NextResponse.json(signal);
-  } catch (error: any) {
+  } catch (error) {
     console.error('Fetch Signal API Error:', error);
-    return NextResponse.json({ error: 'Internal Error', details: error.message }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ error: 'Internal Error', details: message }, { status: 500 });
   }
 }

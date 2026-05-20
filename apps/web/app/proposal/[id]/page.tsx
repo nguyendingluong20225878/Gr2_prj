@@ -10,7 +10,7 @@ export default function ProposalDetailPage({ params }: { params: { id: string } 
   return (
     <Layout>
       <ProposalDetailSocial
-        onBack={() => router.push('/dashboard')}
+        onBack={() => router.push('/signals')}
         // Lưu ý: Tôi đã bỏ onNavigateToPortfolio ở component con vì chưa dùng đến. 
         // Nếu bạn muốn dùng, hãy thêm nó vào interface ở bước 1.
       />

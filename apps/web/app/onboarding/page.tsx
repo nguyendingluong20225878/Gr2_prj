@@ -83,9 +83,10 @@ export default function Onboarding() {
         router.push('/dashboard');
       }, 500);
 
-    } catch (error: any) {
+    } catch (error) {
       console.error("❌ Onboarding failed:", error);
-      alert("Lỗi tạo tài khoản: " + error.message);
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      alert("Lỗi tạo tài khoản: " + message);
     } finally {
       setIsSubmitting(false);
     }

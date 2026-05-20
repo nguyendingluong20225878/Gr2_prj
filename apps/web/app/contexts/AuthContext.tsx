@@ -32,6 +32,7 @@ interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  loading: boolean;
   setUser: (user: User | null) => void;
   verifyWallet: (address: string) => Promise<void>;
   logout: () => void;
@@ -92,7 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated: !!user, isLoading, setUser, verifyWallet, logout }}>
+    <AuthContext.Provider value={{ user, isAuthenticated: !!user, isLoading, loading: isLoading, setUser, verifyWallet, logout }}>
       {children}
     </AuthContext.Provider>
   );

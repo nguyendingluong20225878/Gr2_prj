@@ -1,9 +1,21 @@
 import { Twitter, ExternalLink, Shield, BarChart3, Radio, Loader2 } from 'lucide-react';
 
+type EvidenceSource = string | {
+  url?: string;
+  text?: string;
+  label?: string;
+};
+
+type EvidenceSignalData = {
+  sentimentType?: string;
+  rationaleSummary?: string;
+  sources?: EvidenceSource[];
+};
+
 interface TheEvidenceProps {
-  signalData: any; // Object Signal từ Backend
+  signalData: EvidenceSignalData | null;
   tokenSymbol: string;
-  overrideSources?: any[]; // [MỚI] Thêm prop này để nhận sources từ Proposal
+  overrideSources?: EvidenceSource[];
 }
 
 export function TheEvidence({ signalData, tokenSymbol, overrideSources }: TheEvidenceProps) {
@@ -78,9 +90,9 @@ export function TheEvidence({ signalData, tokenSymbol, overrideSources }: TheEvi
           </div>
         ) : (
           <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-            {displaySources.map((source: any, index: number) => {
+            {displaySources.map((source, index) => {
               // Xử lý trường hợp source là string hoặc object
-              const url = typeof source === 'string' ? source : source.url;
+              const url = typeof source === 'string' ? source : source.url || '#';
               const text = typeof source === 'string' ? '' : source.text;
 
               return (

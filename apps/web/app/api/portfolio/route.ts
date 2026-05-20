@@ -1,10 +1,65 @@
 import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import mongoose from 'mongoose';
+import Proposal from '@/models/Proposal';
 
-// Import Proposal Model (DB Local)
-import { ProposalModel as RawProposalModel } from '../../../../../core/layer3/src/db/schema/proposals';
-const ProposalModel = RawProposalModel as unknown as mongoose.Model<any>;
+export const dynamic = 'force-dynamic';
+
+type LegacyFinancialImpact = {
+  roi?: number;
+};
+
+type WatchlistProposalRecord = {
+  _id: mongoose.Types.ObjectId;
+  confidence?: number;
+  createdAt?: Date;
+  executionStatus?: 'PENDING' | 'EXECUTED' | 'IGNORED';
+  expiresAt?: Date;
+  financialImpact?: LegacyFinancialImpact;
+  status?: string;
+  title?: string;
+  tokenSymbol?: string;
+};
+
+type UserBalanceRecord = {
+  tokenAddress: string;
+  balance: string | number;
+};
+
+type UserPortfolioRecord = {
+  _id: mongoose.Types.ObjectId;
+  balances?: UserBalanceRecord[];
+};
+
+type TokenPriceRecord = {
+  tokenKey?: string;
+  tokenAddress: string;
+  token?: mongoose.Types.ObjectId | string;
+  priceUsd?: string | number;
+  price?: number;
+};
+
+type TokenRecord = {
+  _id: mongoose.Types.ObjectId;
+  address?: string;
+  coingeckoId?: string;
+  symbol?: string;
+};
+
+type PerpPositionRecord = {
+  _id: mongoose.Types.ObjectId;
+  tokenSymbol?: string;
+  tokenAddress?: string;
+  entryPrice?: number;
+  positionSize?: number;
+  leverage?: number;
+  positionDirection?: string;
+  createdAt?: Date;
+  proposalId?: mongoose.Types.ObjectId | string;
+  roi?: number;
+};
+
+const ProposalModel = Proposal as unknown as mongoose.Model<WatchlistProposalRecord>;
 
 /** Helper: Normalize number (15.0000 -> 15) */
 const normalizeNumber = (n: number) => {
@@ -38,9 +93,12 @@ export async function GET(req: Request) {
     }
 
     const db = mongoose.connection.db;
+    if (!db) {
+      throw new Error('Database not connected');
+    }
 
     // 2. Fetch user
-    const user = await db.collection('users').findOne({ walletAddress: wallet });
+    const user = await db.collection<UserPortfolioRecord>('users').findOne({ walletAddress: wallet });
 
     console.log(`[Portfolio] Fetching for wallet: ${wallet}`);
 
@@ -56,29 +114,70 @@ export async function GET(req: Request) {
     const userId = user._id;
     const balances = user.balances || [];
 
-    // 3. Fetch prices
-    const tokenAddresses = balances.map((b: any) => b.tokenAddress);
+    // 3. Fetch prices. token-price-fetcher writes by tokenKey
+    // (for example coingecko:solana), while wallet balances use token mint addresses.
+    const tokenAddresses = balances.map((b) => b.tokenAddress);
+    const tokenDocs = await db
+      .collection<TokenRecord>('tokens')
+      .find({
+        $or: [
+          { address: { $in: tokenAddresses } },
+          { coingeckoId: { $in: tokenAddresses } },
+        ],
+      })
+      .toArray();
+
+    const tokenByAddress = new Map<string, TokenRecord>();
+    const tokenById = new Map<string, TokenRecord>();
+    const priceKeys = new Set<string>(tokenAddresses);
+
+    tokenDocs.forEach((token) => {
+      tokenById.set(token._id.toString(), token);
+      if (token.address) tokenByAddress.set(token.address, token);
+      if (token.coingeckoId) {
+        priceKeys.add(token.coingeckoId);
+        priceKeys.add(`coingecko:${token.coingeckoId}`);
+      }
+    });
 
     const pricesDocs = await db
-      .collection('token_prices')
-      .find({ tokenAddress: { $in: tokenAddresses } })
+      .collection<TokenPriceRecord>('token_prices')
+      .find({
+        $or: [
+          { tokenAddress: { $in: tokenAddresses } },
+          { tokenKey: { $in: [...priceKeys] } },
+        ],
+      })
       .toArray();
 
     const priceMap = new Map<string, number>();
     // Default SOL price for devnet testing
     priceMap.set('So11111111111111111111111111111111111111112', 168.48);
 
-    pricesDocs.forEach((p: any) => {
-      const price = p.priceUsd ? parseFloat(p.priceUsd) : p.price || 0;
-      priceMap.set(p.tokenAddress, price);
+    pricesDocs.forEach((p) => {
+      const price = p.priceUsd !== undefined ? Number(p.priceUsd) : p.price || 0;
+      if (!Number.isFinite(price) || price <= 0) return;
+
+      if (p.tokenAddress) priceMap.set(p.tokenAddress, price);
+      if (p.tokenKey) priceMap.set(p.tokenKey, price);
+
+      const tokenId = p.token?.toString();
+      const token = tokenId ? tokenById.get(tokenId) : undefined;
+      if (token?.address) priceMap.set(token.address, price);
+      if (token?.coingeckoId) priceMap.set(`coingecko:${token.coingeckoId}`, price);
     });
 
     // --- A. HOLDINGS ---
     let totalWalletValue = 0;
 
-    const holdings = balances.map((b: any) => {
-      const price = priceMap.get(b.tokenAddress) || 0;
-      const amountRaw = parseFloat(b.balance);
+    const holdings = balances.map((b) => {
+      const token = tokenByAddress.get(b.tokenAddress);
+      const price =
+        priceMap.get(b.tokenAddress) ||
+        (token?.coingeckoId ? priceMap.get(`coingecko:${token.coingeckoId}`) : undefined) ||
+        (token?.coingeckoId ? priceMap.get(token.coingeckoId) : undefined) ||
+        0;
+      const amountRaw = typeof b.balance === 'number' ? b.balance : parseFloat(b.balance);
       const amount = normalizeNumber(amountRaw);
 
       const valueUsdRaw = amount * price;
@@ -96,18 +195,18 @@ export async function GET(req: Request) {
 
     // --- B. ACTIVE INVESTMENTS (Updated Fields) ---
     const openPositions = await db
-      .collection('perp_positions')
+      .collection<PerpPositionRecord>('perp_positions')
       .find({
         userId: userId,
         status: 'open'
       })
       .toArray();
 
-    const investments = openPositions.map((p: any) => ({
+    const investments = openPositions.map((p) => ({
       _id: p._id.toString(),
-      symbol: p.tokenSymbol !== 'TOKEN' ? p.tokenSymbol : getTokenSymbol(p.tokenAddress),
-      entryPrice: normalizeNumber(p.entryPrice),
-      size: normalizeNumber(p.positionSize),
+      symbol: p.tokenSymbol && p.tokenSymbol !== 'TOKEN' ? p.tokenSymbol : getTokenSymbol(p.tokenAddress || ''),
+      entryPrice: normalizeNumber(p.entryPrice || 0),
+      size: normalizeNumber(p.positionSize || 0),
       leverage: p.leverage || 1,             // <--- Add
       direction: p.positionDirection || 'LONG', // <--- Add
       createdAt: p.createdAt,              // <--- Add
@@ -118,14 +217,16 @@ export async function GET(req: Request) {
 
     // --- C. WATCHLIST ---
     const pendingProposals = await ProposalModel.find({
-      status: { $in: ['pending', 'active'] },
-      expiresAt: { $gt: new Date() }
+      $or: [
+        { status: { $in: ['pending', 'active'] }, expiresAt: { $gt: new Date() } },
+        { executionStatus: 'PENDING' },
+      ],
     })
       .sort({ createdAt: -1 })
       .limit(10)
-      .lean();
+      .lean<WatchlistProposalRecord[]>();
 
-    const watchlist = pendingProposals.map((p: any) => ({
+    const watchlist = pendingProposals.map((p) => ({
       _id: p._id.toString(),
       tokenSymbol: p.tokenSymbol || (p.title ? p.title.split(' ')[0] : 'TOKEN'),
       title: p.title,
@@ -142,10 +243,11 @@ export async function GET(req: Request) {
 
     return NextResponse.json({ holdings, investments, watchlist, stats });
 
-  } catch (error: any) {
+  } catch (error) {
     console.error('Portfolio API Error:', error);
+    const message = error instanceof Error ? error.message : 'Internal Error';
     return NextResponse.json(
-      { error: error.message || 'Internal Error' },
+      { error: message },
       { status: 500 }
     );
   }

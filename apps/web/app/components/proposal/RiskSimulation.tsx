@@ -55,6 +55,7 @@ export function RiskSimulation({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: user._id,
+          walletAddress: user.walletAddress,
           proposalId: proposalId,
           tokenSymbol: tokenSymbol,
           tokenAddress: 'So11111111111111111111111111111111111111112', // Tạm fix address hoặc truyền từ prop
@@ -71,11 +72,12 @@ export function RiskSimulation({
 
       toast.success("Trade Executed Successfully!");
       
-      // Chuyển hướng sang Portfolio để xem kết quả
-      router.push('/portfolio');
+      // Chuyển hướng sang workspace quản lý lệnh sau khi execute
+      router.push('/positions');
 
-    } catch (error: any) {
-      toast.error(`Trade Failed: ${error.message}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to execute';
+      toast.error(`Trade Failed: ${message}`);
     } finally {
       setExecuting(false);
     }

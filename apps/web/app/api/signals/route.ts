@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
+import connectDB from '@/lib/mongodb';
 import { SignalService } from '@/services/SignalService';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   try {
@@ -7,7 +10,8 @@ export async function GET(request: Request) {
     const limit = parseInt(searchParams.get('limit') || '10');
     const type = searchParams.get('type') || 'ALL'; // Hỗ trợ lọc theo type
     
-    // Gọi Service Layer
+    await connectDB();
+
     const signals = await SignalService.getSignals(limit, type);
     
     return NextResponse.json(signals);

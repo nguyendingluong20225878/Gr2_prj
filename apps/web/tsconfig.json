@@ -2,6 +2,7 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     /* Override cho Next.js */
+    "baseUrl": ".",
     "module": "esnext",
     "moduleResolution": "bundler",
     "jsx": "preserve",

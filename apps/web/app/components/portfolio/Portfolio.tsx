@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/ta
 import { useRouter } from 'next/navigation';
 
 // Format Date
-const formatDate = (dateString: string | Date) => {
+const formatDate = (dateString?: string | Date) => {
   if (!dateString) return '';
   return new Date(dateString).toLocaleDateString('en-US', {
     month: 'short',
@@ -18,7 +18,7 @@ const formatDate = (dateString: string | Date) => {
 };
 
 // Format DateTime Detailed
-const formatDateTime = (dateString: string | Date) => {
+const formatDateTime = (dateString?: string | Date) => {
   if (!dateString) return 'N/A';
   return new Date(dateString).toLocaleString('en-US', { 
     month: 'short', day: '2-digit', year: 'numeric',
@@ -33,21 +33,59 @@ const formatNumber = (n: number, maxDecimals = 6) => {
   return parseFloat(n.toFixed(maxDecimals)).toLocaleString();
 };
 
+type PortfolioHolding = {
+  symbol: string;
+  balance: number;
+  price: number;
+  value: number;
+};
+
+type PortfolioInvestment = {
+  _id: string;
+  symbol: string;
+  entryPrice: number;
+  size: number;
+  leverage: number;
+  direction: string;
+  createdAt?: string | Date;
+  proposalId?: string;
+  pnl: number;
+  roi: number;
+};
+
+type PortfolioWatchlistItem = {
+  _id: string;
+  tokenSymbol: string;
+  title?: string;
+  roi: number;
+  confidence?: number;
+  createdAt?: string | Date;
+};
+
+type PortfolioResponse = {
+  holdings: PortfolioHolding[];
+  investments: PortfolioInvestment[];
+  watchlist: PortfolioWatchlistItem[];
+  stats?: {
+    totalValue?: number;
+  };
+};
+
 export function Portfolio() {
   const { publicKey } = useWallet();
   const router = useRouter();
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<PortfolioResponse | null>(null);
   const [loading, setLoading] = useState(true);
   
   // State for Modal
-  const [selectedInvestment, setSelectedInvestment] = useState<any>(null);
+  const [selectedInvestment, setSelectedInvestment] = useState<PortfolioInvestment | null>(null);
 
   useEffect(() => {
     async function fetchPortfolio() {
       if (!publicKey) return;
       try {
         const res = await fetch(`/api/portfolio?wallet=${publicKey.toBase58()}`);
-        const json = await res.json();
+        const json = (await res.json()) as PortfolioResponse;
         setData(json);
       } catch (err) {
         console.error(err);
@@ -100,7 +138,7 @@ export function Portfolio() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {holdings.map((h: any, i: number) => (
+              {holdings.map((h, i) => (
                 <div key={i} className="glass-card p-4 rounded-xl flex justify-between items-center">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center font-bold text-white">
@@ -136,7 +174,7 @@ export function Portfolio() {
             </div>
           ) : (
             <div className="space-y-3">
-              {investments.map((inv: any) => (
+              {investments.map((inv) => (
                 <div
                   key={inv._id}
                   onClick={() => setSelectedInvestment(inv)}
@@ -168,7 +206,7 @@ export function Portfolio() {
         {/* 3. WATCHLIST */}
         <TabsContent value="watchlist" className="mt-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {watchlist.map((w: any) => (
+            {watchlist.map((w) => (
               <div
                 key={w._id}
                 onClick={() => router.push(`/proposal/${w._id}`)}
@@ -190,7 +228,7 @@ export function Portfolio() {
                   </div>
                   <div className="flex items-center gap-1">
                     <Eye size={12} className="text-blue-400" />
-                    Conf: {formatNumber(w.confidence)}%
+                    Conf: {formatNumber(w.confidence ?? 0)}%
                   </div>
                 </div>
               </div>

@@ -1,23 +1,33 @@
 import { SignalModel } from '@/models/Signal';
-import { Model } from 'mongoose'; // Import thêm type Model
+import type { Model } from 'mongoose';
+
+type SignalSuggestionType = 'buy' | 'sell' | 'hold' | 'stake' | 'close_position';
+
+type SignalRecord = {
+  suggestionType: SignalSuggestionType;
+  detectedAt: Date;
+};
+
+const suggestionTypeFilters = {
+  BUY: ['buy', 'stake'],
+  SELL: ['sell', 'close_position'],
+  HOLD: ['hold'],
+} as const;
 
 export class SignalService {
   static async getSignals(limit: number = 10, filterType?: string) {
-    const query: any = {};
+    const query: { suggestionType?: { $in: SignalSuggestionType[] } } = {};
     
     if (filterType && filterType !== 'ALL') {
-       if (filterType === 'BUY') {
-        query.suggestionType = { $in: ['BUY', 'LONG', 'STAKE'] };
-      } else if (filterType === 'SELL') {
-        query.suggestionType = { $in: ['SELL', 'SHORT', 'CLOSE_POSITION'] };
-      } else if (filterType === 'HOLD') {
-        query.suggestionType = { $in: ['HOLD', 'NEUTRAL'] };
+      const normalizedType = filterType.toUpperCase() as keyof typeof suggestionTypeFilters;
+      const suggestionTypes = suggestionTypeFilters[normalizedType];
+
+      if (suggestionTypes) {
+        query.suggestionType = { $in: [...suggestionTypes] };
       }
     }
 
-    // === FIX LỖI Ở ĐÂY ===
-    // Ép kiểu SignalModel về (Model<any>) để TS không còn bắt bẻ Union Type
-    const signals = await (SignalModel as Model<any>).find(query)
+    const signals = await (SignalModel as unknown as Model<SignalRecord>).find(query)
       .sort({ detectedAt: -1 })
       .limit(limit)
       .lean(); 
@@ -26,7 +36,6 @@ export class SignalService {
   }
 
   static async getSignalById(id: string) {
-    // === FIX LỖI Ở ĐÂY ===
-    return await (SignalModel as Model<any>).findById(id).lean();
+    return await (SignalModel as unknown as Model<SignalRecord>).findById(id).lean();
   }
 }

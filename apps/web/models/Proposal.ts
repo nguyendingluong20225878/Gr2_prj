@@ -1,16 +1,41 @@
-import mongoose, { Schema, model, models } from 'mongoose';
+import mongoose, { InferSchemaType, Schema, model, models } from 'mongoose';
+
+const PROPOSAL_SUGGESTION_TYPES = ['buy', 'sell', 'hold', 'stake', 'close_position'] as const;
+const PROPOSAL_EXECUTION_STATUSES = ['PENDING', 'EXECUTED', 'IGNORED'] as const;
+const LEGACY_ACTIONS = ['BUY', 'SELL', 'HOLD'] as const;
 
 const ProposalSchema = new Schema({
-  // 1. LIÊN KẾT DỮ LIỆU
-  userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
-  triggerSignalId: { type: Schema.Types.ObjectId, ref: 'Signal', required: true },
+  // Canonical domain shape shared with core/shared.
+  signalId: { type: Schema.Types.ObjectId, ref: 'Signal', index: true },
+  tokenSymbol: { type: String, required: true, index: true },
+  tokenAddress: { type: String },
+  suggestionType: { type: String, enum: PROPOSAL_SUGGESTION_TYPES, index: true },
+  sentimentType: { type: String },
+  quantScore: { type: Number },
+  confidence: { type: Number, required: true },
+  rationaleSummary: { type: String },
+  sources: {
+    type: [
+      {
+        label: { type: String, required: true },
+        url: { type: String, required: true },
+      },
+    ],
+    default: [],
+  },
+  executionStatus: {
+    type: String,
+    enum: PROPOSAL_EXECUTION_STATUSES,
+    default: 'PENDING',
+    index: true,
+  },
 
-  // 2. THÔNG TIN TOKEN
-  tokenSymbol: { type: String, required: true },
-  tokenName: { type: String, required: true },
+  // Compatibility fields for old web proposals. New code should write canonical fields above.
+  userId: { type: Schema.Types.ObjectId, ref: 'User', index: true },
+  triggerSignalId: { type: Schema.Types.ObjectId, ref: 'Signal' },
+  tokenName: { type: String },
   
-  // 3. QUYẾT ĐỊNH CỦA AI
-  action: { type: String, enum: ['BUY', 'SELL', 'HOLD'], required: true },
+  action: { type: String, enum: LEGACY_ACTIONS },
   title: { type: String },
   summary: { type: String },
   
@@ -32,13 +57,12 @@ const ProposalSchema = new Schema({
     risks: [String],
   },
 
-  confidence: { type: Number, required: true }, 
-
-  // === FIX DEFAULT STATUS: Đổi từ 'ACTIVE' sang 'pending' ===
   status: { type: String, default: 'pending' }, 
   createdAt: { type: Date, default: Date.now },
-  expiresAt: { type: Date, required: true },
+  expiresAt: { type: Date },
 });
 
 const Proposal = models.Proposal || model('Proposal', ProposalSchema);
 export default Proposal;
+export type ProposalSchema = InferSchemaType<typeof ProposalSchema>;
+export type Proposal = ProposalSchema & { _id: string };

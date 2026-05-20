@@ -6,6 +6,31 @@ import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
 import { useRouter } from 'next/navigation';
 
+type TradeAction = 'BUY' | 'SELL' | 'HOLD';
+
+type ProposalFinancialImpact = {
+  currentValue?: number;
+  projectedValue?: number;
+  percentChange?: number;
+  riskLevel?: string;
+};
+
+export type DashboardProposalCardData = {
+  _id: string;
+  signalId?: string;
+  tokenSymbol: string;
+  tokenName: string;
+  action: TradeAction;
+  title?: string;
+  summary?: string;
+  rationaleSummary?: string;
+  reasoning?: string;
+  reason?: string[];
+  confidence: number;
+  financialImpact?: ProposalFinancialImpact;
+  expiresAt?: string | Date;
+};
+
 const formatCurrency = (num: number) => {
   if (!num) return '$0.00';
   if (num >= 1_000_000) return `$${(num / 1_000_000).toFixed(2)}M`;
@@ -13,7 +38,7 @@ const formatCurrency = (num: number) => {
   return `$${num.toFixed(2)}`;
 };
 
-const getTimeRemaining = (expiresAtString: string | Date) => {
+const getTimeRemaining = (expiresAtString?: string | Date) => {
   if (!expiresAtString) return 'N/A';
   const now = new Date().getTime();
   const expiresAt = new Date(expiresAtString).getTime();
@@ -25,7 +50,7 @@ const getTimeRemaining = (expiresAtString: string | Date) => {
 };
 
 interface ProposalCardSocialProps {
-  proposal: any;
+  proposal: DashboardProposalCardData;
   onViewDetails?: (proposalId: string) => void;
 }
 
@@ -34,7 +59,7 @@ export function ProposalCardSocial({
   onViewDetails,
 }: ProposalCardSocialProps) {
   const router = useRouter();
-  const [realData, setRealData] = useState<any>(null);
+  const [realData, setRealData] = useState<DashboardProposalCardData | null>(null);
 
   // Gọi API để lấy Risk, ROI từ Proposal DB
   useEffect(() => {
@@ -47,7 +72,7 @@ export function ProposalCardSocial({
         // Gọi API cho tất cả tín hiệu (BUY, SELL, HOLD)
         const res = await fetch(`/api/proposals/${queryId}`);
         if (res.ok) {
-          const data = await res.json();
+          const data = (await res.json()) as DashboardProposalCardData;
           setRealData(data);
         }
       } catch (error) {
@@ -59,11 +84,13 @@ export function ProposalCardSocial({
   }, [proposal.signalId, proposal._id, proposal.action]);
 
   const displayData = realData || proposal;
-  const action = displayData.action?.toUpperCase() || 'HOLD';
+  const action = (displayData.action?.toUpperCase() || 'HOLD') as TradeAction;
   const riskLevel =
     displayData.financialImpact?.riskLevel || 'MEDIUM'; // Lấy từ DB
   const percentChange =
     displayData.financialImpact?.percentChange || 0;
+  const currentValue = displayData.financialImpact?.currentValue ?? 0;
+  const projectedValue = displayData.financialImpact?.projectedValue ?? 0;
 
   // Config màu sắc
   const config = useMemo(() => {
@@ -153,12 +180,12 @@ export function ProposalCardSocial({
         </p>
         <div className="text-[10px] text-slate-500 mt-1 font-mono">
           {formatCurrency(
-            displayData.financialImpact?.currentValue
+            currentValue
           )}{' '}
           →{' '}
           <span className={config.color}>
             {formatCurrency(
-              displayData.financialImpact?.projectedValue
+              projectedValue
             )}
           </span>
         </div>
