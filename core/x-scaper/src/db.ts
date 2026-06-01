@@ -76,17 +76,30 @@ export const saveTweets = async (
       };
     });
 
+    let persistenceOk = false;
+
     try {
       const result = await tweetTable.insertMany(tweetDocuments, { ordered: false });
+      persistenceOk = true;
       console.log(`[DB SUCCESS] Đã chèn mới thành công ${result.length} tweets vào MongoDB!`);
     } catch (err: any) {
-      if (err.code === 11000 || (err.writeErrors && err.writeErrors.some((e: any) => e.code === 11000))) {
+      const duplicateOnly =
+        err.code === 11000 ||
+        (Array.isArray(err.writeErrors) &&
+          err.writeErrors.length > 0 &&
+          err.writeErrors.every((e: any) => e.code === 11000));
+
+      if (duplicateOnly) {
+        persistenceOk = true;
         const inserted = err.insertedDocs ? err.insertedDocs.length : 0;
         console.log(`[DB INFO] Duplicate Key: Đã lưu ${inserted} bài viết mới, hệ thống tự động bỏ qua các bài cũ.`);
       } else {
         console.error(`[DB FATAL ERROR] Lỗi Mongoose:`, err.message);
+        throw err;
       }
     }
+
+    if (!persistenceOk) return null;
 
     const newest = tweets
       .map((t) => new Date(t.time))
