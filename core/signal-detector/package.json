@@ -1,11 +1,19 @@
 {
+ "name": "@gr2/signal-detector",
+ "version": "0.1.0",
+ "private": true,
  "type": "module",
   "scripts": {
   "build": "tsc",
   "format": "prettier --write .",
   "start": "node dist/index.js",
   "test": "vitest run",
-   "quant": "node --no-warnings --loader ts-node/esm scripts/run-quant.ts",
+   "quant": "tsx scripts/run-quant.ts",
+   "weights": "tsx ../research/jobs/run-dynamic-weight.ts",
+   "metrics": "tsx ../research/jobs/run-rolling-metrics.ts",
+   "backtest": "tsx ../research/jobs/run-backtest.ts",
+   "regime": "tsx ../research/jobs/run-regime.ts",
+   "maintenance": "tsx ../research/jobs/run-maintenance.ts",
    "test-quant": "node --loader ts-node/esm --experimental-specifier-resolution=node scripts/test-quant-logic.ts"
   },
   "license": "MIT",

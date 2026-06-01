@@ -1,5 +1,13 @@
 import { finBertProbs } from "./finbert.js";
+import {
+  connectToDatabase,
+  sourceWeightsTable,
+} from "@gr2/shared";
 import { calcNormEntropy, calcDecay } from "./quant-math.js";
+import {
+  readSentimentCache,
+  writeSentimentCache,
+} from "./services/sentiment-cache-service.js";
 import { DetectorHyperParams, ScoredDoc } from "./types.js"; 
 
 export type ProcessDocumentOptions = {
@@ -31,6 +39,36 @@ function sourceKeyFromUrl(url: string | undefined): string {
     return new URL(url).hostname.replace(/^www\./, "");
   } catch {
     return url;
+  }
+}
+
+async function loadSourceWeights(): Promise<Map<string, number>> {
+  try {
+    await connectToDatabase();
+    const rows = await sourceWeightsTable
+      .find({}, { siteHost: 1, sourceType: 1, sourceKey: 1, siteWeight: 1 })
+      .lean();
+
+    const weights = new Map<string, number>();
+    for (const row of rows as any[]) {
+      const weight = Number(row.siteWeight);
+      if (!Number.isFinite(weight) || weight <= 0) continue;
+
+      const siteHost = String(row.siteHost ?? "");
+      if (siteHost) weights.set(siteHost, weight);
+
+      const sourceType = String(row.sourceType ?? "");
+      const sourceKey = String(row.sourceKey ?? "");
+      if (sourceType && sourceKey) weights.set(`${sourceType}:${sourceKey}`, weight);
+    }
+
+    return weights;
+  } catch (error) {
+    console.warn(
+      "[Quant V3] Không thể tải source_weights, fallback siteWeight=1:",
+      error instanceof Error ? error.message : String(error)
+    );
+    return new Map();
   }
 }
 
@@ -74,29 +112,43 @@ export async function processDocuments(
 
   const userWeightUsage = new Map<string, number>();
   const scoredDocuments: ScoredDoc[] = [];
+  const startedAt = Date.now();
+  const metrics = {
+    docs: allDocs.length,
+    relevantDocs: 0,
+    memoryCacheHits: 0,
+    persistentCacheHits: 0,
+    finbertCalls: 0,
+  };
+  const sourceWeights = await loadSourceWeights();
 
   // Khởi tạo Cache để tránh gọi API trùng lặp
   const textScoreCache = new Map<string, any>();
 
-  const compiledTokens: CompiledToken[] = knownTokens.map(token => {
-    const symStr = token.symbol.trim();
-    const symUpper = escapeRegex(symStr.toUpperCase());
-    const symLower = escapeRegex(symStr.toLowerCase());
-    
-    // Name: Chuẩn hóa để bắt chữ HOA ĐẦU hoặc HOA TOÀN BỘ 
-    const nameStr = token.name.trim();
-    const nameCapitalized = escapeRegex(nameStr.charAt(0).toUpperCase() + nameStr.slice(1).toLowerCase());
-    const nameUpper = escapeRegex(nameStr.toUpperCase());
-
-    return {
+  const compiledTokens: CompiledToken[] = knownTokens
+    .map(token => ({
       ...token,
-      // Regex Symbol (Bỏ cờ 'i'): Chấp nhận $LINK, $link, #LINK, #link, hoặc LINK (bắt buộc viết hoa)
-      symbolRegex: new RegExp(`(?<![a-zA-Z0-9])(?:[\\$#]${symUpper}|[\\$#]${symLower}|${symUpper})(?![a-zA-Z0-9])`),
-      
-      //  Regex Name (Bỏ cờ 'i'): Chấp nhận Chainlink hoặc CHAINLINK. Tránh false positive với "link" thường.
-      nameRegex: new RegExp(`(?<![a-zA-Z0-9])(?:${nameCapitalized}|${nameUpper})(?![a-zA-Z0-9])`)
-    };
-  });
+      symbol: String(token.symbol ?? "").trim(),
+      name: String(token.name ?? "").trim(),
+    }))
+    .filter(token => token.symbol.length >= 2 && token.name.length >= 2)
+    .map(token => {
+      const symUpper = escapeRegex(token.symbol.toUpperCase());
+      const symLower = escapeRegex(token.symbol.toLowerCase());
+      const nameCapitalized = escapeRegex(
+        token.name.charAt(0).toUpperCase() + token.name.slice(1).toLowerCase()
+      );
+      const nameUpper = escapeRegex(token.name.toUpperCase());
+
+      return {
+        ...token,
+        // Regex Symbol (Bỏ cờ 'i'): Chấp nhận $LINK, $link, #LINK, #link, hoặc LINK (bắt buộc viết hoa)
+        symbolRegex: new RegExp(`(?<![a-zA-Z0-9])(?:[\\$#]${symUpper}|[\\$#]${symLower}|${symUpper})(?![a-zA-Z0-9])`),
+        
+        //  Regex Name (Bỏ cờ 'i'): Chấp nhận Chainlink hoặc CHAINLINK. Tránh false positive với "link" thường.
+        nameRegex: new RegExp(`(?<![a-zA-Z0-9])(?:${nameCapitalized}|${nameUpper})(?![a-zA-Z0-9])`)
+      };
+    });
 
   //  Định danh cứng cấu trúc mảng để tận dụng dữ liệu đã được Scraper trích xuất sẵn cho News
   const relevantDocs: Array<{ doc: any; token: CompiledToken }> = [];
@@ -124,6 +176,7 @@ export async function processDocuments(
       relevantDocs.push({ doc, token });
     }
   }
+  metrics.relevantDocs = relevantDocs.length;
 
   const chunks = chunkArray(relevantDocs, 10);
   const asOfMs = options.asOf.getTime();
@@ -135,16 +188,28 @@ export async function processDocuments(
     for (const { doc, token } of chunk) {
       try {
         const isTweet = doc.docType === 'tweet';
-        const textToScore = isTweet ? doc.text : `${doc.title}\n${doc.summary}`;
+        const textToScore = isTweet
+          ? String(doc.text || "").trim()
+          : [doc.title, doc.summary, doc.content].filter(Boolean).join("\n").trim();
+
+        if (!textToScore) continue;
 
         let probs;
 
-        //  Kiểm tra Cache trước khi gọi API HuggingFace
+        //  Kiểm tra cache trước khi gọi API HuggingFace.
         if (textScoreCache.has(textToScore)) {
           probs = textScoreCache.get(textToScore);
+          metrics.memoryCacheHits += 1;
         } else {
-          probs = await finBertProbs(textToScore);
-          textScoreCache.set(textToScore, probs); // Lưu kết quả vào Cache
+          probs = await readSentimentCache(textToScore);
+          if (probs) {
+            metrics.persistentCacheHits += 1;
+          } else {
+            metrics.finbertCalls += 1;
+            probs = await finBertProbs(textToScore);
+            await writeSentimentCache(textToScore, probs);
+          }
+          textScoreCache.set(textToScore, probs);
         }
 
         const directionScore = probs.pPos - probs.pNeg;
@@ -162,9 +227,16 @@ export async function processDocuments(
         let rawWeight = 1.0;
         if (isTweet) {
           const engagement = (doc.replyCount || 0) + (doc.retweetCount || 0) + (doc.likeCount || 0);
-          rawWeight = 1 + Math.log(1 + engagement);
+          const authorWeight = Number.isFinite(doc.authorWeight) && doc.authorWeight > 0
+            ? Number(doc.authorWeight)
+            : 1;
+          const authorKey = String(doc.author || "unknown_author");
+          const dynamicAuthorWeight = sourceWeights.get(`twitter:${authorKey}`) ?? 1;
+          rawWeight = authorWeight * dynamicAuthorWeight * (1 + Math.log(1 + engagement));
         } else {
-          rawWeight = hyperParams.newsBaseWeight;
+          const sourceKey = sourceKeyFromUrl(doc.siteUrl || doc.articleUrl);
+          const siteWeight = sourceWeights.get(`news:${sourceKey}`) ?? sourceWeights.get(sourceKey) ?? 1;
+          rawWeight = hyperParams.newsBaseWeight * siteWeight;
         }
 
         let finalWeight = rawWeight * decay;
@@ -206,6 +278,10 @@ export async function processDocuments(
     // Sau khi chạy xong 1 lô (chunk 10 bài), nghỉ ngơi thêm 2 giây cho chắc ăn
     if (options.chunkDelayMs > 0) await sleep(options.chunkDelayMs);
   }
+
+  console.log(
+    `[Quant V3] Document scoring latency=${Date.now() - startedAt}ms docs=${metrics.docs} relevant=${metrics.relevantDocs} scored=${scoredDocuments.length} memCache=${metrics.memoryCacheHits} persistentCache=${metrics.persistentCacheHits} finbertCalls=${metrics.finbertCalls}`
+  );
 
   return scoredDocuments;
 }

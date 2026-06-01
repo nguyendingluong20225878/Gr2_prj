@@ -2,9 +2,11 @@
 
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useEffect, useState } from 'react';
+import { useTradingDemoStore } from '@/app/contexts/TradingDemoContext';
 
 export function WalletDebug() {
   const wallet = useWallet();
+  const { alerts, orders, positions, resetDemoSession, storageScope } = useTradingDemoStore();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -56,6 +58,22 @@ export function WalletDebug() {
         <div className="flex justify-between items-center">
           <span>Adapter:</span>
           <span className="text-slate-400">{wallet.wallet?.adapter.name || 'None'}</span>
+        </div>
+
+        <div className="border-t border-white/10 pt-2">
+          <div className="flex justify-between items-center">
+            <span>Demo:</span>
+            <span className="text-cyan-300">{positions.length} pos / {orders.length} ord / {alerts.length} alert</span>
+          </div>
+          <div className="mt-1 truncate text-[10px] text-slate-500" title={storageScope}>
+            scope: {storageScope.slice(0, 12)}{storageScope.length > 12 ? '...' : ''}
+          </div>
+          <button
+            onClick={resetDemoSession}
+            className="mt-2 w-full rounded-md border border-red-500/30 bg-red-500/10 px-2 py-1 text-[10px] font-bold text-red-300 hover:bg-red-500/15"
+          >
+            Reset demo session
+          </button>
         </div>
       </div>
     </div>

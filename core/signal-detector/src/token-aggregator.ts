@@ -42,6 +42,15 @@ export function aggregateAndNormalize(scoredDocuments: ScoredDoc[]): Map<string,
         sourceKey: d.sourceKey,
         weight: d.finalWeight,
       }));
+    const allSources: Source[] = [...docs]
+      .sort((a, b) => b.finalWeight - a.finalWeight)
+      .slice(0, 50)
+      .map(d => ({
+        url: d.url,
+        label: d.type === 'tweet' ? 'X (Twitter)' : 'News Article',
+        sourceKey: d.sourceKey,
+        weight: d.finalWeight,
+      }));
 
     tokenStates.set(symbol, {
       symbol,
@@ -49,7 +58,8 @@ export function aggregateAndNormalize(scoredDocuments: ScoredDoc[]): Map<string,
       docsCount: docs.length,//Số lượng tài liệu liên quan đến token, có thể dùng để đánh giá độ tin cậy
       unifiedRaw,//Điểm tổng hợp chưa chuẩn hóa, sẽ được sử dụng để tính z-score và beta ở các giai đoạn sau
       avgEntropy,
-      sources, // Lưu trữ nguồn gốc của tín hiệu để Layer 3 có thể truy xuất khi cần thiết
+      sources, // Lưu trữ nguồn gốc mạnh nhất để Layer 3 có thể truy xuất khi cần thiết
+      allSources,
       timeZ: 0,//Điểm z-score theo thời gian
       pureAlphaZ: 0//Điểm alpha đã được loại bỏ tác động thị trường
     });

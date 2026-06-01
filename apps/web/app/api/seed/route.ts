@@ -26,10 +26,10 @@ export async function GET(req: Request) {
   await connectDB();
   
   // Xóa cũ
-  await Proposal.deleteMany({});
+  await (Proposal as any).deleteMany({});
 
   // Tạo mới mẫu
-  await Proposal.create([
+  await (Proposal as any).create([
     {
       tokenSymbol: 'SOL',
       tokenAddress: 'So11111111111111111111111111111111111111112',

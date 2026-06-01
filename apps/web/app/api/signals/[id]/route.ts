@@ -3,19 +3,31 @@ import connectDB from '@/lib/mongodb';
 import mongoose, { Model } from 'mongoose';
 
 type SignalDetailRecord = {
+  tokenSymbol?: string;
   symbol?: string;
   direction?: string;
   confidence?: number;
   sentimentType?: string;
   rationaleSummary?: string;
   sources?: Array<{ label?: string; url?: string }>;
+  createdAt?: Date;
   detectedAt?: Date;
   expiresAt?: Date;
+  metadata?: {
+    processedAt?: Date;
+    uncertaintyEntropy?: number;
+    realizedVolatility?: number;
+    volatilityFlag?: number;
+  };
+  uncertaintyEntropy?: number;
+  realizedVolatility?: number;
+  updatedAt?: Date;
 };
 
 // --- ĐỊNH NGHĨA MODEL SIGNAL ---
 const SignalSchema = new mongoose.Schema({
-  symbol: { type: String, required: true },
+  tokenSymbol: { type: String },
+  symbol: { type: String },
   direction: { type: String }, 
   confidence: { type: Number },
   sentimentType: { type: String },
@@ -31,6 +43,12 @@ const SignalSchema = new mongoose.Schema({
 
 const SignalModel = (mongoose.models.Signal ||
   mongoose.model<SignalDetailRecord>('Signal', SignalSchema)) as Model<SignalDetailRecord>;
+
+const SIGNAL_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+function resolveDetectedAt(signal: SignalDetailRecord) {
+  return signal.detectedAt ?? signal.createdAt ?? signal.metadata?.processedAt ?? signal.updatedAt ?? new Date();
+}
 
 export async function GET(req: Request, { params }: { params: { id: string } }) {
   try {
@@ -48,7 +66,15 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       return NextResponse.json({ error: 'Signal not found' }, { status: 404 });
     }
 
-    return NextResponse.json(signal);
+    const detectedAt = resolveDetectedAt(signal);
+
+    return NextResponse.json({
+      ...signal,
+      detectedAt,
+      expiresAt: signal.expiresAt ?? new Date(detectedAt.getTime() + SIGNAL_TTL_MS),
+      uncertaintyEntropy: signal.uncertaintyEntropy ?? signal.metadata?.uncertaintyEntropy ?? signal.metadata?.volatilityFlag ?? null,
+      realizedVolatility: signal.realizedVolatility ?? signal.metadata?.realizedVolatility ?? null,
+    });
   } catch (error) {
     console.error('Fetch Signal API Error:', error);
     const message = error instanceof Error ? error.message : 'Unknown error';

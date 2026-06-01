@@ -1,0 +1,18 @@
+{
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": "../../../",
+    "rootDir": "../../../",
+    "noEmit": true,
+    "paths": {
+      "@gr2/shared": ["core/shared/src/index.ts"],
+      "@gr2/*": ["core/*/src", "services/*/src", "apps/*/src"],
+      "@/*": ["apps/web/*"]
+    },
+    "types": ["node"]
+  },
+  "include": [
+    "*.ts"
+  ],
+  "exclude": ["node_modules", "dist"]
+}

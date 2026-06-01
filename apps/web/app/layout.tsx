@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google'; // [Mới] Import font chuẩn để tránh lỗi font
 import { WalletContextProvider } from './components/wallet/WalletProvider';
 import { AuthProvider } from './contexts/AuthContext';
+import { TradingDemoProvider } from './contexts/TradingDemoContext';
 import { Toaster } from './components/ui/sonner';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { WalletDebug } from './components/wallet/WalletDebug';
@@ -35,24 +36,26 @@ export default function RootLayout({
         <ErrorBoundary>
           <WalletContextProvider>
             <AuthProvider>
-              <div className="relative flex min-h-screen flex-col">
-                {children}
-                
-                {/* Bảng Debug Wallet */}
-                <WalletDebug />
-                
-                {/* Thông báo Toast */}
-                <Toaster 
-                  position="top-right"
-                  toastOptions={{
-                    style: {
-                      background: 'rgba(15, 6, 30, 0.95)',
-                      border: '1px solid rgba(168, 85, 247, 0.2)',
-                      color: '#f8fafc',
-                    },
-                  }}
-                />
-              </div>
+              <TradingDemoProvider>
+                <div className="relative flex min-h-screen flex-col">
+                  {children}
+                  
+                  {/* Bảng Debug Wallet */}
+                  <WalletDebug />
+                  
+                  {/* Thông báo Toast */}
+                  <Toaster 
+                    position="top-right"
+                    toastOptions={{
+                      style: {
+                        background: 'rgba(15, 6, 30, 0.95)',
+                        border: '1px solid rgba(168, 85, 247, 0.2)',
+                        color: '#f8fafc',
+                      },
+                    }}
+                  />
+                </div>
+              </TradingDemoProvider>
             </AuthProvider>
           </WalletContextProvider>
         </ErrorBoundary>

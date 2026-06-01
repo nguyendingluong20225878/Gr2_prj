@@ -79,6 +79,7 @@ export interface DetectorHyperParams {
   alphaBlend: number;
   signalThreshold: number;
   actionThreshold: number;
+  coldStartActionThreshold: number;
   confidenceDivisor: number;
   coldStartConfidenceDivisor: number;
 }
@@ -92,6 +93,7 @@ export const DEFAULT_HYPER_PARAMS: DetectorHyperParams = {
   alphaBlend: 0.7,//hệ số để blend giữa tín hiệu độc lập và tín hiệu khác
   signalThreshold: 0.5,//ngưỡng để xác định có tín hiệu hay không (ví dụ: nếu điểm tín hiệu > 0.5 thì coi là có tín hiệu)
   actionThreshold: 1.5,//ngưỡng để xác định có nên đưa ra gợi ý hành động hay không (ví dụ: nếu điểm tín hiệu > 1.5 thì mới gợi ý buy/sell)
+  coldStartActionThreshold: 999,//Cold-start chỉ nên watch/hold, không tự động đẩy BUY/SELL khi thiếu lịch sử
   confidenceDivisor: 3,//hệ số để chia điểm tín hiệu khi tính confidence (ví dụ: confidence = finalScore / confidenceDivisor)
   coldStartConfidenceDivisor: 5,//hệ số để chia điểm tín hiệu khi tính confidence trong trường hợp cold start (ít dữ liệu) (ví dụ: confidence = finalScore / coldStartConfidenceDivisor)
 };
@@ -140,6 +142,10 @@ export function resolveHyperParams(
       overrides?.actionThreshold,
       DEFAULT_HYPER_PARAMS.actionThreshold
     ),
+    coldStartActionThreshold: positiveOrFallback(
+      overrides?.coldStartActionThreshold,
+      DEFAULT_HYPER_PARAMS.coldStartActionThreshold
+    ),
     confidenceDivisor: positiveOrFallback(
       overrides?.confidenceDivisor,
       DEFAULT_HYPER_PARAMS.confidenceDivisor
@@ -163,6 +169,9 @@ export interface QuantSignalResponse {
   
   quantScore: number;       
   volatilityFlag: number;   
+  uncertaintyEntropy?: number;
+  realizedVolatility?: number;
+  signalMode?: "COLD_START" | "NORMALIZED_ALPHA";
   sentimentType: "positive" | "negative" | "neutral";
   
   suggestionType: SuggestionType;
@@ -182,6 +191,8 @@ export interface DetectorParams {
   knownTokens: KnownTokenType[];
   historicalData?: Record<string, any[]>; 
   hyperParams?: Partial<DetectorHyperParams>;
+  dynamicBetaBySymbol?: Record<string, number>;
+  marketRegime?: string;
   asOf?: Date;
   throttleMs?: number;
   chunkDelayMs?: number;
@@ -206,9 +217,11 @@ export interface TokenQuantState {
   docsCount: number;
   unifiedRaw: number;
   avgEntropy: number;
+  signalMode?: "COLD_START" | "NORMALIZED_ALPHA";
   sources: Source[]; 
   timeZ?: number;
   pureAlphaZ?: number;
   crossZ?: number;
   finalScore?: number;
+  allSources?: Source[];
 }

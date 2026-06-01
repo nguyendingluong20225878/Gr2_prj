@@ -8,11 +8,14 @@ import { loadActiveHyperParams } from "./services/hyperparam-config-service.js";
  * NHẠC TRƯỞNG QUANT ENGINE V3 (Modular)
  */
 export async function detectSignalWithFinBertQuant(params: DetectorParams) {
+  const pipelineStartedAt = Date.now();
   const {
     formattedTweets,
     formattedNews,
     knownTokens,
     historicalData = {},
+    dynamicBetaBySymbol = {},
+    marketRegime,
     asOf = new Date(),
     throttleMs = 300,
     chunkDelayMs = 2000,
@@ -27,19 +30,30 @@ export async function detectSignalWithFinBertQuant(params: DetectorParams) {
   ];
 
   console.log(`[Quant V3] Bước 1: Phân tích Document & Trọng số (${allDocs.length} items)...`);
+  const documentStageStartedAt = Date.now();
   const scoredDocs = await processDocuments(
     allDocs,
     knownTokens,
     hyperParams,
     { asOf, throttleMs, chunkDelayMs }
   );
+  console.log(`[Quant V3] Stage document_scoring latency=${Date.now() - documentStageStartedAt}ms scoredDocs=${scoredDocs.length}`);
 
   console.log(`[Quant V3] Bước 2: Gom Token & Chuẩn hóa Khối lượng...`);
+  const aggregateStageStartedAt = Date.now();
   const tokenStates = aggregateAndNormalize(scoredDocs);
+  console.log(`[Quant V3] Stage aggregation latency=${Date.now() - aggregateStageStartedAt}ms tokens=${tokenStates.size}`);
 
   console.log(`[Quant V3] Bước 3: Đánh giá Alpha Lịch sử & Đối chiếu Chéo...`);
-  const finalSignals = evaluateAlphaAndCross(tokenStates, historicalData, hyperParams);
+  const alphaStageStartedAt = Date.now();
+  const finalSignals = evaluateAlphaAndCross(
+    tokenStates,
+    historicalData,
+    hyperParams,
+    { dynamicBetaBySymbol, marketRegime }
+  );
+  console.log(`[Quant V3] Stage alpha_cross latency=${Date.now() - alphaStageStartedAt}ms signals=${finalSignals.length}`);
 
-  console.log(`[Quant V3] Hoàn tất! Lọc được ${finalSignals.length} tín hiệu Alpha thuần.`);
+  console.log(`[Quant V3] Hoàn tất! Lọc được ${finalSignals.length} tín hiệu Alpha thuần. totalLatency=${Date.now() - pipelineStartedAt}ms`);
   return finalSignals;
 }

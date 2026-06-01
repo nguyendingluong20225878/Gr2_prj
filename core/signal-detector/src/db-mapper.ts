@@ -11,7 +11,7 @@ export function mapQuantToMongoInsert(resp: QuantSignalResponse) {
 
   // Object Insert chuẩn Quant V3
   const insert = {
-    tokenName: tokenSymbol,
+    tokenSymbol,
     tokenAddress,
     signalDetected: true,
     detectedAt,
@@ -20,6 +20,9 @@ export function mapQuantToMongoInsert(resp: QuantSignalResponse) {
     // Điểm số đặc trưng của V3
     quantScore: resp.quantScore || 0,
     volatilityFlag: resp.volatilityFlag || 0,
+    uncertaintyEntropy: resp.uncertaintyEntropy ?? resp.volatilityFlag ?? 0,
+    realizedVolatility: resp.realizedVolatility ?? null,
+    signalMode: resp.signalMode ?? resp.metadata?.signalMode ?? null,
     sentimentType: resp.sentimentType || "neutral",
     suggestionType: resp.suggestionType || "hold",
     confidence: resp.confidence || 0,
@@ -59,7 +62,7 @@ export async function saveSignalToDb(resp: any) {
 
     await logProcessing(
       "Signal-Detector",
-      `Saving QUANT V3 signal for ${insertData.tokenName}...`,
+      `Saving QUANT V3 signal for ${insertData.tokenSymbol}...`,
       { tokenAddress: insertData.tokenAddress }
     );
 
@@ -67,7 +70,7 @@ export async function saveSignalToDb(resp: any) {
 
     await logSuccess(
       "Signal-Detector",
-      `Saved Signal V3: ${insertData.tokenName} | Alpha: ${insertData.quantScore.toFixed(2)}`,
+      `Saved Signal V3: ${insertData.tokenSymbol} | Alpha: ${insertData.quantScore.toFixed(2)}`,
       { 
         signalId: created._id,
         tokenAddress: insertData.tokenAddress

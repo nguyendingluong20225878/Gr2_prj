@@ -1,6 +1,6 @@
 'use client';
 
-import { Activity, AlertTriangle, BarChart3, Clock, ShieldCheck } from 'lucide-react';
+import { Activity, AlertTriangle, Clock, ShieldCheck } from 'lucide-react';
 import type { SignalAnalyticsSummary } from '@/lib/types/analytics';
 
 function formatTime(value?: string) {
@@ -19,14 +19,13 @@ export function RegimeStatus({ summary }: { summary: SignalAnalyticsSummary }) {
 
   const cards = [
     { label: 'Market Regime', value: regime, icon: Activity, tone: breadth >= 55 ? 'text-green-400' : breadth <= 30 ? 'text-red-400' : 'text-purple-400' },
-    { label: 'Signal Breadth', value: `${breadth}% Buy`, icon: BarChart3, tone: 'text-cyan-400' },
     { label: 'Avg Confidence', value: `${summary.averageConfidence}%`, icon: ShieldCheck, tone: 'text-green-400' },
     { label: 'Anomalies', value: String(summary.anomalyCount), icon: AlertTriangle, tone: summary.anomalyCount ? 'text-amber-400' : 'text-slate-400' },
     { label: 'Last Signal', value: formatTime(summary.lastUpdated), icon: Clock, tone: 'text-slate-300' },
   ];
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+    <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
       {cards.map((card) => {
         const Icon = card.icon;
         return (

@@ -10,16 +10,22 @@ export interface ProposalSource {
 }
 
 export interface Proposal {
-    signalId: Types.ObjectId;
+    signalId?: Types.ObjectId;
     tokenSymbol: string;
     tokenAddress: string;
     suggestionType: string;
     sentimentType: string;
     quantScore: number;
     confidence: number;
+    volatilityFlag?: number | null;
+    uncertaintyEntropy?: number | null;
+    realizedVolatility?: number | null;
+    signalMode?: "COLD_START" | "NORMALIZED_ALPHA" | null;
+    scoreComponents?: Record<string, unknown>;
     rationaleSummary: string;
     sources: ProposalSource[];
     executionStatus: ProposalExecutionStatus;
+    expiresAt?: Date | null;
     entryPrice?: number | null;
     exitPrice?: number | null;
     actualPnL?: number | null;
@@ -27,6 +33,33 @@ export interface Proposal {
     pnlPercentage?: number | null;
     backtestedAt?: Date | null;
     backtestMeta?: Record<string, unknown>;
+    status?: string;
+    action?: string;
+    title?: string;
+    summary?: string;
+    reason?: string[];
+    type?: string;
+    proposedBy?: string;
+    userId?: Types.ObjectId | string;
+    triggerSignalId?: Types.ObjectId;
+    triggerEventId?: string;
+    tokenName?: string;
+    financialImpact?: {
+        currentPrice?: number;
+        currentValue?: number;
+        projectedPnL?: number;
+        projectedValue?: number;
+        roi?: number;
+        roiPercent?: number;
+        percentChange?: number;
+        targetPrice?: number;
+        timeFrame?: string;
+        riskLevel?: string;
+    };
+    analysis?: {
+        reasoning?: string[];
+        risks?: string[];
+    };
     createdAt?: Date;
     updatedAt?: Date;
 }
@@ -55,7 +88,7 @@ export type ProposalInsert = Partial<Proposal> & LegacyProposalInsertFields;
 
 const proposalSchema = new Schema<Proposal>({
     // Lưu lại ID của signal gốc để dễ dàng truy xuất (Traceability)
-    signalId: { type: Schema.Types.ObjectId, ref: "Signal", required: true, index: true },
+    signalId: { type: Schema.Types.ObjectId, ref: "Signal", required: false, index: true },
     
     tokenSymbol: { type: String, required: true, index: true }, 
     tokenAddress: { type: String, required: true },
@@ -65,6 +98,16 @@ const proposalSchema = new Schema<Proposal>({
     sentimentType: { type: String, required: true },
     quantScore: { type: Number, required: true }, 
     confidence: { type: Number, required: true },
+    volatilityFlag: { type: Number, default: null },
+    uncertaintyEntropy: { type: Number, default: null },
+    realizedVolatility: { type: Number, default: null },
+    signalMode: {
+        type: String,
+        enum: ["COLD_START", "NORMALIZED_ALPHA"],
+        default: null,
+        index: true,
+    },
+    scoreComponents: { type: Schema.Types.Mixed, default: {} },
     
     // Bài viết phân tích của AI
     rationaleSummary: { type: String, required: true },
@@ -75,6 +118,8 @@ const proposalSchema = new Schema<Proposal>({
             {
                 label: { type: String, required: true },
                 url: { type: String, required: true },
+                sourceKey: { type: String, required: false },
+                weight: { type: Number, required: false },
             },
         ],
         required: true,
@@ -82,6 +127,7 @@ const proposalSchema = new Schema<Proposal>({
     
     // Trạng thái thực thi giao dịch (Dành cho Bot Trading sau này)
     executionStatus: { type: String, enum: ["PENDING", "EXECUTED", "IGNORED"], default: "PENDING", required: true },
+    expiresAt: { type: Date, default: null, index: true },
 
     // Backtest result fields
     entryPrice: { type: Number, default: null },
@@ -96,10 +142,46 @@ const proposalSchema = new Schema<Proposal>({
     pnlPercentage: { type: Number, default: null },
     backtestedAt: { type: Date, default: null, index: true },
     backtestMeta: { type: Schema.Types.Mixed, default: {} },
+
+    // Compatibility fields used by the Next.js app and older proposal documents.
+    userId: { type: Schema.Types.ObjectId, ref: "User", index: true },
+    triggerSignalId: { type: Schema.Types.ObjectId, ref: "Signal" },
+    triggerEventId: { type: String },
+    tokenName: { type: String },
+    action: { type: String, enum: ["BUY", "SELL", "HOLD"] },
+    title: { type: String },
+    summary: { type: String },
+    reason: { type: [String], default: [] },
+    type: { type: String },
+    proposedBy: { type: String },
+    financialImpact: {
+        currentPrice: Number,
+        currentValue: Number,
+        projectedPnL: Number,
+        projectedValue: Number,
+        roi: Number,
+        roiPercent: Number,
+        percentChange: Number,
+        targetPrice: Number,
+        stopLoss: Number,
+        riskLevel: { type: String, enum: ["LOW", "MEDIUM", "HIGH"], default: "MEDIUM" },
+        timeFrame: String,
+    },
+    analysis: {
+        reasoning: [String],
+        risks: [String],
+    },
+    status: { type: String, default: "pending", index: true },
 }, {
     collection: "proposals", // Tên bảng mới
     timestamps: { createdAt: "createdAt", updatedAt: "updatedAt" },
+    strict: false,
 });
+
+proposalSchema.index(
+    { signalId: 1, createdAt: -1, _id: -1 },
+    { partialFilterExpression: { signalId: { $exists: true } } }
+);
 
 export const proposalsTable: Model<Proposal> =
     (mongoose.models.Proposal as Model<Proposal>) ?? model<Proposal>("Proposal", proposalSchema);

@@ -10,6 +10,9 @@ export type {
   ProposalInsert,
 } from "./db/schema/proposal.js";
 
+// ===== SIGNALS =====
+export { signalsTable } from "./db/schema/signals.js";
+
 // ===== X / TWEETS =====
 export { tweetTable } from "./db/schema/tweets.js";
 export { xAccountTable } from "./db/schema/x_accounts.js";
@@ -17,6 +20,11 @@ export { newsSiteTable } from "./db/schema/news_sites.js";
 export { newsArticlesTable } from "./db/schema/news_articles.js";
 export { sourceWeightsTable } from "./db/schema/source_weights.js";
 export { signalWeightsTable } from "./db/schema/signal_weights.js";
+export { rollingMetricsTable } from "./db/schema/rolling_metrics.js";
+export type {
+  MarketRegime,
+  RollingMetricDocument,
+} from "./db/schema/rolling_metrics.js";
 
 // ===== TYPES =====
 export * from "./types/index.js";
@@ -61,4 +69,8 @@ export * from "./db/schema/token_prices.js";
 
 // ===== BACKTEST =====
 export * from "./db/schema/backtest_results.js";
+export * from "./db/schema/backtest_runs.js";
+export * from "./db/schema/backtest_candidates.js";
 export * from "./db/schema/hyperparameter_configs.js";
+export * from "./db/schema/sentiment_cache.js";
+export * from "./db/schema/rolling_metrics.js";

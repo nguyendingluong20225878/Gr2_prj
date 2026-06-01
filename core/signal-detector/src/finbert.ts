@@ -37,7 +37,7 @@ export async function finBertProbs(text: string, retries = 3): Promise<FinBERTPr
   const url = process.env.HF_FINBERT_URL ?? "https://router.huggingface.co/hf-inference/models/ProsusAI/finbert";
 
   for (let i = 0; i < retries; i++) {
-    // Ép Timeout 10 giây cho mỗi request để tránh treo mạng
+    // Timeout 40 giây cho request FinBERT để tránh treo batch quá lâu.
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 40000); 
 
@@ -52,7 +52,7 @@ export async function finBertProbs(text: string, retries = 3): Promise<FinBERTPr
           inputs: text,
           parameters: { return_all_scores: true },
         }),
-        signal: controller.signal // Gắn signal để hủy nếu quá 10s
+        signal: controller.signal // Gắn signal để hủy nếu quá 40s
       });
 
       clearTimeout(timeoutId); // Request thành công thì xóa timeout ngay

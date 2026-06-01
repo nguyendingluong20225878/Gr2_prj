@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/app/contexts/AuthContext';
-import { Activity, BarChart3, Bell, LayoutDashboard, LineChart, Radar, User, Wallet, LogOut, ChevronDown } from 'lucide-react';
+import { Activity, BarChart3, Bell, LineChart, Radar, User, Wallet, LogOut, ChevronDown } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { useState } from 'react';
 
@@ -14,7 +14,6 @@ export function Navbar() {
 
   const navItems = [
     { path: '/overview', label: 'Overview', icon: Activity },
-    { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { path: '/signals', label: 'Signals', icon: BarChart3 },
     { path: '/signals/daily', label: 'Alpha', icon: Radar },
     { path: '/positions', label: 'Positions', icon: LineChart },

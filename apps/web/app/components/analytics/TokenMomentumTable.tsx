@@ -18,7 +18,7 @@ type SortKey =
 
 type FilterAction = 'ALL' | AnalyticsAction;
 
-const columns: Array<{ key: SortKey | 'token' | 'sparkline' | 'sentimentShift' | 'liquidityShift' | 'volatilityFlag' | 'divergence'; label: string; sortable?: boolean }> = [
+const columns: Array<{ key: SortKey | 'token' | 'sparkline' | 'sentimentShift' | 'liquidityShift' | 'uncertaintyEntropy' | 'divergence'; label: string; sortable?: boolean }> = [
   { key: 'rank', label: 'Rank', sortable: true },
   { key: 'token', label: 'Token' },
   { key: 'deltaRank', label: 'Delta Rank', sortable: true },
@@ -29,14 +29,14 @@ const columns: Array<{ key: SortKey | 'token' | 'sparkline' | 'sentimentShift' |
   { key: 'momentumAcceleration', label: 'Accel', sortable: true },
   { key: 'sentimentShift', label: 'Sentiment' },
   { key: 'liquidityShift', label: 'Liquidity' },
-  { key: 'volatilityFlag', label: 'Vol' },
+  { key: 'uncertaintyEntropy', label: 'Unc' },
   { key: 'divergence', label: 'Divergence' },
   { key: 'confidence', label: 'Confidence', sortable: true },
   { key: 'action', label: 'Action', sortable: true },
   { key: 'sparkline', label: 'Trend' },
 ];
 
-function numberCell(value: number | null, decimals = 2) {
+function numberCell(value: number | null | undefined, decimals = 2) {
   if (value === null || value === undefined || !Number.isFinite(value)) return <span className="text-slate-600">n/a</span>;
   const tone = value > 0 ? 'text-green-400' : value < 0 ? 'text-red-400' : 'text-slate-400';
   return <span className={`font-mono ${tone}`}>{value > 0 ? '+' : ''}{value.toFixed(decimals)}</span>;
@@ -185,7 +185,7 @@ export function TokenMomentumTable({
                 <td className="px-3 py-3">{numberCell(row.momentumAcceleration)}</td>
                 <td className="px-3 py-3 text-slate-300 max-w-[140px] truncate">{row.sentimentShift}</td>
                 <td className="px-3 py-3">{numberCell(row.liquidityShift)}</td>
-                <td className="px-3 py-3">{numberCell(row.volatilityFlag)}</td>
+                <td className="px-3 py-3">{numberCell(row.uncertaintyEntropy)}</td>
                 <td className="px-3 py-3">
                   <span className={row.divergence === 'None' ? 'text-slate-600' : 'text-amber-300'}>{row.divergence}</span>
                 </td>

@@ -35,15 +35,25 @@ function readStringListArg(name: string): string[] | undefined {
     .filter(Boolean);
 }
 
+function hasFlag(name: string): boolean {
+  return process.argv.includes(`--${name}`);
+}
+
 async function main() {
   await connectToDatabase();
+  const demoMode = hasFlag("demo");
 
   const result = await TokenPriceService.backfillHistoricalPrices({
-    days: readNumberArg("days", 30),
-    delayMs: readNonNegativeNumberArg("delay-ms", 1500),
+    concurrency: readNumberArg("concurrency", demoMode ? 3 : 1),
+    days: readNumberArg("days", demoMode ? 2 : 30),
+    delayMs: readNonNegativeNumberArg("delay-ms", demoMode ? 0 : 1500),
+    existingToleranceMinutes: readNumberArg("existing-tolerance-minutes", 90),
     intervalHours: readNumberArg("interval-hours", 1),
-    maxRetries: readNumberArg("max-retries", 3),
-    retryDelayMs: readNonNegativeNumberArg("retry-delay-ms", 10000),
+    maxRetries: readNumberArg("max-retries", demoMode ? 1 : 3),
+    recentOnlyDays: readNumberArg("recent-only-days", demoMode ? 7 : 0),
+    retryDelayMs: readNonNegativeNumberArg("retry-delay-ms", demoMode ? 2000 : 10000),
+    skipExisting: hasFlag("skip-existing") || demoMode,
+    targetHoursAgo: readNumberArg("target-hours-ago", 24),
     tokenIds: readStringListArg("ids"),
   });
 

@@ -5,14 +5,19 @@
   "private": true,
   "scripts": {
     "dev": "tsx --env-file=.env src/index.ts",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "metrics": "tsx ../research/jobs/run-rolling-metrics.ts",
+    "weights": "tsx ../research/jobs/run-dynamic-weight.ts",
+    "backtest": "tsx ../research/jobs/run-backtest.ts",
+    "regime": "tsx ../research/jobs/run-regime.ts",
+    "maintenance": "tsx ../research/jobs/run-maintenance.ts"
   },
   "dependencies": {
     "@gr2/shared": "file:../shared",
     "@gr2/token-price-fetcher": "file:../token-price-fetcher",
-    "@gr2/x-scraper": "file:../x-scaper",
+    "x-scaper": "file:../x-scaper",
     "@gr2/signal-detector": "file:../signal-detector",
-    "@gr2/proposal-generator": "file:../proposal-generator",
+    "@gr2/proposal-generator": "file:../layer3",
     "node-cron": "^3.0.3"
   }
 }

@@ -35,6 +35,12 @@ type ProposalListRecord = {
 
 const ProposalModel = Proposal as unknown as mongoose.Model<ProposalListRecord>;
 
+function normalizeAction(value?: string): 'BUY' | 'SELL' | 'HOLD' | 'UNKNOWN' {
+  const upper = String(value ?? '').toUpperCase();
+  if (upper === 'BUY' || upper === 'SELL' || upper === 'HOLD') return upper;
+  return 'UNKNOWN';
+}
+
 export async function GET() {
   try {
     await connectDB();
@@ -56,20 +62,19 @@ export async function GET() {
       const symbolMatch = title.match(/\b[A-Z]{2,6}\b/); 
       const extractedSymbol = p.tokenSymbol || (symbolMatch ? symbolMatch[0] : 'TOKEN');
       
-      let action = p.action || p.suggestionType?.toUpperCase() || 'BUY';
-      const titleLower = title.toLowerCase();
-      if (titleLower.includes('short') || titleLower.includes('sell')) {
-        action = 'SELL';
-      }
+      const action = normalizeAction(p.action ?? p.suggestionType);
 
       // === FIX ROI: Ưu tiên lấy 'roi' từ DB, fallback sang 'percentChange' ===
-      const roi = p.financialImpact?.roi !== undefined 
-        ? p.financialImpact.roi 
-        : (p.financialImpact?.percentChange || 0);
+      const roi = p.financialImpact?.roi ?? p.financialImpact?.percentChange ?? null;
 
       // Chuẩn hóa confidence
-      let confidence = p.confidence || 85;
-      if (confidence <= 1) confidence = Math.round(confidence * 100);
+      const rawConfidence = typeof p.confidence === 'number' ? p.confidence : null;
+      const confidence = rawConfidence === null
+        ? null
+        : rawConfidence <= 1
+          ? Math.round(rawConfidence * 100)
+          : rawConfidence;
+      const sentimentType = p.sentimentType ?? 'unknown';
 
       return {
         _id: p._id.toString(),
@@ -87,7 +92,7 @@ export async function GET() {
         summary: p.summary,
         reason: p.reason || [],
         confidence: confidence,
-        sentimentType: roi >= 0 ? 'positive' : 'negative',
+        sentimentType,
         expiresAt: p.expiresAt || new Date(Date.now() + 86400000), 
         createdAt: p.createdAt,
         status: p.status || p.executionStatus?.toLowerCase() || 'pending', // === FIX STATUS: Trả về status thực ===

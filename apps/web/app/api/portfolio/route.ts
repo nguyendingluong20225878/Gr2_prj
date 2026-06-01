@@ -55,9 +55,16 @@ type PerpPositionRecord = {
   leverage?: number;
   positionDirection?: string;
   createdAt?: Date;
+  executedPrice?: number;
+  executionId?: mongoose.Types.ObjectId | string;
   proposalId?: mongoose.Types.ObjectId | string;
+  requestedPrice?: number;
   roi?: number;
+  slippagePct?: number;
+  txHash?: string;
 };
+
+type HoldingPriceQuality = 'OK' | 'MISSING_PRICE';
 
 const ProposalModel = Proposal as unknown as mongoose.Model<WatchlistProposalRecord>;
 
@@ -151,9 +158,6 @@ export async function GET(req: Request) {
       .toArray();
 
     const priceMap = new Map<string, number>();
-    // Default SOL price for devnet testing
-    priceMap.set('So11111111111111111111111111111111111111112', 168.48);
-
     pricesDocs.forEach((p) => {
       const price = p.priceUsd !== undefined ? Number(p.priceUsd) : p.price || 0;
       if (!Number.isFinite(price) || price <= 0) return;
@@ -176,20 +180,22 @@ export async function GET(req: Request) {
         priceMap.get(b.tokenAddress) ||
         (token?.coingeckoId ? priceMap.get(`coingecko:${token.coingeckoId}`) : undefined) ||
         (token?.coingeckoId ? priceMap.get(token.coingeckoId) : undefined) ||
-        0;
+        null;
       const amountRaw = typeof b.balance === 'number' ? b.balance : parseFloat(b.balance);
       const amount = normalizeNumber(amountRaw);
+      const dataQuality: HoldingPriceQuality = price === null ? 'MISSING_PRICE' : 'OK';
 
-      const valueUsdRaw = amount * price;
-      const valueUsd = normalizeNumber(valueUsdRaw);
+      const valueUsdRaw = price === null ? null : amount * price;
+      const valueUsd = valueUsdRaw === null ? null : normalizeNumber(valueUsdRaw);
 
-      if (valueUsd > 0) totalWalletValue += valueUsd;
+      if (valueUsd !== null && valueUsd > 0) totalWalletValue += valueUsd;
 
       return {
         symbol: getTokenSymbol(b.tokenAddress),
         balance: amount,
-        price: normalizeNumber(price),
-        value: valueUsd
+        price: price === null ? null : normalizeNumber(price),
+        value: valueUsd,
+        dataQuality,
       };
     });
 
@@ -210,7 +216,12 @@ export async function GET(req: Request) {
       leverage: p.leverage || 1,             // <--- Add
       direction: p.positionDirection || 'LONG', // <--- Add
       createdAt: p.createdAt,              // <--- Add
+      executedPrice: normalizeNumber(p.executedPrice || p.entryPrice || 0),
+      executionId: p.executionId?.toString(),
       proposalId: p.proposalId,            // <--- Add
+      requestedPrice: normalizeNumber(p.requestedPrice || p.entryPrice || 0),
+      slippagePct: normalizeNumber(p.slippagePct || 0),
+      txHash: p.txHash,
       pnl: 0,
       roi: normalizeNumber(p.roi || 0)
     }));

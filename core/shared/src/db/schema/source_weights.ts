@@ -8,8 +8,17 @@ import mongoose, {
 
 const sourceWeightSchema = new Schema(
   {
-    // e.g. "coindesk.com", "cointelegraph.com"
+    // Backward-compatible key. New rows use "news:<host>" or "twitter:<authorId>".
     siteHost: { type: String, required: true, unique: true, index: true },
+    sourceType: {
+      type: String,
+      enum: ["news", "twitter"],
+      required: false,
+      default: "news",
+      index: true,
+    },
+    sourceKey: { type: String, required: false, index: true },
+    displayName: { type: String, required: false, default: null },
     horizonHours: { type: Number, required: true, default: 24 },
     windowDays: { type: Number, required: true, default: 60 },
     sampleCount: { type: Number, required: true, default: 0 },
@@ -22,6 +31,8 @@ const sourceWeightSchema = new Schema(
     timestamps: false,
   }
 );
+
+sourceWeightSchema.index({ sourceType: 1, sourceKey: 1 });
 
 export type SourceWeightSchema = InferSchemaType<typeof sourceWeightSchema>;
 export type SourceWeightDocument = HydratedDocument<SourceWeightSchema>;

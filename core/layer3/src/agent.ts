@@ -6,6 +6,11 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 async function reasoningNode(state: ProposalState): Promise<Partial<ProposalState>> {
+  const googleApiKey = process.env.GOOGLE_API_KEY || process.env.GOOGLE_API_KEY_PROPOSAL;
+  if (!googleApiKey) {
+    throw new Error("GOOGLE_API_KEY or GOOGLE_API_KEY_PROPOSAL is required for Layer3 reasoning");
+  }
+
   //  Prompt tập trung vào phân tích SÂU: Kết hợp Quant + RAG
   const promptText = `Bạn là một Chuyên gia Phân tích Định lượng Crypto.
 Viết MỘT ĐOẠN VĂN DUY NHẤT (không tiêu đề, không xuống dòng, không gạch đầu dòng) bằng Tiếng Việt để giải thích quyết định giao dịch cho token ${state.tokenSymbol || "UNKNOWN"}.
@@ -24,7 +29,7 @@ YÊU CẦU PHÂN TÍCH (Làm gộp trong 1 đoạn văn liền mạch):
 
 Văn bản đầu ra:`;
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GOOGLE_API_KEY}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${googleApiKey}`;
   
   const response = await fetch(url, {
     method: "POST",

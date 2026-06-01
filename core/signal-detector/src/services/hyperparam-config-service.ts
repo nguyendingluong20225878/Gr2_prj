@@ -3,6 +3,10 @@ import {
   DetectorHyperParams,
   resolveHyperParams,
 } from "../types.js";
+import {
+  connectToDatabase,
+  hyperparameterConfigsTable,
+} from "@gr2/shared";
 
 export type HyperParamConfigMetrics = {
   evaluated: number;
@@ -24,15 +28,10 @@ export type SaveCandidateConfigInput = {
   status?: "CANDIDATE" | "REJECTED";
 };
 
-async function getShared() {
-  return import("../../../shared/src/index.js") as any;
-}
-
 export async function loadActiveHyperParams(
   name = "production"
 ): Promise<DetectorHyperParams> {
   try {
-    const { connectToDatabase, hyperparameterConfigsTable } = await getShared();
     await connectToDatabase();
 
     const active = await hyperparameterConfigsTable
@@ -51,10 +50,9 @@ export async function loadActiveHyperParams(
 }
 
 export async function saveCandidateConfig(input: SaveCandidateConfigInput) {
-  const { connectToDatabase, hyperparameterConfigsTable } = await getShared();
   await connectToDatabase();
 
-  return hyperparameterConfigsTable.create({
+  return (hyperparameterConfigsTable as any).create({
     name: input.name,
     status: input.status ?? "CANDIDATE",
     params: input.params,
@@ -66,7 +64,6 @@ export async function saveCandidateConfig(input: SaveCandidateConfigInput) {
 }
 
 export async function promoteCandidateConfig(candidateId: string) {
-  const { connectToDatabase, hyperparameterConfigsTable } = await getShared();
   await connectToDatabase();
 
   const candidate = await hyperparameterConfigsTable.findById(candidateId);

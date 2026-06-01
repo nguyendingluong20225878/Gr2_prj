@@ -66,10 +66,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // LOGIC ĐIỀU HƯỚNG CHÍNH
       if (data.user && !data.requiresOnboarding) {
-        // Trường hợp 1: User đã tồn tại và đủ thông tin -> Dashboard
-        console.log("✅ User verified, redirecting to Dashboard");
+        // Trường hợp 1: User đã tồn tại và đủ thông tin -> Overview decision workspace
+        console.log("✅ User verified, redirecting to Overview");
         setUser(data.user);
-        router.push('/dashboard');
+        router.push('/overview');
       } else {
         // Trường hợp 2: User chưa có HOẶC thiếu thông tin -> Onboarding
         console.log("🆕 New or incomplete user, redirecting to Onboarding");

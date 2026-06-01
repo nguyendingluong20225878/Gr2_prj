@@ -2,7 +2,32 @@
 
 import { ArrowDownRight, ArrowUpRight } from 'lucide-react';
 import type { SignalAnalyticsRow } from '@/lib/types/analytics';
-import { ProposalCardSocial } from '@/app/components/dashboard/SignalCardSocial';
+
+function LeaderboardSignalCard({ row }: { row: SignalAnalyticsRow }) {
+  const isPositive = row.signalScore >= 0;
+
+  return (
+    <button
+      onClick={() => window.location.assign(`/proposal/${row.proposalId || row.id}`)}
+      className="w-full rounded-xl border border-white/5 bg-black/30 p-4 text-left transition-colors hover:border-cyan-500/30 hover:bg-white/[0.03]"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-bold text-white">{row.tokenSymbol}</p>
+          <p className="mt-1 line-clamp-2 text-xs text-slate-400">{row.rationaleSummary}</p>
+        </div>
+        <span className={`font-mono text-sm font-bold ${isPositive ? 'text-green-300' : 'text-red-300'}`}>
+          {row.signalScore > 0 ? '+' : ''}{row.signalScore.toFixed(2)}
+        </span>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-bold uppercase tracking-widest">
+        <span className="rounded-md border border-white/10 bg-black/40 px-2 py-1 text-slate-400">#{row.rank}</span>
+        <span className="rounded-md border border-cyan-500/20 bg-cyan-500/10 px-2 py-1 text-cyan-300">{row.action}</span>
+        <span className="rounded-md border border-green-500/20 bg-green-500/10 px-2 py-1 text-green-300">{row.confidence}%</span>
+      </div>
+    </button>
+  );
+}
 
 export function SignalLeaderboard({ rows }: { rows: SignalAnalyticsRow[] }) {
   const strongest = rows.filter((row) => row.signalScore > 0).slice(0, 3);
@@ -17,25 +42,9 @@ export function SignalLeaderboard({ rows }: { rows: SignalAnalyticsRow[] }) {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-1 gap-3">
           {strongest.map((row) => (
-            <ProposalCardSocial
+            <LeaderboardSignalCard
               key={row.id}
-              proposal={{
-                _id: row.id,
-                signalId: row.id,
-                tokenSymbol: row.tokenSymbol,
-                tokenName: row.tokenName,
-                action: row.action,
-                title: row.rationaleSummary,
-                summary: row.rationaleSummary,
-                confidence: row.confidence,
-                financialImpact: {
-                  currentValue: 0,
-                  projectedValue: 0,
-                  percentChange: row.signalScore,
-                  riskLevel: row.divergence === 'None' ? 'MEDIUM' : 'HIGH',
-                },
-                expiresAt: row.expiresAt,
-              }}
+              row={row}
             />
           ))}
         </div>
@@ -48,25 +57,9 @@ export function SignalLeaderboard({ rows }: { rows: SignalAnalyticsRow[] }) {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-1 gap-3">
           {weakest.map((row) => (
-            <ProposalCardSocial
+            <LeaderboardSignalCard
               key={row.id}
-              proposal={{
-                _id: row.id,
-                signalId: row.id,
-                tokenSymbol: row.tokenSymbol,
-                tokenName: row.tokenName,
-                action: row.action,
-                title: row.rationaleSummary,
-                summary: row.rationaleSummary,
-                confidence: row.confidence,
-                financialImpact: {
-                  currentValue: 0,
-                  projectedValue: 0,
-                  percentChange: row.signalScore,
-                  riskLevel: row.divergence === 'None' ? 'MEDIUM' : 'HIGH',
-                },
-                expiresAt: row.expiresAt,
-              }}
+              row={row}
             />
           ))}
         </div>

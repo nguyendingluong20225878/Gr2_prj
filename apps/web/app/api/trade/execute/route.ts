@@ -14,6 +14,12 @@ type TradeExecuteRequest = {
   direction?: string;
   leverage?: number | string;
   proposalId?: string;
+  riskPlan?: {
+    maxLossUsd?: number;
+    recommendedSizeUsd?: number;
+    riskPerTradePct?: number;
+    stopLossPct?: number;
+  };
 };
 
 type ProposalTradeRecord = {
@@ -21,6 +27,7 @@ type ProposalTradeRecord = {
   userId?: mongoose.Types.ObjectId | string;
   tokenSymbol?: string;
   tokenAddress?: string;
+  signalId?: mongoose.Types.ObjectId | string;
   status?: string;
   executionStatus?: string;
 };
@@ -121,24 +128,53 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Token metadata is missing' }, { status: 400 });
     }
 
-    const existingPosition = await db.collection('perp_positions').findOne({
-      userId: user._id,
-      proposalId: proposalObjectId,
-      status: 'open',
-    });
+    const now = new Date();
+    const executionId = new mongoose.Types.ObjectId();
+    const positionId = new mongoose.Types.ObjectId();
+    const requestedPrice = parsedEntryPrice;
+    const executedPrice = parsedEntryPrice;
+    const slippagePct = 0;
+    const notionalUsd = positionSize * parsedLeverage;
+    const txHash = `demo:${executionId.toString()}`;
 
-    if (existingPosition) {
-      return NextResponse.json({ error: 'Proposal already has an open position for this wallet' }, { status: 409 });
-    }
+    const executionRecord = {
+      _id: executionId,
+      proposalId: proposalObjectId,
+      userId: user._id,
+      walletAddress,
+      tokenSymbol: finalTokenSymbol,
+      tokenAddress: finalTokenAddress,
+      direction: positionDirection,
+      status: 'DEMO_FILLED',
+      orderId: executionId.toString(),
+      txHash,
+      requestedPrice,
+      executedPrice,
+      slippagePct,
+      sizeUsd: positionSize,
+      notionalUsd,
+      leverage: parsedLeverage,
+      riskPlan: body.riskPlan || {},
+      requestedAt: now,
+      executedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    };
 
     const newPosition = {
+      _id: positionId,
       userId: user._id,
       proposalId: proposalObjectId,
+      executionId,
       tokenSymbol: finalTokenSymbol,
       tokenAddress: finalTokenAddress,
       positionType: 'PERPETUAL',
       positionDirection,
       leverage: parsedLeverage,
+      requestedPrice,
+      executedPrice,
+      slippagePct,
+      txHash,
       entryPrice: parsedEntryPrice,
       markPrice: parsedEntryPrice,
       liquidationPrice: 0, // Tính sau
@@ -147,35 +183,92 @@ export async function POST(req: Request) {
       pnl: 0,
       roi: 0,
       status: 'open',
-      createdAt: new Date(),
-      updatedAt: new Date()
+      createdAt: now,
+      updatedAt: now
     };
 
-    const result = await db.collection('perp_positions').insertOne(newPosition);
+    const session = await mongoose.startSession();
+    try {
+      await session.withTransaction(async () => {
+        const existingPosition = await db.collection('perp_positions').findOne({
+          userId: user._id,
+          proposalId: proposalObjectId,
+          status: 'open',
+        }, { session });
 
-    const proposalUpdate = await db.collection('proposals').updateOne(
-      {
-        _id: proposalObjectId,
-        $or: [
-          { status: { $in: ['pending', 'active', 'ACTIVE'] } },
-          { executionStatus: 'PENDING' },
-        ],
-      },
-      {
-        $set: {
-          status: 'EXECUTED',
-          executionStatus: 'EXECUTED',
-          updatedAt: new Date(),
-        },
-      }
-    );
+        if (existingPosition) {
+          throw new Error('Proposal already has an open position for this wallet');
+        }
 
-    if (proposalUpdate.modifiedCount === 0) {
-      await db.collection('perp_positions').deleteOne({ _id: result.insertedId });
-      return NextResponse.json({ error: 'Proposal was already executed' }, { status: 409 });
+        await db.collection('trade_executions').insertOne(executionRecord, { session });
+        await db.collection('perp_positions').insertOne(newPosition, { session });
+
+        const proposalUpdate = await db.collection('proposals').updateOne(
+          {
+            _id: proposalObjectId,
+            $or: [
+              { status: { $in: ['pending', 'active', 'ACTIVE'] } },
+              { executionStatus: 'PENDING' },
+            ],
+          },
+          {
+            $set: {
+              status: 'EXECUTED',
+              executionStatus: 'EXECUTED',
+              updatedAt: new Date(),
+            },
+          },
+          { session }
+        );
+
+        if (proposalUpdate.modifiedCount === 0) {
+          throw new Error('Proposal was already executed');
+        }
+
+        await db.collection('proposal_decisions').insertOne({
+          proposalId: proposalObjectId,
+          signalId: proposal.signalId ?? null,
+          userId: user._id,
+          walletAddress,
+          decision: 'ENTER',
+          reason: 'Trade execution requested from proposal page',
+          blockersAtDecision: [],
+          snapshot: {
+            action: positionDirection,
+            entryPrice: parsedEntryPrice,
+            leverage: parsedLeverage,
+            sizeUsd: positionSize,
+            notionalUsd,
+            riskPlan: body.riskPlan || {},
+          },
+          executionId,
+          createdAt: now,
+        }, { session });
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const status = message.includes('already') ? 409 : 500;
+      return NextResponse.json({ error: message }, { status });
+    } finally {
+      await session.endSession();
     }
 
-    return NextResponse.json({ success: true, positionId: result.insertedId });
+    return NextResponse.json({
+      success: true,
+      execution: {
+        executionId,
+        orderId: executionId.toString(),
+        txHash,
+        status: 'DEMO_FILLED',
+        requestedPrice,
+        executedPrice,
+        slippagePct,
+        sizeUsd: positionSize,
+        notionalUsd,
+        executedAt: now,
+      },
+      positionId,
+    });
 
   } catch (error) {
     console.error('Execute Trade Error:', error);

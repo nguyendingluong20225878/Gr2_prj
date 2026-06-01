@@ -3,6 +3,8 @@ import {
   tokenPriceHistory,
   tokenPricesTable,
   Logger,
+  proposalsTable,
+  signalsTable,
 } from "@gr2/shared";
 import {
   fetchMarketChartRangeFromCoingecko,
@@ -13,14 +15,25 @@ const logger = new Logger("TokenPriceService");
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 type HistoricalPricePoint = { timestamp: Date; priceUsd: number };
+type TokenBackfillRow = {
+  _id: unknown;
+  address?: string | null;
+  coingeckoId?: string | null;
+  symbol?: string | null;
+};
 
 export type BackfillTokenPriceHistoryOptions = {
+  concurrency?: number;
   days?: number;
   delayMs?: number;
-  tokenIds?: string[];
+  existingToleranceMinutes?: number;
   intervalHours?: number;
   maxRetries?: number;
+  recentOnlyDays?: number;
   retryDelayMs?: number;
+  skipExisting?: boolean;
+  targetHoursAgo?: number;
+  tokenIds?: string[];
 };
 
 function downsamplePricePoints(
@@ -49,10 +62,118 @@ function downsamplePricePoints(
   );
 }
 
+function positiveInteger(value: number | undefined, fallback: number): number {
+  if (!Number.isFinite(value)) return fallback;
+  const normalized = Math.floor(Number(value));
+  return normalized > 0 ? normalized : fallback;
+}
+
+async function runWithConcurrency<T>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<void>
+) {
+  let nextIndex = 0;
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      await worker(items[currentIndex], currentIndex);
+    }
+  });
+
+  await Promise.all(workers);
+}
+
+async function loadRecentTokenHints(days: number) {
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const [proposals, signals] = await Promise.all([
+    (proposalsTable as any)
+      .find(
+        { createdAt: { $gte: since } },
+        { tokenAddress: 1, tokenSymbol: 1 }
+      )
+      .lean(),
+    (signalsTable as any)
+      .find(
+        {
+          $or: [
+            { detectedAt: { $gte: since } },
+            { createdAt: { $gte: since } },
+          ],
+        },
+        { tokenAddress: 1, tokenSymbol: 1 }
+      )
+      .lean(),
+  ]);
+
+  const symbols = new Set<string>();
+  const addresses = new Set<string>();
+  for (const row of [...proposals, ...signals] as any[]) {
+    if (row.tokenSymbol) symbols.add(String(row.tokenSymbol).toUpperCase());
+    if (row.tokenAddress) {
+      const address = String(row.tokenAddress);
+      addresses.add(address);
+      if (address.startsWith("coingecko:")) {
+        addresses.add(address.replace("coingecko:", ""));
+      }
+    }
+  }
+
+  return { addresses, symbols };
+}
+
+async function hasExistingHistoricalPriceNear(params: {
+  coingeckoId: string;
+  address?: string | null;
+  targetAt: Date;
+  toleranceMinutes: number;
+}) {
+  const toleranceMs = params.toleranceMinutes * 60 * 1000;
+  const from = new Date(params.targetAt.getTime() - toleranceMs);
+  const to = new Date(params.targetAt.getTime() + toleranceMs);
+  const keys = [
+    params.coingeckoId,
+    `coingecko:${params.coingeckoId}`,
+    params.address,
+  ].filter((key): key is string => Boolean(key));
+
+  const existing = await tokenPriceHistory
+    .findOne({
+      tokenAddress: { $in: keys },
+      timestamp: { $gte: from, $lte: to },
+    })
+    .lean();
+
+  return Boolean(existing);
+}
+
 export class TokenPriceService {
     async getTokenPrice(tokenAddress: string): Promise<number | null> {
-      // Tìm giá token theo address
-      const priceDoc = await tokenPricesTable.findOne({ tokenKey: tokenAddress }).lean();
+      const token = await tokensTable
+        .findOne({
+          $or: [
+            { address: tokenAddress },
+            { coingeckoId: tokenAddress.replace(/^coingecko:/, "") },
+          ],
+        })
+        .lean();
+
+      const candidateKeys = new Set([tokenAddress]);
+      if (token?.coingeckoId) {
+        candidateKeys.add(token.coingeckoId);
+        candidateKeys.add(`coingecko:${token.coingeckoId}`);
+      }
+
+      const priceDoc = await tokenPricesTable
+        .findOne({
+          $or: [
+            { tokenKey: { $in: [...candidateKeys] } },
+            { tokenAddress },
+            ...(token?._id ? [{ token: token._id }] : []),
+          ],
+        })
+        .lean();
       return priceDoc?.priceUsd ?? null;
     }
 
@@ -62,7 +183,7 @@ export class TokenPriceService {
   static async updatePrices() {
     logger.info("Đang cập nhật giá coin...");
 
-    const tokens = await tokensTable
+    const tokens: TokenBackfillRow[] = await (tokensTable as any)
       .find(
         { coingeckoId: { $exists: true } },
         { _id: 1, coingeckoId: 1, symbol: 1 }
@@ -102,6 +223,11 @@ export class TokenPriceService {
       })
       .filter(Boolean);
 
+    if (bulkOps.length === 0) {
+      logger.warn("No token prices to update.");
+      return;
+    }
+
     await tokenPricesTable.bulkWrite(bulkOps as any);
 
     logger.info(`Đã cập nhật giá ${bulkOps.length} coin`);
@@ -115,6 +241,11 @@ export class TokenPriceService {
     const intervalHours = options.intervalHours ?? 1;
     const maxRetries = options.maxRetries ?? 3;
     const retryDelayMs = options.retryDelayMs ?? 10_000;
+    const concurrency = positiveInteger(options.concurrency, 1);
+    const skipExisting = options.skipExisting ?? false;
+    const targetHoursAgo = options.targetHoursAgo ?? 24;
+    const existingToleranceMinutes =
+      options.existingToleranceMinutes ?? Math.max(90, intervalHours * 60);
     const now = new Date();
     const from = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
 
@@ -125,10 +256,25 @@ export class TokenPriceService {
       tokenFilter.coingeckoId = { $in: options.tokenIds };
     }
 
-    const tokens = await tokensTable
+    let tokens: TokenBackfillRow[] = await (tokensTable as any)
       .find(tokenFilter, { _id: 1, coingeckoId: 1, symbol: 1, address: 1 })
       .sort({ symbol: 1 })
       .lean();
+
+    if (options.recentOnlyDays && options.recentOnlyDays > 0) {
+      const hints = await loadRecentTokenHints(options.recentOnlyDays);
+      tokens = tokens.filter((token) => {
+        const symbol = token.symbol ? String(token.symbol).toUpperCase() : "";
+        const coingeckoId = token.coingeckoId ? String(token.coingeckoId) : "";
+        const address = token.address ? String(token.address) : "";
+        return (
+          hints.symbols.has(symbol) ||
+          hints.addresses.has(coingeckoId) ||
+          hints.addresses.has(`coingecko:${coingeckoId}`) ||
+          hints.addresses.has(address)
+        );
+      });
+    }
 
     if (tokens.length === 0) {
       logger.warn("Không có token nào có coingeckoId để backfill lịch sử giá");
@@ -137,11 +283,28 @@ export class TokenPriceService {
 
     let totalPoints = 0;
     let failedTokens = 0;
-    for (const token of tokens) {
+    let skippedExisting = 0;
+    const targetAt = new Date(now.getTime() - targetHoursAgo * 60 * 60 * 1000);
+
+    await runWithConcurrency(tokens, concurrency, async (token) => {
       const coingeckoId = token.coingeckoId;
-      if (!coingeckoId) continue;
+      if (!coingeckoId) return;
 
       logger.info(`Backfill lịch sử giá ${token.symbol} (${coingeckoId}) ${days} ngày...`);
+
+      if (
+        skipExisting &&
+        await hasExistingHistoricalPriceNear({
+          address: token.address,
+          coingeckoId,
+          targetAt,
+          toleranceMinutes: existingToleranceMinutes,
+        })
+      ) {
+        skippedExisting += 1;
+        logger.info(`Bỏ qua ${token.symbol} (${coingeckoId}) vì đã có giá gần ${targetHoursAgo}h trước`);
+        return;
+      }
 
       let points: HistoricalPricePoint[] = [];
       let success = false;
@@ -172,7 +335,7 @@ export class TokenPriceService {
         failedTokens += 1;
         logger.warn(`Bỏ qua ${token.symbol} (${coingeckoId}) sau khi retry thất bại`);
         if (delayMs > 0) await sleep(delayMs);
-        continue;
+        return;
       }
 
       const bulkOps = points.map((point) => ({
@@ -202,8 +365,13 @@ export class TokenPriceService {
       logger.info(`Đã backfill ${bulkOps.length} điểm giá cho ${token.symbol}`);
 
       if (delayMs > 0) await sleep(delayMs);
-    }
+    });
 
-    return { tokens: tokens.length, points: totalPoints, failedTokens };
+    return {
+      tokens: tokens.length,
+      points: totalPoints,
+      failedTokens,
+      skippedExisting,
+    };
   }
 }

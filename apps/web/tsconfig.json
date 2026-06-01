@@ -21,7 +21,8 @@
     /* Alias riêng cho Web (nếu cần) */
     "paths": {
       "@/*": ["./*"],
-      "@gr2/*": ["../../core/*/src"] // Trỏ ngược ra ngoài root để lấy code backend
+      "@gr2/shared": ["../../core/shared/dist/index.js"],
+      "@gr2/shared/*": ["../../core/shared/dist/*"]
     }
   },
   "include": [
