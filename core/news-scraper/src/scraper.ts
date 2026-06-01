@@ -280,9 +280,20 @@ function extractPublishedDate(articleUrl: string, contentText: string, metaData?
 
 export class NewsScraper {
   private app: FirecrawlApp;
+  private firecrawlDisabled: boolean;
 
   constructor(apiKey: string) {
     this.app = new FirecrawlApp({ apiKey });
+    this.firecrawlDisabled = ["1", "true", "yes", "on"].includes(
+      String(process.env.NEWS_DISABLE_FIRECRAWL ?? "").toLowerCase()
+    );
+  }
+
+  private disableFirecrawl(reason: string) {
+    if (!this.firecrawlDisabled) {
+      console.log(`[Firecrawl] Disabled for this run: ${reason}`);
+    }
+    this.firecrawlDisabled = true;
   }
 
   async discoverLinksWithCheerio(siteUrl: string): Promise<string[]> {
@@ -313,16 +324,25 @@ export class NewsScraper {
     }
   }
 
-  async discoverArticles(siteUrl: string): Promise<string[]> {
+  async discoverArticles(siteUrl: string, limit = 130): Promise<string[]> {
+    if (this.firecrawlDisabled) {
+      console.log(`[Discovery Firecrawl] Bỏ qua ${siteUrl}: Firecrawl disabled`);
+      return [];
+    }
+
     try {
-      const res = await this.app.mapUrl(siteUrl, { limit: 130 });
+      const res = await this.app.mapUrl(siteUrl, { limit });
       if (!res.success) throw new Error(res.error);
       
       const urls: string[] = res.links ?? [];
       const cleanedUrls = urls.map(cleanUrl).filter(isValidArticleUrl);
       return [...new Set(cleanedUrls)];
     } catch (err) {
-      console.log(`[Discovery Firecrawl] Không map được ${siteUrl}: ${err instanceof Error ? err.message : String(err)}`);
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.includes("402") || message.includes("Insufficient credits")) {
+        this.disableFirecrawl("FATAL_FIRECRAWL_OUT_OF_CREDITS");
+      }
+      console.log(`[Discovery Firecrawl] Không map được ${siteUrl}: ${message}`);
       return [];
     }
   }
@@ -390,6 +410,10 @@ export class NewsScraper {
           contentToProcess = cleanContent(step2).slice(0, 50000); 
 
         } else {
+          if (this.firecrawlDisabled) {
+            throw new Error("Firecrawl disabled and Cheerio extraction failed");
+          }
+
           const res = await this.app.scrapeUrl(cleanArticleUrl, {
             formats: ["markdown"], 
             timeout: 30000,        
@@ -418,6 +442,10 @@ export class NewsScraper {
         let publishedAt = extractPublishedDate(cleanArticleUrl, contentToProcess, metaForDate);
 
         if (!publishedAt && rawData?.method === "cheerio") {
+          if (this.firecrawlDisabled) {
+            throw new Error("Cannot find published date without Firecrawl fallback. Skipping...");
+          }
+
           const res = await this.app.scrapeUrl(cleanArticleUrl, {
             formats: ["markdown"],
             timeout: 30000,
@@ -471,6 +499,7 @@ export class NewsScraper {
         const errorMessage = err instanceof Error ? err.message : String(err);
         
         if (errorMessage.includes("402") || errorMessage.includes("Insufficient credits")) {
+          this.disableFirecrawl("FATAL_FIRECRAWL_OUT_OF_CREDITS");
           throw new Error("FATAL_FIRECRAWL_OUT_OF_CREDITS"); 
         }
 
@@ -478,7 +507,8 @@ export class NewsScraper {
           errorMessage.includes("Article too old") ||
           errorMessage.includes("Future article") ||
           errorMessage.includes("Cannot find published date") ||
-          errorMessage.includes("Content too short")
+          errorMessage.includes("Content too short") ||
+          errorMessage.includes("Firecrawl disabled")
         ) {
           throw err; 
         }

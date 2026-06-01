@@ -6,7 +6,8 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "scrape": "tsx scripts/run-news-scraper.ts"
+    "scrape": "tsx scripts/run-news-scraper.ts",
+    "scraper": "tsx scripts/run-news-scraper.ts"
   },
   "dependencies": {
     "@gr2/shared": "file:../shared",

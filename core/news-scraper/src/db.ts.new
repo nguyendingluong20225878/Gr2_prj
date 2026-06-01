@@ -3,10 +3,13 @@ import { connectToDatabase as sharedConnect, newsSiteTable, tokensTable, newsArt
 
 /**
  * Đảm bảo kết nối Singleton
- * Tránh việc mở hàng ngàn kết nối khi chạy mapLimit concurrency cao
+ * Tránh việc mở hàng trăm kết nối ảo khi chạy mapLimit concurrency cao
  */
 export async function connectToDatabase() {
-  if (mongoose.connection.readyState === 1) return;
+  // 0: disconnected, 1: connected, 2: connecting, 3: disconnecting
+  if (mongoose.connection.readyState === 1) {
+    return;
+  }
   await sharedConnect();
 }
 
@@ -20,23 +23,29 @@ export async function loadTokens() {
   return tokensTable.find().lean();
 }
 
+/**
+ * Sử dụng cơ chế Upsert thông minh
+ * - $set: Cập nhật các nội dung có thể thay đổi
+ * - $setOnInsert: Chỉ ghi một lần duy nhất lúc tạo mới (để giữ nguyên scrapedAt lịch sử)
+ */
 export async function upsertNewsArticle(article: any) {
   await connectToDatabase();
+  
   const { articleUrl, scrapedAt, siteUrl, ...updateFields } = article;
 
   return newsArticlesTable.updateOne(
     { articleUrl: articleUrl },
-    {
-      $set: {
-        ...updateFields,
-        updatedAt: new Date()
+    { 
+      $set: { 
+        ...updateFields, 
+        updatedAt: new Date() 
       },
-      $setOnInsert: {
+      $setOnInsert: { 
         articleUrl: articleUrl,
         siteUrl: siteUrl,
         scrapedAt: scrapedAt || new Date(),
-        createdAt: new Date()
-      }
+        createdAt: new Date() 
+      } 
     },
     { upsert: true }
   );

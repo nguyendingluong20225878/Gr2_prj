@@ -3,10 +3,10 @@ process.env.TZ = "UTC";
 
 import * as db from "./db.js"; 
 import { NewsScraper } from "./scraper.js";
+import fs from "fs";
+import path from "path";
 
 type ProcessResult = { success: boolean; message: string; data?: unknown; };
-
-declare const process: { env: Record<string, string | undefined> };
 
 function escapeRegex(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -34,12 +34,16 @@ function buildTokenMatchers(tokens: Array<{ symbol?: string | null; name?: strin
       name.toUpperCase() !== symbol &&
       !["THE", "AND", "USD", "USDT"].includes(name.toUpperCase())
     ) {
-      parts.push(escapeRegex(name));
+      const nameCapitalized = escapeRegex(
+        name.charAt(0).toUpperCase() + name.slice(1).toLowerCase()
+      );
+      const nameUpper = escapeRegex(name.toUpperCase());
+      parts.push(nameCapitalized, nameUpper);
     }
 
     matchers.push({
       symbol,
-      regex: new RegExp(`(?<![a-zA-Z0-9])(?:${parts.join("|")})(?![a-zA-Z0-9])`, "i"),
+      regex: new RegExp(`(?<![a-zA-Z0-9])(?:${parts.join("|")})(?![a-zA-Z0-9])`),
     });
   }
 
@@ -142,24 +146,61 @@ export async function processNewsScraping(options?: { specificSiteId?: string })
         const discoveredBySource: Record<string, number> = {};
         let articleUrls: string[] = [];
 
+        const MAX_FIRECRAWL_DISCOVER = getEnvInt("NEWS_FIRECRAWL_MAX_DISCOVER", 10);
+        const FIRECRAWL_SKIP_RECENT_COUNT = getEnvInt("NEWS_FIRECRAWL_SKIP_IF_RECENT_COUNT", 10);
+        const RECENT_DAYS = getEnvInt("NEWS_RECENT_DAYS", 3);
+
+        const rssCacheDir = path.join(process.cwd(), "core", "news-scraper", ".cache", "rss");
+        try { await fs.promises.mkdir(rssCacheDir, { recursive: true }); } catch (e) {}
+
+        let rssCacheNoChange = false;
+
         if ((site as any).rss) {
           const rssUrls = await scraper.discoverFromRSS((site as any).rss);
           discoveredBySource.rss = rssUrls.length;
           articleUrls.push(...rssUrls);
+
+          // RSS cache: skip further discovery if RSS didn't change
+          try {
+            const hostname = new URL(site.url).hostname.replace(/[^a-z0-9.-]/gi, "_");
+            const cachePath = path.join(rssCacheDir, `${hostname}.json`);
+            let prev: string[] = [];
+            try {
+              const txt = await fs.promises.readFile(cachePath, "utf8");
+              prev = JSON.parse(txt || "[]");
+            } catch (e) {
+              prev = [];
+            }
+
+            const prevTop = new Set((prev || []).slice(0, MAX_FIRECRAWL_DISCOVER));
+            const newItems = rssUrls.filter((u) => !prevTop.has(u));
+            const shouldSkip = prev.length > 0 && newItems.length === 0;
+            if (shouldSkip) {
+              console.log(`[Discovery RSS Cache] No new RSS items for ${site.url}, skipping all extra discovery`);
+              rssCacheNoChange = true;
+            }
+
+            await fs.promises.writeFile(cachePath, JSON.stringify(rssUrls.slice(0, MAX_FIRECRAWL_DISCOVER)), "utf8").catch(() => {});
+          } catch (e) {}
         }
-        
-        if (articleUrls.length === 0) {
+
+        if (!rssCacheNoChange && articleUrls.length === 0) {
           console.log(`[Discovery Fallback 1] RSS trống. Cào link động bằng HTML cho ${site.url}...`);
           const htmlUrls = await scraper.discoverLinksWithCheerio(site.url);
           discoveredBySource.html = htmlUrls.length;
           articleUrls.push(...htmlUrls);
         }
 
-        if (articleUrls.length === 0 || alwaysMap) {
-          console.log(`[Discovery Fallback 2] Gọi Firecrawl Map cho ${site.url}...`);
-          const mappedUrls = await scraper.discoverArticles(site.url);
-          discoveredBySource.firecrawl = mappedUrls.length;
-          articleUrls.push(...mappedUrls);
+        if (!rssCacheNoChange && (articleUrls.length === 0 || alwaysMap)) {
+          const recentCount = await db.countRecentArticles(site.url, RECENT_DAYS);
+          if (!alwaysMap && recentCount >= FIRECRAWL_SKIP_RECENT_COUNT) {
+            console.log(`[Discovery Firecrawl] Bỏ qua ${site.url}: has ${recentCount} recent articles`);
+          } else {
+            console.log(`[Discovery Fallback 2] Gọi Firecrawl Map cho ${site.url}...`);
+            const mappedUrls = await scraper.discoverArticles(site.url, MAX_FIRECRAWL_DISCOVER);
+            discoveredBySource.firecrawl = mappedUrls.length;
+            articleUrls.push(...(mappedUrls || []));
+          }
         }
 
         articleUrls = sortNewestFirst(uniquePreserveOrder(articleUrls));

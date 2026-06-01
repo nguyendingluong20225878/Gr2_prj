@@ -3,6 +3,7 @@ import { processNewsScraping } from "../src/process.js";
 
 // Nạp biến môi trường từ file .env
 dotenv.config();
+console.log('[env] FIRECRAWL_API_KEY set:', !!process.env.FIRECRAWL_API_KEY, 'length=', process.env.FIRECRAWL_API_KEY?.length ?? 0);
 
 (async () => {
   console.log(`[${new Date().toLocaleString()}] 🚀 Bắt đầu tiến trình cào tin tức...`);
