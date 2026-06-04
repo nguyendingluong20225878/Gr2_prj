@@ -3,6 +3,7 @@ import mongoose, { Schema, Document, Model } from 'mongoose';
 // Interface cho mảng balances
 export interface IUserBalance {
   tokenAddress: string;
+  token?: Schema.Types.ObjectId;
   balance: string;
   updatedAt: Date;
 }
@@ -41,6 +42,7 @@ const UserSchema = new Schema<IUser>(
     balances: {
       type: [{
         tokenAddress: String,
+        token: { type: Schema.Types.ObjectId, ref: 'Token' },
         balance: String,
         updatedAt: { type: Date, default: Date.now }
       }],

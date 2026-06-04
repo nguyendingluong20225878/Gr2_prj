@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import mongoose from 'mongoose';
 import Proposal from '@/models/Proposal';
+import { requireSessionUser } from '@/server/auth/walletAuth';
+import { resolveToken } from '@gr2/shared';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,6 +24,7 @@ type WatchlistProposalRecord = {
 };
 
 type UserBalanceRecord = {
+  token?: mongoose.Types.ObjectId | string;
   tokenAddress: string;
   balance: string | number;
 };
@@ -33,7 +36,7 @@ type UserPortfolioRecord = {
 
 type TokenPriceRecord = {
   tokenKey?: string;
-  tokenAddress: string;
+  tokenAddress?: string;
   token?: mongoose.Types.ObjectId | string;
   priceUsd?: string | number;
   price?: number;
@@ -41,8 +44,6 @@ type TokenPriceRecord = {
 
 type TokenRecord = {
   _id: mongoose.Types.ObjectId;
-  address?: string;
-  coingeckoId?: string;
   symbol?: string;
 };
 
@@ -65,6 +66,7 @@ type PerpPositionRecord = {
 };
 
 type HoldingPriceQuality = 'OK' | 'MISSING_PRICE';
+type MissingPriceReason = 'NO_TOKEN_MAPPING' | 'NO_PRICE';
 
 const ProposalModel = Proposal as unknown as mongoose.Model<WatchlistProposalRecord>;
 
@@ -73,24 +75,18 @@ const normalizeNumber = (n: number) => {
   return Number.isInteger(n) ? n : parseFloat(n.toString());
 };
 
-const getTokenSymbol = (addr: string) => {
-  if (!addr) return 'UNKNOWN';
-  if (addr === 'So11111111111111111111111111111111111111112') return 'SOL';
-  if (addr.startsWith('EPj')) return 'USDC';
-  if (addr.startsWith('JUP')) return 'JUP';
-  if (addr.startsWith('Es9')) return 'USDT';
-  if (addr === '6wrnLa6tkusRwKjGjTLyFG1czhNoNYF5pJg1wPhGg4bD') return 'SPL-TK';
-  return addr.slice(0, 4);
+const normalizeNullableNumber = (value: unknown) => {
+  if (value === null || value === undefined || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? normalizeNumber(n) : null;
 };
+
+const UNKNOWN_TOKEN_SYMBOL = 'Token chưa định danh';
 
 export async function GET(req: Request) {
   try {
-    const { searchParams } = new URL(req.url);
-    const wallet = searchParams.get('wallet');
-
-    if (!wallet) {
-      return NextResponse.json({ error: 'Wallet required' }, { status: 400 });
-    }
+    const session = await requireSessionUser(req);
+    const wallet = session.walletAddress;
 
     // 1. Connect DB
     await connectDB();
@@ -114,88 +110,104 @@ export async function GET(req: Request) {
         holdings: [],
         investments: [],
         watchlist: [],
-        stats: { totalValue: 0 }
+        stats: {
+          totalValue: 0,
+          pricedHoldingsCount: 0,
+          missingPriceCount: 0,
+          totalValueStatus: 'COMPLETE',
+        }
       });
     }
 
     const userId = user._id;
     const balances = user.balances || [];
 
-    // 3. Fetch prices. token-price-fetcher writes by tokenKey
-    // (for example coingecko:solana), while wallet balances use token mint addresses.
-    const tokenAddresses = balances.map((b) => b.tokenAddress);
-    const tokenDocs = await db
-      .collection<TokenRecord>('tokens')
-      .find({
-        $or: [
-          { address: { $in: tokenAddresses } },
-          { coingeckoId: { $in: tokenAddresses } },
-        ],
-      })
-      .toArray();
-
-    const tokenByAddress = new Map<string, TokenRecord>();
-    const tokenById = new Map<string, TokenRecord>();
-    const priceKeys = new Set<string>(tokenAddresses);
-
-    tokenDocs.forEach((token) => {
-      tokenById.set(token._id.toString(), token);
-      if (token.address) tokenByAddress.set(token.address, token);
-      if (token.coingeckoId) {
-        priceKeys.add(token.coingeckoId);
-        priceKeys.add(`coingecko:${token.coingeckoId}`);
+    // 3. Resolve balances through the core token identity resolver.
+    const resolvedBalances = await Promise.all(balances.map(async (balance) => {
+      const existingTokenId = balance.token?.toString();
+      if (existingTokenId && mongoose.Types.ObjectId.isValid(existingTokenId)) {
+        return { balance, tokenId: new mongoose.Types.ObjectId(existingTokenId) };
       }
-    });
+
+      const token = await resolveToken({
+        chain: 'solana',
+        addressOrMint: balance.tokenAddress,
+      });
+
+      return {
+        balance,
+        tokenId: token?._id && mongoose.Types.ObjectId.isValid(String(token._id))
+          ? new mongoose.Types.ObjectId(String(token._id))
+          : null,
+      };
+    }));
+
+    const tokenIds = [...new Map(
+      resolvedBalances
+        .map((item) => item.tokenId)
+        .filter((id): id is mongoose.Types.ObjectId => Boolean(id))
+        .map((id) => [id.toString(), id])
+    ).values()];
+
+    const tokenDocs = tokenIds.length
+      ? await db
+          .collection<TokenRecord>('tokens')
+          .find({ _id: { $in: tokenIds } })
+          .toArray()
+      : [];
+
+    const tokenById = new Map<string, TokenRecord>();
+    tokenDocs.forEach((token) => tokenById.set(token._id.toString(), token));
 
     const pricesDocs = await db
       .collection<TokenPriceRecord>('token_prices')
       .find({
-        $or: [
-          { tokenAddress: { $in: tokenAddresses } },
-          { tokenKey: { $in: [...priceKeys] } },
-        ],
+        token: { $in: [...tokenIds, ...tokenIds.map((id) => id.toString())] },
       })
       .toArray();
 
     const priceMap = new Map<string, number>();
     pricesDocs.forEach((p) => {
-      const price = p.priceUsd !== undefined ? Number(p.priceUsd) : p.price || 0;
+      const price = p.priceUsd !== undefined ? Number(p.priceUsd) : Number(p.price);
       if (!Number.isFinite(price) || price <= 0) return;
-
-      if (p.tokenAddress) priceMap.set(p.tokenAddress, price);
-      if (p.tokenKey) priceMap.set(p.tokenKey, price);
-
       const tokenId = p.token?.toString();
-      const token = tokenId ? tokenById.get(tokenId) : undefined;
-      if (token?.address) priceMap.set(token.address, price);
-      if (token?.coingeckoId) priceMap.set(`coingecko:${token.coingeckoId}`, price);
+      if (tokenId) priceMap.set(tokenId, price);
     });
 
     // --- A. HOLDINGS ---
     let totalWalletValue = 0;
+    let pricedHoldingsCount = 0;
+    let missingPriceCount = 0;
 
-    const holdings = balances.map((b) => {
-      const token = tokenByAddress.get(b.tokenAddress);
-      const price =
-        priceMap.get(b.tokenAddress) ||
-        (token?.coingeckoId ? priceMap.get(`coingecko:${token.coingeckoId}`) : undefined) ||
-        (token?.coingeckoId ? priceMap.get(token.coingeckoId) : undefined) ||
-        null;
-      const amountRaw = typeof b.balance === 'number' ? b.balance : parseFloat(b.balance);
-      const amount = normalizeNumber(amountRaw);
+    const holdings = resolvedBalances.map(({ balance: b, tokenId }) => {
+      const token = tokenId ? tokenById.get(tokenId.toString()) : undefined;
+      const price = tokenId ? priceMap.get(tokenId.toString()) ?? null : null;
+      const amount = normalizeNullableNumber(b.balance) ?? 0;
       const dataQuality: HoldingPriceQuality = price === null ? 'MISSING_PRICE' : 'OK';
+      const missingReason: MissingPriceReason | undefined = price === null
+        ? token
+          ? 'NO_PRICE'
+          : 'NO_TOKEN_MAPPING'
+        : undefined;
 
       const valueUsdRaw = price === null ? null : amount * price;
       const valueUsd = valueUsdRaw === null ? null : normalizeNumber(valueUsdRaw);
 
-      if (valueUsd !== null && valueUsd > 0) totalWalletValue += valueUsd;
+      if (valueUsd !== null) {
+        pricedHoldingsCount += 1;
+        if (valueUsd > 0) totalWalletValue += valueUsd;
+      } else {
+        missingPriceCount += 1;
+      }
 
       return {
-        symbol: getTokenSymbol(b.tokenAddress),
+        tokenAddress: b.tokenAddress,
+        symbol: token?.symbol ?? UNKNOWN_TOKEN_SYMBOL,
         balance: amount,
         price: price === null ? null : normalizeNumber(price),
         value: valueUsd,
         dataQuality,
+        missingReason,
       };
     });
 
@@ -210,20 +222,20 @@ export async function GET(req: Request) {
 
     const investments = openPositions.map((p) => ({
       _id: p._id.toString(),
-      symbol: p.tokenSymbol && p.tokenSymbol !== 'TOKEN' ? p.tokenSymbol : getTokenSymbol(p.tokenAddress || ''),
-      entryPrice: normalizeNumber(p.entryPrice || 0),
-      size: normalizeNumber(p.positionSize || 0),
+      symbol: p.tokenSymbol && p.tokenSymbol !== 'TOKEN' ? p.tokenSymbol : UNKNOWN_TOKEN_SYMBOL,
+      entryPrice: normalizeNullableNumber(p.entryPrice),
+      size: normalizeNullableNumber(p.positionSize),
       leverage: p.leverage || 1,             // <--- Add
       direction: p.positionDirection || 'LONG', // <--- Add
       createdAt: p.createdAt,              // <--- Add
-      executedPrice: normalizeNumber(p.executedPrice || p.entryPrice || 0),
+      executedPrice: normalizeNullableNumber(p.executedPrice ?? p.entryPrice),
       executionId: p.executionId?.toString(),
       proposalId: p.proposalId,            // <--- Add
-      requestedPrice: normalizeNumber(p.requestedPrice || p.entryPrice || 0),
-      slippagePct: normalizeNumber(p.slippagePct || 0),
+      requestedPrice: normalizeNullableNumber(p.requestedPrice ?? p.entryPrice),
+      slippagePct: normalizeNullableNumber(p.slippagePct),
       txHash: p.txHash,
-      pnl: 0,
-      roi: normalizeNumber(p.roi || 0)
+      pnl: null,
+      roi: normalizeNullableNumber(p.roi)
     }));
 
     // --- C. WATCHLIST ---
@@ -239,17 +251,29 @@ export async function GET(req: Request) {
 
     const watchlist = pendingProposals.map((p) => ({
       _id: p._id.toString(),
-      tokenSymbol: p.tokenSymbol || (p.title ? p.title.split(' ')[0] : 'TOKEN'),
+      tokenSymbol: p.tokenSymbol || null,
       title: p.title,
-      roi: normalizeNumber(p.financialImpact?.roi || 0),
+      roi: normalizeNullableNumber(p.financialImpact?.roi),
       confidence: p.confidence,
       createdAt: p.createdAt
     }));
 
+    const totalValue = holdings.length > 0 && pricedHoldingsCount === 0
+      ? null
+      : normalizeNumber(totalWalletValue);
+    const totalValueStatus = holdings.length > 0 && pricedHoldingsCount === 0
+      ? 'MISSING_PRICE_DATA'
+      : missingPriceCount > 0
+        ? 'PARTIAL'
+        : 'COMPLETE';
+
     const stats = {
-      totalValue: normalizeNumber(totalWalletValue),
+      totalValue,
       activeCount: investments.length,
-      watchlistCount: watchlist.length
+      watchlistCount: watchlist.length,
+      pricedHoldingsCount,
+      missingPriceCount,
+      totalValueStatus,
     };
 
     return NextResponse.json({ holdings, investments, watchlist, stats });
@@ -259,7 +283,7 @@ export async function GET(req: Request) {
     const message = error instanceof Error ? error.message : 'Internal Error';
     return NextResponse.json(
       { error: message },
-      { status: 500 }
+      { status: error instanceof Error && error.name === 'AuthRequiredError' ? 401 : 500 }
     );
   }
 }

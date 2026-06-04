@@ -17,6 +17,7 @@
   "scripts": {
     "build": "tsc",
     "db:seed": "tsx --env-file=.env src/db/seed.ts",
+    "migrate:token-identity": "tsx --env-file=.env scripts/migrate-token-identity.ts",
     "test:connection": "tsx --env-file=.env scripts/test-connection.ts",
     "test:schemas": "tsx --env-file=.env scripts/test-schemas.ts",
     "test:integrity": "tsx --env-file=.env scripts/test-data-integrity.ts",

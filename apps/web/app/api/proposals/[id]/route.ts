@@ -3,7 +3,6 @@ import connectDB from '@/lib/mongodb';
 import mongoose from 'mongoose';
 import Proposal from '@/models/Proposal';
 import { SignalModel } from '@/models/Signal';
-import { resolveTokenDisplay } from '@/lib/constants/tokens';
 import {
   deriveBacktestSemantics,
   deriveLayerConflict,
@@ -111,6 +110,7 @@ type SignalFallbackRecord = {
 
 const ProposalModel = Proposal as unknown as mongoose.Model<ProposalDetailRecord>;
 const SIGNAL_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const PROPOSAL_TTL_MS = 24 * 60 * 60 * 1000;
 
 function resolveSignalDetectedAt(signal?: SignalFallbackRecord | null) {
   return signal?.detectedAt ?? signal?.createdAt ?? signal?.metadata?.processedAt ?? signal?.updatedAt ?? new Date();
@@ -119,6 +119,21 @@ function resolveSignalDetectedAt(signal?: SignalFallbackRecord | null) {
 function resolveSignalExpiresAt(signal?: SignalFallbackRecord | null) {
   const detectedAt = resolveSignalDetectedAt(signal);
   return signal?.expiresAt ?? new Date(detectedAt.getTime() + SIGNAL_TTL_MS);
+}
+
+function deriveProposalExpiresAt(createdAt?: Date) {
+  return new Date((createdAt?.getTime() ?? Date.now()) + PROPOSAL_TTL_MS);
+}
+
+function nullableNumber(value: unknown) {
+  if (value === null || value === undefined || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function shortTokenKey(value?: string | null) {
+  if (!value) return null;
+  return value.length > 12 ? `${value.slice(0, 4)}...${value.slice(-4)}` : value;
 }
 
 export async function GET(req: Request, { params }: { params: { id: string } }) {
@@ -145,23 +160,23 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     if (!p) {
       const signal = await SignalModel.findById(id).lean<SignalFallbackRecord | null>();
       if (signal) {
-        const token = resolveTokenDisplay(signal.tokenAddress);
         const action = normalizeAction(signal.suggestionType);
         const health = deriveSignalHealth(signal);
 
         return NextResponse.json({
           _id: signal._id.toString(),
           signalId: signal._id.toString(),
-          tokenSymbol: signal.tokenSymbol || token.symbol,
-          tokenName: token.name,
+          tokenSymbol: signal.tokenSymbol ?? shortTokenKey(signal.tokenAddress),
+          tokenName: signal.tokenSymbol ?? shortTokenKey(signal.tokenAddress),
           action,
           financialImpact: {
-            currentValue: 0,
-            projectedValue: 0,
-            riskLevel: 'MEDIUM',
-            roi: 0,
-            percentChange: 0,
+            currentValue: null,
+            projectedValue: null,
+            riskLevel: null,
+            roi: null,
+            percentChange: null,
           },
+          roiStatus: 'NOT_AVAILABLE',
           summary: signal.rationaleSummary,
           reason: signal.rationaleSummary ? [signal.rationaleSummary] : [],
           sources: signal.sources || [],
@@ -169,8 +184,9 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
           expiresAt: resolveSignalExpiresAt(signal),
           createdAt: resolveSignalDetectedAt(signal),
           status: 'signal-only',
-          sentimentType: signal.sentimentType || 'neutral',
-          quantScore: signal.quantScore || signal.metadata?.scoreComponents?.finalScore,
+          sentimentType: signal.sentimentType ?? null,
+          pnlPercentage: null,
+          quantScore: nullableNumber(signal.quantScore ?? signal.metadata?.scoreComponents?.finalScore),
           semantics: {
             backtest: deriveBacktestSemantics({}),
             layerConflict: deriveLayerConflict(signal.suggestionType, signal.suggestionType),
@@ -183,7 +199,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
             confidence: normalizeConfidence(signal.confidence),
             health,
             id: signal._id.toString(),
-            quantScore: signal.quantScore || signal.metadata?.scoreComponents?.finalScore,
+            quantScore: nullableNumber(signal.quantScore ?? signal.metadata?.scoreComponents?.finalScore),
             scoreComponents: signal.metadata?.scoreComponents,
             expiresAt: resolveSignalExpiresAt(signal),
             status: signal.status,
@@ -214,33 +230,39 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       : null;
 
     const summary = p.summary || p.rationaleSummary || '';
-    const rawRoi = p.financialImpact?.roi ?? p.financialImpact?.roiPercent ?? p.financialImpact?.percentChange ?? p.pnlPercentage ?? 0;
-    const roi = normalizePercent(rawRoi) ?? 0;
-    const currentValue = p.financialImpact?.currentValue ?? p.financialImpact?.currentPrice ?? p.entryPrice ?? 0;
-    const projectedValue = p.financialImpact?.projectedValue ?? p.financialImpact?.targetPrice ?? p.exitPrice ?? 0;
+    const rawRoi = nullableNumber(p.financialImpact?.roi);
+    const roi = normalizePercent(rawRoi);
+    const currentPrice = nullableNumber(p.financialImpact?.currentPrice);
+    const currentValue = nullableNumber(p.financialImpact?.currentValue ?? p.financialImpact?.currentPrice);
+    const targetPrice = nullableNumber(p.financialImpact?.targetPrice);
+    const projectedValue = nullableNumber(p.financialImpact?.projectedValue);
     const signalAction = linkedSignal ? normalizeAction(linkedSignal.suggestionType) : normalizeAction(finalAction);
     const health = linkedSignal ? deriveSignalHealth(linkedSignal) : deriveSignalHealth({});
 
     const safeProposal = {
       _id: p._id.toString(),
       signalId: p.triggerEventId || p.triggerSignalId || p.signalId,
-      tokenSymbol: p.tokenSymbol || (p.title ? p.title.split(' ')[0] : 'TOKEN'),
-      tokenName: p.tokenName || p.title,
+      tokenSymbol: p.tokenSymbol || null,
+      tokenName: p.tokenName || p.title || null,
       action: finalAction,
       financialImpact: {
+        currentPrice,
         currentValue,
+        targetPrice,
         projectedValue,
-        riskLevel: (p.financialImpact?.riskLevel || 'MEDIUM').toUpperCase(),
+        projectedPnL: nullableNumber(p.financialImpact?.projectedPnL),
+        riskLevel: p.financialImpact?.riskLevel?.toUpperCase() ?? null,
         roi: roi, // ROI chuẩn
-        percentChange: roi,
+        percentChange: nullableNumber(p.financialImpact?.percentChange),
       },
+      roiStatus: roi === null ? 'NOT_AVAILABLE' : 'AVAILABLE',
       actualPnL: p.actualPnL,
       backtestMeta: p.backtestMeta,
       backtestedAt: p.backtestedAt,
       entryPrice: p.entryPrice,
       exitPrice: p.exitPrice,
-      pnlPercentage: p.pnlPercentage,
-      quantScore: p.quantScore,
+      pnlPercentage: nullableNumber(p.pnlPercentage),
+      quantScore: nullableNumber(p.quantScore),
       scoreComponents: p.scoreComponents,
       volatilityFlag: p.volatilityFlag,
       uncertaintyEntropy: p.uncertaintyEntropy ?? linkedSignal?.uncertaintyEntropy ?? linkedSignal?.metadata?.uncertaintyEntropy,
@@ -250,10 +272,10 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       reason: p.reason || [],
       sources: p.sources || [],
       confidence: normalizeConfidence(p.confidence),
-      expiresAt: p.expiresAt ?? (linkedSignal ? resolveSignalExpiresAt(linkedSignal) : p.backtestMeta?.expiresAt),
+      expiresAt: p.expiresAt ?? deriveProposalExpiresAt(p.createdAt),
       createdAt: p.createdAt,
       status: p.status || p.executionStatus?.toLowerCase() || 'pending', // === FIX STATUS ===
-      sentimentType: p.sentimentType || (roi >= 0 ? 'positive' : 'negative'),
+      sentimentType: p.sentimentType ?? null,
       winLossStatus: p.winLossStatus,
       semantics: {
         backtest: deriveBacktestSemantics(p),
@@ -267,7 +289,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
         confidence: normalizeConfidence(linkedSignal.confidence),
         health,
         id: linkedSignal._id.toString(),
-        quantScore: linkedSignal.quantScore || linkedSignal.metadata?.scoreComponents?.finalScore,
+        quantScore: nullableNumber(linkedSignal.quantScore ?? linkedSignal.metadata?.scoreComponents?.finalScore),
         scoreComponents: linkedSignal.metadata?.scoreComponents ?? p.scoreComponents,
         expiresAt: resolveSignalExpiresAt(linkedSignal),
         status: linkedSignal.status,
@@ -280,7 +302,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
         confidence: normalizeConfidence(p.confidence),
         health,
         id: p.signalId?.toString() || p._id.toString(),
-        quantScore: p.quantScore,
+        quantScore: nullableNumber(p.quantScore),
         scoreComponents: p.scoreComponents,
         expiresAt: p.expiresAt ?? p.backtestMeta?.expiresAt,
         status: p.status,

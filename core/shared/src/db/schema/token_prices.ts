@@ -18,7 +18,12 @@ const tokenPriceSchema = new Schema(
       index: true,
     },
 
-    token: { type: Schema.Types.ObjectId, ref: "Token" },
+    token: {
+      type: Schema.Types.ObjectId,
+      ref: "Token",
+      required: true,
+      index: true,
+    },
 
     priceUsd: {
       type: Number,

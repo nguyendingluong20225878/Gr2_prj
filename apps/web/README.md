@@ -1,272 +1,128 @@
-# 🚀 NDL AI - Next.js 15 App
+# GR2 Web App
 
-**Crypto Portfolio Manager** với AI-powered trading signals trên Solana blockchain.
+`apps/web` is the Next.js frontend and backend-for-frontend layer for GR2. It shows signal analytics, opportunities, proposals, portfolio state, positions, alerts, and wallet-driven user flows.
 
-## 📦 Tech Stack
+## Tech Stack
 
-- **Frontend:** Next.js 15 (App Router) + React 19
-- **Styling:** Tailwind CSS v4 + Cyberpunk Theme
-- **Blockchain:** Solana Web3.js + Phantom Wallet
-- **UI Components:** Radix UI + Shadcn
-- **State:** React Context + Custom Hooks
-- **API Client:** Axios
-- **Database:** MongoDB (backend)
+- Next.js 14 App Router
+- React 18
+- TypeScript
+- Tailwind CSS
+- Radix UI primitives and local shadcn-style components
+- Solana wallet adapter and Phantom wallet support
+- MongoDB/Mongoose through local API routes and `@gr2/shared`
+- SWR/browser fetch hooks for client data loading
+- Recharts for analytics charts
 
----
+## Structure
 
-## 🎨 Theme
-
-**Cyberpunk Glassmorphism** với màu chủ đạo:
-- Purple: `#a855f7`
-- Cyan: `#06b6d4`
-- Pink: `#ec4899`
-
----
-
-## 📁 Project Structure
-
-```
-/
+```text
+apps/web
 ├── app/
-│   ├── components/       # React Client Components
-│   │   ├── ui/          # Shadcn UI components
-│   │   ├── wallet/      # Wallet Provider
-│   │   ├── dashboard/   # Dashboard components
-│   │   ├── proposal/    # Proposal detail components
-│   │   └── portfolio/   # Portfolio components
-│   ├── contexts/        # React Contexts (Auth)
-│   ├── dashboard/       # Dashboard page
-│   ├── onboarding/      # Onboarding page
-│   ├── portfolio/       # Portfolio page
-│   ├── profile/         # Profile settings page
-│   ├── proposal/[id]/   # Dynamic proposal detail page
-│   ├── layout.tsx       # Root layout
-│   ├── page.tsx         # Landing page
-│   └── globals.css      # Global styles
-│
+│   ├── api/                  # Next.js route handlers
+│   ├── components/           # Layout, wallet, proposal, portfolio, UI atoms
+│   ├── contexts/             # Auth and trading demo contexts
+│   ├── overview/             # Main command-center view
+│   ├── signals/              # Signal list/detail views
+│   ├── opportunities/        # Opportunity views
+│   ├── proposal/[id]/        # Proposal detail and decision view
+│   ├── positions/            # Open position views
+│   ├── portfolio/            # Portfolio summary
+│   ├── alerts/               # Risk/analytics alerts
+│   ├── tokens/[symbol]/      # Token detail view
+│   ├── profile/              # User settings
+│   ├── onboarding/           # New user setup
+│   ├── layout.tsx
+│   ├── page.tsx
+│   └── globals.css
 ├── lib/
-│   ├── api/            # API client (Axios)
-│   ├── config/         # Configuration files
-│   ├── hooks/          # Custom React hooks
-│   └── utils/          # Utility functions
-│
-├── public/             # Static assets
-├── API_DOCS.md         # API integration guide
-├── next.config.js      # Next.js configuration
-├── tsconfig.json       # TypeScript configuration
-└── package.json        # Dependencies
+│   ├── hooks/                # useSignals, useProposals, usePortfolio, analytics hooks
+│   ├── utils/                # Semantic mapping, formatting, navigation, analytics helpers
+│   ├── constants/            # Token display fallbacks
+│   ├── api/                  # API client helpers
+│   └── mongodb.ts            # Server-side Mongo connection helper
+├── models/                   # Compatibility model adapters for API routes
+└── services/                 # Service wrappers used by routes
 ```
 
----
+## Commands
 
-## ⚙️ Installation & Setup
+Run from the repository root:
 
-### 1. Install Dependencies
 ```bash
-npm install
+# Development server
+npm --workspace @gr2/web run dev
+
+# Development with mock API behavior
+npm --workspace @gr2/web run dev:mock
+
+# Development against real API/database behavior
+npm --workspace @gr2/web run dev:real
+
+# Production build
+npm --workspace @gr2/web run build
+
+# Start the built app
+npm --workspace @gr2/web run start
 ```
 
-### 2. Create Environment File
-```bash
-cp .env.example .env.local
-```
+## Environment
 
-### 3. Configure Environment Variables
-Edit `.env.local`:
+Create `apps/web/.env.local` for local development.
+
 ```env
-# API Configuration
-NEXT_PUBLIC_API_BASE_URL=http://localhost:3000/api
-NEXT_PUBLIC_USE_MOCK_API=true
-
-# Solana Configuration
+MONGODB_URI=mongodb://localhost:27017/gr2
+NEXT_PUBLIC_USE_MOCK_API=false
+NEXT_PUBLIC_DEMO_MODE=false
 NEXT_PUBLIC_SOLANA_NETWORK=devnet
 NEXT_PUBLIC_SOLANA_RPC_URL=https://api.devnet.solana.com
 ```
 
-### 4. Run Development Server
-```bash
-npm run dev
-```
+Useful switches:
 
-App sẽ chạy tại: **http://localhost:3000**
+- `NEXT_PUBLIC_USE_MOCK_API=true`: client hooks use mock API behavior where supported.
+- `NEXT_PUBLIC_DEMO_MODE=true`: demo fallback data may be shown instead of hard failures.
+- `NEXT_PUBLIC_USE_MOCK_API=false`: pages call the real Next API routes.
 
----
+## Main Pages
 
-## 🎯 Features
+- `/`: landing/root entry.
+- `/overview`: command center for market/signal state.
+- `/signals` and `/signals/[id]`: signal workbench and detail.
+- `/signals/daily`: daily signal view.
+- `/opportunities` and `/opportunities/[id]`: opportunity discovery.
+- `/proposal/[id]`: Layer 3 proposal detail, evidence, decision, and execution surface.
+- `/positions` and `/positions/[id]`: open position monitoring.
+- `/portfolio`: holdings and portfolio summary.
+- `/alerts`: risk/analytics alerts derived from signal rows.
+- `/model-health`: model health/status page.
+- `/data-check` and `/diagnostics`: local inspection/debug pages.
+- `/watchlist`, `/tokens/[symbol]`, `/profile`, `/onboarding`: user workflow pages.
 
-### 1. **Landing Page** (`/`)
-- Hero section với nút "Connect Wallet"
-- Features showcase
-- Footer
+## API Routes
 
-### 2. **Dashboard** (`/dashboard`)
-- AI trading signals (BUY/SELL proposals)
-- Filter by action type
-- Social sentiment indicators
-- Real-time confidence scores
+The API layer is colocated in `app/api` and talks to MongoDB.
 
-### 3. **Proposal Detail** (`/proposal/[id]`)
-- Chi tiết tín hiệu trading
-- Evidence từ Twitter/X
-- Chain of Thought reasoning
-- Execute trade functionality
+- `GET /api/signals`: list signals and enrich them with related proposal data.
+- `GET /api/signals/[id]`: signal detail.
+- `GET /api/proposals`: active/pending proposals.
+- `GET /api/proposals/[id]`: proposal detail with signal fallback support.
+- `POST /api/proposals/[id]/decision`: write ENTER/WAIT/REJECT audit decisions.
+- `GET /api/portfolio`: holdings, positions, and watchlist state.
+- `POST /api/trade/execute`: demo trade execution and position creation.
+- `GET /api/model-health`: model status data.
+- `POST /api/seed`: local seed helper.
 
-### 4. **Portfolio** (`/portfolio`)
-- Total portfolio value & P/L
-- Holdings breakdown
-- Recent trades history
-- Performance charts
+## Data Flow
 
-### 5. **Profile Settings** (`/profile`)
-- User information
-- Risk tolerance settings
-- Trading style preferences
-- Notification settings
+1. Core packages write `signals`, `proposals`, price, tweet, news, and portfolio data into MongoDB.
+2. API routes normalize database records into UI DTOs.
+3. Hooks in `lib/hooks` fetch API routes and compute user-facing analytics rows.
+4. Pages render normalized state and avoid recomputing quant alpha on the client.
 
-### 6. **Onboarding** (`/onboarding`)
-- New user registration
-- Profile setup
-- Risk assessment
+## Implementation Notes
 
----
-
-## 🔐 Authentication Flow
-
-```
-1. User clicks "Connect Wallet" on Landing Page
-2. Phantom wallet modal opens
-3. User approves connection
-4. App calls POST /api/auth/verify with walletAddress
-5. If new user → redirect to /onboarding
-6. If existing user → redirect to /dashboard
-```
-
----
-
-## 📡 API Integration
-
-### Mock Data Mode (Development)
-```bash
-NEXT_PUBLIC_USE_MOCK_API=true npm run dev
-```
-
-### Real API Mode (Production)
-```bash
-NEXT_PUBLIC_USE_MOCK_API=false npm run dev
-```
-
-Chi tiết API endpoints xem file: **[API_DOCS.md](./API_DOCS.md)**
-
----
-
-## 🚀 Deployment
-
-### Deploy to Vercel
-```bash
-# Install Vercel CLI
-npm i -g vercel
-
-# Deploy
-vercel
-```
-
-### Environment Variables on Vercel
-Thêm các biến môi trường trên Vercel Dashboard:
-- `NEXT_PUBLIC_API_BASE_URL`
-- `NEXT_PUBLIC_USE_MOCK_API`
-- `NEXT_PUBLIC_SOLANA_NETWORK`
-
----
-
-## 🔧 Development Notes
-
-### Server Components vs Client Components
-
-**Server Components** (mặc định):
-- `/app/page.tsx`
-- `/app/layout.tsx`
-- Không có `'use client'` directive
-
-**Client Components** (cần `'use client'`):
-- Tất cả components trong `/app/components/*`
-- Components sử dụng hooks (useState, useEffect, etc.)
-- Components với event handlers (onClick, onChange, etc.)
-- Components sử dụng browser APIs (localStorage, window, etc.)
-
-### Wallet Integration
-
-App sử dụng **@solana/wallet-adapter-react** với:
-- Phantom Wallet support
-- Devnet network
-- Auto-connect disabled (user manually connects)
-
-### Styling
-
-- Tailwind CSS v4 với custom theme
-- CSS variables cho colors
-- Cyberpunk glassmorphism effects
-- Custom animations (float, pulse-glow, scan)
-
----
-
-## 📚 Key Libraries
-
-```json
-{
-  "next": "^15.1.6",
-  "react": "^19.0.0",
-  "react-dom": "^19.0.0",
-  "@solana/web3.js": "^1.98.4",
-  "@solana/wallet-adapter-react": "^0.15.39",
-  "axios": "^1.7.9",
-  "recharts": "2.15.2",
-  "lucide-react": "0.487.0",
-  "tailwindcss": "^4.1.12"
-}
-```
-
----
-
-## 🐛 Troubleshooting
-
-### Build Errors
-```bash
-# Clear Next.js cache
-rm -rf .next
-
-# Reinstall dependencies
-rm -rf node_modules
-npm install
-
-# Rebuild
-npm run build
-```
-
-### Wallet Connection Issues
-- Ensure Phantom extension is installed
-- Check browser console for errors
-- Try disabling other wallet extensions
-
-### API Errors
-- Check if backend is running
-- Verify `NEXT_PUBLIC_API_BASE_URL`
-- Check CORS configuration on backend
-
----
-
-## 📖 Additional Resources
-
-- [Next.js Documentation](https://nextjs.org/docs)
-- [Solana Web3.js](https://solana-labs.github.io/solana-web3.js/)
-- [Tailwind CSS v4](https://tailwindcss.com/docs)
-- [Radix UI](https://www.radix-ui.com/)
-
----
-
-## 📞 Support
-
-For issues or questions, check the [API_DOCS.md](./API_DOCS.md) file.
-
----
-
-**Happy coding! 🚀**
+- `models/Signal.ts` and `models/Proposal.ts` re-export shared models from `@gr2/shared` to keep older import paths working.
+- Some API routes still use raw `db.collection` access. When changing schemas, check route DTO mapping carefully.
+- `buildSignalAnalytics` in `lib/utils/signalAnalytics.ts` ranks and summarizes already-produced signals; it should not become a second quant engine.
+- Keep demo data behind explicit demo/mock flags so production failures remain visible.

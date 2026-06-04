@@ -5,21 +5,21 @@ import { AuthProvider } from './contexts/AuthContext';
 import { TradingDemoProvider } from './contexts/TradingDemoContext';
 import { Toaster } from './components/ui/sonner';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { WalletDebug } from './components/wallet/WalletDebug';
 import './globals.css';
 import '@solana/wallet-adapter-react-ui/styles.css';
 
 // Cấu hình Font Inter
 const inter = Inter({ subsets: ['latin'] });
+const showDebugPanel = process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_ENABLE_DEBUG_PANEL === 'true';
 
 export const metadata: Metadata = {
-  title: 'NDL AI - Crypto Portfolio Manager',
-  description: 'AI-powered crypto trading signals on Solana. Social sentiment analysis for smarter trading decisions.',
+  title: 'NDL - Solana DeFi Dashboard',
+  description: 'Bảng điều khiển Portfolio, Signal và khuyến nghị giao dịch Solana DeFi.',
   keywords: ['crypto', 'solana', 'trading', 'AI', 'portfolio', 'NDL'],
   authors: [{ name: 'NDL AI Team' }],
   openGraph: {
-    title: 'NDL AI - Crypto Portfolio Manager',
-    description: 'AI-powered crypto trading signals on Solana',
+    title: 'NDL - Solana DeFi Dashboard',
+    description: 'Bảng điều khiển Portfolio, Signal và khuyến nghị giao dịch Solana DeFi.',
     type: 'website',
   },
 };
@@ -31,7 +31,7 @@ export default function RootLayout({
 }) {
   return (
     // [QUAN TRỌNG] Thêm suppressHydrationWarning để chặn lỗi do ví Phantom chèn code
-    <html lang="en" className="dark" suppressHydrationWarning>
+    <html lang="vi" className="dark" suppressHydrationWarning>
       <body className={`${inter.className} min-h-screen bg-background antialiased`} suppressHydrationWarning>
         <ErrorBoundary>
           <WalletContextProvider>
@@ -40,8 +40,7 @@ export default function RootLayout({
                 <div className="relative flex min-h-screen flex-col">
                   {children}
                   
-                  {/* Bảng Debug Wallet */}
-                  <WalletDebug />
+                  {showDebugPanel ? <DebugPanel /> : null}
                   
                   {/* Thông báo Toast */}
                   <Toaster 
@@ -62,4 +61,9 @@ export default function RootLayout({
       </body>
     </html>
   );
+}
+
+async function DebugPanel() {
+  const { WalletDebug } = await import('./components/wallet/WalletDebug');
+  return <WalletDebug />;
 }

@@ -1,92 +1,66 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import type React from 'react';
 import { useRouter } from 'next/navigation';
 import { useWallet } from '@solana/wallet-adapter-react';
+import { ArrowRight, Loader2, Wallet } from 'lucide-react';
+import { toast } from 'sonner';
+import { Button } from '@/app/components/ui/button';
 import { useAuth } from '@/app/contexts/AuthContext';
-import { Loader2, ArrowRight, Wallet, Mail, User, TrendingUp } from 'lucide-react';
 
-export default function Onboarding() {
+export default function OnboardingPage() {
   const router = useRouter();
   const { publicKey, connected } = useWallet();
   const { setUser } = useAuth();
-  
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
-  // Thêm age vào state
   const [formData, setFormData] = useState({
     name: '',
     email: '',
-    age: '', 
+    age: '',
     riskTolerance: 'medium',
-    cryptoInvestmentUsd: '',
     tradeStyle: 'swing',
+    totalAssetUsd: '',
+    cryptoInvestmentUsd: '',
   });
 
-  // Đá về trang chủ nếu mất kết nối ví
   useEffect(() => {
-    if (!connected && !publicKey) {
-      router.push('/');
-    }
+    if (!connected && !publicKey) router.push('/');
   }, [connected, publicKey, router]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault(); // Ngăn reload trang
-    
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
     if (!publicKey) {
-      alert("Wallet not connected!");
+      toast.error('Vui lòng kết nối ví trước.');
+      return;
+    }
+    if (!formData.email || !formData.age || !formData.name) {
+      toast.error('Vui lòng nhập tên, email và tuổi.');
       return;
     }
 
-    // Validate cơ bản
-    if (!formData.email || !formData.age) {
-        alert("Please enter Email and Age");
-        return;
-    }
-
     setIsSubmitting(true);
-
     try {
-      console.log("📤 Submitting form data...");
-      
-      const payload = {
-        walletAddress: publicKey.toBase58(),
-        name: formData.name,
-        email: formData.email,
-        age: parseInt(formData.age), // Chuyển đổi age sang số
-        riskTolerance: formData.riskTolerance,
-        tradeStyle: formData.tradeStyle,
-        cryptoInvestmentUsd: parseFloat(formData.cryptoInvestmentUsd) || 0,
-        totalAssetUsd: parseFloat(formData.cryptoInvestmentUsd) || 0, // Giả định bằng vốn crypto
-        notificationEnabled: true
-      };
-
-      const res = await fetch('/api/user/create', {
+      const response = await fetch('/api/user/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          name: formData.name,
+          email: formData.email,
+          age: Number(formData.age),
+          riskTolerance: formData.riskTolerance,
+          tradeStyle: formData.tradeStyle,
+          totalAssetUsd: Number(formData.totalAssetUsd || 0),
+          cryptoInvestmentUsd: Number(formData.cryptoInvestmentUsd || 0),
+          notificationEnabled: true,
+        }),
       });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to create user');
-      }
-
-      console.log("🎉 Success! User saved:", data);
-      
-      // Cập nhật AuthContext với user thật từ DB
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Không thể tạo hồ sơ');
       setUser(data);
-      
-      // Đợi 1 chút cho state cập nhật rồi mới chuyển
-      setTimeout(() => {
-        router.push('/dashboard');
-      }, 500);
-
+      router.push('/overview');
     } catch (error) {
-      console.error("❌ Onboarding failed:", error);
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      alert("Lỗi tạo tài khoản: " + message);
+      toast.error(error instanceof Error ? error.message : 'Không thể tạo hồ sơ');
     } finally {
       setIsSubmitting(false);
     }
@@ -95,102 +69,88 @@ export default function Onboarding() {
   if (!publicKey) return null;
 
   return (
-    <div className="min-h-screen bg-[#0a0118] text-white flex items-center justify-center p-4">
-      <div className="w-full max-w-md glass-card p-8 rounded-2xl border border-white/10">
-        <h1 className="text-3xl font-bold mb-6 text-center bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-cyan-400">
-          Setup Profile
-        </h1>
-        
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Wallet (Read only) */}
-          <div className="p-3 bg-white/5 rounded-lg border border-white/10 flex items-center gap-2 text-slate-400 text-xs font-mono">
-            <Wallet size={14} />
-            {publicKey.toBase58()}
+    <main className="flex min-h-screen items-center justify-center bg-[#0a0118] p-4 text-white">
+      <section className="glass-card w-full max-w-2xl rounded-2xl border border-white/10 p-8">
+        <p className="mb-2 text-center text-xs font-bold uppercase tracking-[0.24em] text-cyan-400">Tạo hồ sơ</p>
+        <h1 className="text-center text-3xl font-bold gradient-text">Thiết lập Portfolio trước khi xem Signal</h1>
+        <p className="mx-auto mt-3 max-w-xl text-center text-sm text-slate-400">
+          NDL dùng thông tin này để cá nhân hóa khuyến nghị giao dịch và cảnh báo rủi ro.
+        </p>
+
+        <form onSubmit={handleSubmit} className="mt-8 space-y-5">
+          <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 p-3 font-mono text-xs text-slate-400">
+            <Wallet className="h-4 w-4" />
+            <span className="truncate">{publicKey.toBase58()}</span>
           </div>
 
-          {/* Email Field (Mới) */}
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field label="Tên" value={formData.name} onChange={(value) => setFormData({ ...formData, name: value })} required />
+            <Field label="Email" type="email" value={formData.email} onChange={(value) => setFormData({ ...formData, email: value })} required />
+            <Field label="Tuổi" type="number" value={formData.age} onChange={(value) => setFormData({ ...formData, age: value })} required />
+            <Field label="Tổng tài sản (USD)" type="number" value={formData.totalAssetUsd} onChange={(value) => setFormData({ ...formData, totalAssetUsd: value })} />
+            <Field label="Số tiền đầu tư crypto (USD)" type="number" value={formData.cryptoInvestmentUsd} onChange={(value) => setFormData({ ...formData, cryptoInvestmentUsd: value })} />
+            <div>
+              <label className="mb-2 block text-sm font-medium text-slate-300">Phong cách giao dịch</label>
+              <select
+                value={formData.tradeStyle}
+                onChange={(event) => setFormData({ ...formData, tradeStyle: event.target.value })}
+                className="w-full rounded-lg border border-white/10 bg-black/40 p-3 text-white outline-none focus:border-purple-500"
+              >
+                <option value="scalp">Scalp</option>
+                <option value="swing">Swing</option>
+                <option value="position">Position</option>
+              </select>
+            </div>
+          </div>
+
           <div>
-            <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
-                Email <span className="text-red-500">*</span>
-            </label>
-            <input 
-              required
-              type="email" 
-              placeholder="you@example.com"
-              className="w-full mt-1 bg-black/40 border border-white/10 rounded-lg p-3 text-white focus:border-purple-500 outline-none"
-              value={formData.email}
-              onChange={e => setFormData({...formData, email: e.target.value})}
-            />
-          </div>
-
-          {/* Name Field */}
-          <div>
-            <label className="text-xs font-bold text-slate-500 uppercase">Display Name</label>
-            <input 
-              required
-              type="text" 
-              placeholder="Your Name"
-              className="w-full mt-1 bg-black/40 border border-white/10 rounded-lg p-3 text-white focus:border-purple-500 outline-none"
-              value={formData.name}
-              onChange={e => setFormData({...formData, name: e.target.value})}
-            />
-          </div>
-
-          {/* Age & Capital Grid */}
-          <div className="grid grid-cols-2 gap-4">
-             {/* Age Field (Mới) */}
-             <div>
-                <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
-                    Age <span className="text-red-500">*</span>
-                </label>
-                <input 
-                  required
-                  type="number" 
-                  placeholder="25"
-                  min="18"
-                  className="w-full mt-1 bg-black/40 border border-white/10 rounded-lg p-3 text-white focus:border-purple-500 outline-none"
-                  value={formData.age}
-                  onChange={e => setFormData({...formData, age: e.target.value})}
-                />
-             </div>
-
-             {/* Capital Field */}
-             <div>
-                <label className="text-xs font-bold text-slate-500 uppercase">Capital ($)</label>
-                <input 
-                  required
-                  type="number" 
-                  placeholder="1000"
-                  className="w-full mt-1 bg-black/40 border border-white/10 rounded-lg p-3 text-white focus:border-purple-500 outline-none"
-                  value={formData.cryptoInvestmentUsd}
-                  onChange={e => setFormData({...formData, cryptoInvestmentUsd: e.target.value})}
-                />
-             </div>
-          </div>
-
-          {/* Risk Level */}
-          <div>
-            <label className="text-xs font-bold text-slate-500 uppercase">Risk Level</label>
-            <select 
-              className="w-full mt-1 bg-black/40 border border-white/10 rounded-lg p-3 text-white outline-none cursor-pointer"
+            <label className="mb-2 block text-sm font-medium text-slate-300">Mức chịu rủi ro</label>
+            <select
               value={formData.riskTolerance}
-              onChange={e => setFormData({...formData, riskTolerance: e.target.value})}
+              onChange={(event) => setFormData({ ...formData, riskTolerance: event.target.value })}
+              className="w-full rounded-lg border border-white/10 bg-black/40 p-3 text-white outline-none focus:border-purple-500"
             >
-              <option value="low">Low Risk</option>
-              <option value="medium">Medium Risk</option>
-              <option value="high">High Risk</option>
+              <option value="low">Thấp</option>
+              <option value="medium">Trung bình</option>
+              <option value="high">Cao</option>
             </select>
           </div>
 
-          <button 
-            type="submit" 
-            disabled={isSubmitting}
-            className="w-full mt-6 bg-gradient-to-r from-purple-600 to-cyan-600 hover:opacity-90 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all disabled:opacity-50"
-          >
-            {isSubmitting ? <Loader2 className="animate-spin" /> : <>Complete Setup <ArrowRight size={18} /></>}
-          </button>
+          <Button type="submit" disabled={isSubmitting} className="h-12 w-full rounded-xl bg-gradient-to-r from-purple-600 to-cyan-600 font-bold text-white">
+            {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+            Tạo hồ sơ
+          </Button>
         </form>
-      </div>
+      </section>
+    </main>
+  );
+}
+
+function Field({
+  label,
+  value,
+  onChange,
+  type = 'text',
+  required,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  type?: string;
+  required?: boolean;
+}) {
+  return (
+    <div>
+      <label className="mb-2 block text-sm font-medium text-slate-300">
+        {label} {required ? <span className="text-red-400">*</span> : null}
+      </label>
+      <input
+        required={required}
+        type={type}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-full rounded-lg border border-white/10 bg-black/40 p-3 text-white outline-none focus:border-purple-500"
+      />
     </div>
   );
 }

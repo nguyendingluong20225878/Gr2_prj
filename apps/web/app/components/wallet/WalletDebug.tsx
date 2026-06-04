@@ -23,11 +23,9 @@ export function WalletDebug() {
     });
   }, [wallet.connected, wallet.connecting, wallet.publicKey, wallet.wallet]);
 
-  // Không hiển thị gì nếu chưa mount (tránh lỗi hydration)
-  if (!mounted) return null;
-
-  // Ẩn khi build production (tùy chọn)
-  // if (process.env.NODE_ENV === 'production') return null;
+  if (!mounted || process.env.NODE_ENV === 'production' || process.env.NEXT_PUBLIC_ENABLE_DEBUG_PANEL !== 'true') {
+    return null;
+  }
 
   return (
     <div className="fixed bottom-4 right-4 glass-card p-4 rounded-lg text-xs max-w-xs z-50 shadow-2xl border border-white/10 bg-black/80 backdrop-blur-md">

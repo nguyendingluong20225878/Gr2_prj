@@ -40,16 +40,28 @@ export class TokenListService {
       
       // Nếu là Native Coin (BTC, ETH, SOL) thì gán 'native' để không bị rỗng DB
       const finalAddress = rawAddress || "native";
+      const symbol = c.symbol.toUpperCase();
+      const chain = "solana";
+      const aliases = [
+        { type: finalAddress === "native" ? "native" : "address", value: finalAddress },
+        { type: "coingecko", value: c.id },
+        { type: "priceKey", value: `coingecko:${c.id}` },
+        { type: "symbol", value: symbol },
+      ];
 
       return {
         updateOne: {
           filter: { coingeckoId: c.id },
           update: {
             $set: {
+              aliases,
+              canonicalKey: `${chain}:${symbol}`,
+              chain,
               coingeckoId: c.id,
-              symbol: c.symbol.toUpperCase(),
+              symbol,
               name: c.name,
               address: finalAddress, 
+              primaryAddress: finalAddress,
               iconUrl: c.image,
               decimals: 18,
               type: tokenType, 

@@ -3,8 +3,20 @@ import useSWR from 'swr';
 import { Signal } from '@/models/Signal';
 import { Proposal } from '@/models/Proposal';
 
-// Hàm fetcher cơ bản
-const fetcher = (url: string) => fetch(url).then(res => res.json());
+const fetcher = async <T>(url: string): Promise<T> => {
+  const response = await fetch(url);
+  const body = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    const message =
+      body && typeof body === 'object' && 'error' in body && typeof body.error === 'string'
+        ? body.error
+        : `Failed to fetch ${url}`;
+    throw new Error(message);
+  }
+
+  return body as T;
+};
 
 // 1. Lấy danh sách tín hiệu thị trường cho Dashboard
 export function useSignals(limit = 10) {

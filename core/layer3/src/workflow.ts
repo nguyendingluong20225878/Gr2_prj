@@ -34,6 +34,7 @@ type RawSignal = {
   sources?: SourceRef[];
   layer3RetryCount?: number;
   layer3LockedBy?: string | null;
+  updatedAt?: Date;
 };
 
 export type Layer3WorkflowOptions = {
@@ -166,11 +167,19 @@ export async function processSignal(signal: RawSignal, options: Layer3WorkflowOp
         realizedVolatility: signal.realizedVolatility ?? null,
         signalMode: signal.signalMode ?? signal.metadata?.signalMode ?? null,
         detectedAt: signal.detectedAt ?? null,
+        signalUpdatedAt: signal.updatedAt ?? null,
         scoreComponents: signal.metadata?.scoreComponents ?? {},
         expiresAt: signal.expiresAt ?? null,
         sources: signal.sources ?? [],
         rationaleSummary: finalState.rationaleSummary,
         executionStatus: "PENDING",
+        entryPrice: null,
+        exitPrice: null,
+        actualPnL: null,
+        winLossStatus: null,
+        pnlPercentage: null,
+        backtestedAt: null,
+        backtestMeta: {},
         updatedAt: new Date(),
       },
       $setOnInsert: { createdAt: new Date() },

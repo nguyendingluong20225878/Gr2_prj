@@ -6,9 +6,40 @@ import mongoose, {
   Model,
 } from "mongoose";
 
+const tokenAliasSchema = new Schema(
+  {
+    type: {
+      type: String,
+      required: true,
+      enum: ["mint", "address", "coingecko", "priceKey", "symbol", "native"],
+    },
+    value: {
+      type: String,
+      required: true,
+    },
+  },
+  { _id: false }
+);
+
 const tokenSchema = new Schema(
   {
     address: { type: String },
+
+    canonicalKey: {
+      type: String,
+    },
+
+    chain: {
+      type: String,
+      index: true,
+    },
+
+    primaryAddress: { type: String },
+
+    aliases: {
+      type: [tokenAliasSchema],
+      default: [],
+    },
 
     coingeckoId: { type: String },
 
@@ -74,7 +105,20 @@ tokenSchema.index(
   }
 );
 
+tokenSchema.index({ "aliases.value": 1 });
+tokenSchema.index({ chain: 1, symbol: 1 });
+tokenSchema.index(
+  { canonicalKey: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      canonicalKey: { $exists: true, $ne: null },
+    },
+  }
+);
+
 export type TokenSchema = InferSchemaType<typeof tokenSchema>;
+export type TokenAlias = InferSchemaType<typeof tokenAliasSchema>;
 export type TokenDocument = HydratedDocument<TokenSchema>;
 
 export const tokensTable: Model<TokenSchema> =

@@ -44,6 +44,7 @@ export type PnlEvaluatorOptions = {
   slippageRate: number;
   notionalUsd: number;
   sparseMaxDistanceMs: number;
+  maxAbsGrossMove?: number;
   tokenKeysBySymbol?: Map<string, string[]>;
   tokenKeysByAddress?: Map<string, string[]>;
 };
@@ -109,6 +110,44 @@ function candidateTokenKeys(
   return [...keys];
 }
 
+function findBestPricePair(
+  proposal: VirtualProposal,
+  expiresAt: Date,
+  priceByTokenKey: Map<string, EvaluatorPricePoint[]>,
+  options: PnlEvaluatorOptions
+) {
+  let best: {
+    entry: EvaluatorPricePoint & { distanceMs: number };
+    exit: EvaluatorPricePoint & { distanceMs: number };
+    distanceMs: number;
+  } | null = null;
+
+  for (const key of candidateTokenKeys(proposal, options)) {
+    const points = (priceByTokenKey.get(key) ?? [])
+      .slice()
+      .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+    if (points.length === 0) continue;
+
+    const entry = nearestPrice(points, proposal.detectedAt);
+    const exit = nearestPrice(points, expiresAt);
+    if (
+      !entry ||
+      !exit ||
+      entry.distanceMs > options.sparseMaxDistanceMs ||
+      exit.distanceMs > options.sparseMaxDistanceMs
+    ) {
+      continue;
+    }
+
+    const distanceMs = entry.distanceMs + exit.distanceMs;
+    if (!best || distanceMs < best.distanceMs) {
+      best = { entry, exit, distanceMs };
+    }
+  }
+
+  return best;
+}
+
 export function evaluateVirtualProposals(
   proposals: VirtualProposal[],
   priceByTokenKey: Map<string, EvaluatorPricePoint[]>,
@@ -141,18 +180,16 @@ export function evaluateVirtualProposals(
       continue;
     }
 
-    const points = candidateTokenKeys(proposal, options)
-      .flatMap((key) => priceByTokenKey.get(key) ?? [])
-      .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
-    const entry = nearestPrice(points, proposal.detectedAt);
-    const exit = nearestPrice(points, expiresAt);
+    const pricePair = findBestPricePair(proposal, expiresAt, priceByTokenKey, options);
+    if (!pricePair) {
+      result.skipped += 1;
+      continue;
+    }
 
-    if (
-      !entry ||
-      !exit ||
-      entry.distanceMs > options.sparseMaxDistanceMs ||
-      exit.distanceMs > options.sparseMaxDistanceMs
-    ) {
+    const { entry, exit } = pricePair;
+    const grossMove = (exit.priceUsd - entry.priceUsd) / entry.priceUsd;
+    const maxAbsGrossMove = options.maxAbsGrossMove ?? 0.75;
+    if (Math.abs(grossMove) > maxAbsGrossMove) {
       result.skipped += 1;
       continue;
     }

@@ -10,6 +10,10 @@ async function reasoningNode(state: ProposalState): Promise<Partial<ProposalStat
   if (!googleApiKey) {
     throw new Error("GOOGLE_API_KEY or GOOGLE_API_KEY_PROPOSAL is required for Layer3 reasoning");
   }
+  const maxOutputTokens = Number(process.env.LAYER3_MAX_OUTPUT_TOKENS ?? 4096);
+  const safeMaxOutputTokens = Number.isFinite(maxOutputTokens) && maxOutputTokens >= 512
+    ? Math.floor(maxOutputTokens)
+    : 4096;
 
   //  Prompt tập trung vào phân tích SÂU: Kết hợp Quant + RAG
   const promptText = `Bạn là một Chuyên gia Phân tích Định lượng Crypto.
@@ -38,7 +42,7 @@ Văn bản đầu ra:`;
       contents: [{ role: "user", parts: [{ text: promptText }] }],
       generationConfig: {
         temperature: 0.2, 
-        maxOutputTokens: 2048 // Tăng hẳn lên 2048 cho an toàn
+        maxOutputTokens: safeMaxOutputTokens
       },
       // TẮT HOÀN TOÀN BỘ LỌC AN TOÀN (Bắt buộc với dự án Crypto)
       safetySettings: [

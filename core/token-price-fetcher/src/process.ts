@@ -1,3 +1,4 @@
+import { connectToDatabase } from "@gr2/shared";
 import { TokenPriceService } from "./services/token-price-service.js";
 
 //core function to run the token price update process
@@ -11,6 +12,7 @@ export async function processTokenPrices(options?: { specificTokenAddress?: stri
 
   try {
     console.log(`[${startTime.toISOString()}] Starting token price update process`);
+    await connectToDatabase();
 
     // If requesting price for a specific token
     if (options?.specificTokenAddress) {

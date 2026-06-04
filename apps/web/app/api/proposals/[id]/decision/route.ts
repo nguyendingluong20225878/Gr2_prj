@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import mongoose from 'mongoose';
+import { requireSessionUser } from '@/server/auth/walletAuth';
 
 type ProposalDecision = 'ENTER' | 'WAIT' | 'REJECT';
 
@@ -9,14 +10,13 @@ type DecisionRequest = {
   decision?: ProposalDecision;
   reason?: string;
   snapshot?: Record<string, unknown>;
-  userId?: string;
-  walletAddress?: string;
 };
 
 const VALID_DECISIONS = new Set<ProposalDecision>(['ENTER', 'WAIT', 'REJECT']);
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   try {
+    const session = await requireSessionUser(req);
     if (!mongoose.Types.ObjectId.isValid(params.id)) {
       return NextResponse.json({ error: 'Invalid proposal id' }, { status: 400 });
     }
@@ -36,23 +36,15 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       return NextResponse.json({ error: 'Proposal not found' }, { status: 404 });
     }
 
-    let userObjectId: mongoose.Types.ObjectId | null = null;
-    const walletAddress = body.walletAddress?.trim();
-
-    if (walletAddress) {
-      const user = await db.collection('users').findOne<{ _id: mongoose.Types.ObjectId }>({ walletAddress });
-      if (user) userObjectId = user._id;
-    }
-
-    if (!userObjectId && body.userId && mongoose.Types.ObjectId.isValid(body.userId)) {
-      userObjectId = new mongoose.Types.ObjectId(body.userId);
-    }
+    const walletAddress = session.walletAddress;
+    const user = await db.collection('users').findOne<{ _id: mongoose.Types.ObjectId }>({ walletAddress });
+    const userObjectId = user?._id ?? null;
 
     const audit = {
       proposalId,
       signalId: proposal.signalId ?? proposal.triggerSignalId ?? null,
       userId: userObjectId,
-      walletAddress: walletAddress || null,
+      walletAddress,
       decision: body.decision,
       reason: body.reason || '',
       blockersAtDecision: body.blockers || [],
@@ -79,6 +71,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   } catch (error) {
     console.error('Decision Audit Error:', error);
     const message = error instanceof Error ? error.message : 'Internal Error';
-    return NextResponse.json({ error: message }, { status: 500 });
+    const status = error instanceof Error && error.name === 'AuthRequiredError' ? 401 : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }

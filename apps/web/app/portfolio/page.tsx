@@ -1,127 +1,41 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { useAuth } from '@/app/contexts/AuthContext';
+import Link from 'next/link';
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
-import {
-  AlertTriangle,
-  ArrowRight,
-  BarChart3,
-  Eye,
-  Loader2,
-  RefreshCw,
-  ShieldAlert,
-  TrendingUp,
-  Wallet,
-} from 'lucide-react';
-import { Layout } from '@/app/components/layout/Layout';
-import { useSignalAnalytics } from '@/lib/hooks/useSignalAnalytics';
+import { RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
-
-type Holding = {
-  symbol: string;
-  balance: number;
-  price: number;
-  value: number;
-};
-
-type Investment = {
-  _id: string;
-  symbol: string;
-  entryPrice: number;
-  size: number;
-  leverage: number;
-  direction: string;
-  proposalId?: string;
-  roi: number;
-};
-
-type WatchlistItem = {
-  _id: string;
-  tokenSymbol: string;
-  title?: string;
-  roi: number;
-  confidence?: number;
-};
-
-type PortfolioResponse = {
-  holdings: Holding[];
-  investments: Investment[];
-  watchlist: WatchlistItem[];
-  stats?: {
-    totalValue?: number;
-    activeCount?: number;
-    watchlistCount?: number;
-  };
-};
-
-function formatCurrency(value: number, decimals = 2) {
-  if (!Number.isFinite(value)) return '$0.00';
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: decimals,
-  }).format(value);
-}
-
-function formatNumber(value: number, decimals = 4) {
-  if (!Number.isFinite(value)) return '0';
-  return Number(value.toFixed(decimals)).toLocaleString();
-}
-
-function signalTone(action?: string) {
-  if (action === 'BUY') return 'text-green-400 border-green-500/30 bg-green-500/10';
-  if (action === 'SELL') return 'text-red-400 border-red-500/30 bg-red-500/10';
-  return 'text-purple-400 border-purple-500/30 bg-purple-500/10';
-}
+import { Layout } from '@/app/components/layout/Layout';
+import { Badge } from '@/app/components/ui/badge';
+import { Button } from '@/app/components/ui/button';
+import { useAuth } from '@/app/contexts/AuthContext';
+import { DataSkeleton, EmptyState, HoldingRow, MetricCard, PageHeader, ProposalCard } from '@/app/components/shared/NdlUi';
+import { useNdlData } from '@/lib/hooks/useNdlData';
+import { formatCurrency } from '@/lib/utils/formatters';
+import { getLatestActiveProposalPerToken, isProposalForHoldings } from '@/lib/utils/proposals';
+import { isExpiringSoon } from '@/lib/utils/time';
 
 export default function PortfolioPage() {
-  const router = useRouter();
   const { setUser } = useAuth();
   const { connection } = useConnection();
   const { publicKey } = useWallet();
-  const { rows: signalRows } = useSignalAnalytics();
+  const { portfolio, proposals } = useNdlData();
 
-  const [data, setData] = useState<PortfolioResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [isSyncing, setIsSyncing] = useState(false);
+  const data = portfolio.data;
+  const totalValue = data?.stats?.totalValue ?? null;
+  const totalValueLabel = data?.stats?.totalValueStatus === 'MISSING_PRICE_DATA' ? 'Chưa đủ dữ liệu giá' : formatCurrency(totalValue);
+  const relatedProposals = getLatestActiveProposalPerToken(proposals.data ?? [])
+    .filter((proposal) => isProposalForHoldings(proposal, data?.holdings ?? []))
+    .slice(0, 3);
 
-  const fetchPortfolio = async () => {
+  const handleSyncBalances = async () => {
     if (!publicKey) {
-      setLoading(false);
-      setData(null);
+      toast.error('Vui lòng kết nối ví trước.');
       return;
     }
 
-    setLoading(true);
-    setError(null);
-
-    try {
-      const res = await fetch(`/api/portfolio?wallet=${publicKey.toBase58()}`);
-      if (!res.ok) throw new Error('Failed to load portfolio');
-      setData((await res.json()) as PortfolioResponse);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to load portfolio';
-      setError(message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchPortfolio();
-  }, [publicKey]);
-
-  const handleSyncBalances = async () => {
-    if (!publicKey) return toast.error('Please connect your wallet first.');
-
-    setIsSyncing(true);
     try {
       const balances: Array<{ tokenAddress: string; balance: string; updatedAt: Date }> = [];
-
       const solBalance = await connection.getBalance(publicKey);
       balances.push({
         tokenAddress: 'So11111111111111111111111111111111111111112',
@@ -136,246 +50,117 @@ export default function PortfolioPage() {
       tokenAccounts.value.forEach((account) => {
         const info = account.account.data.parsed.info;
         const amount = info.tokenAmount.uiAmountString;
-        if (parseFloat(amount) > 0) {
-          balances.push({
-            tokenAddress: info.mint,
-            balance: amount,
-            updatedAt: new Date(),
-          });
+        if (Number(amount) > 0) {
+          balances.push({ tokenAddress: info.mint, balance: amount, updatedAt: new Date() });
         }
       });
 
-      const res = await fetch('/api/user/profile', {
+      const response = await fetch('/api/user/profile', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ walletAddress: publicKey.toBase58(), balances }),
+        body: JSON.stringify({ balances }),
       });
-
-      if (!res.ok) throw new Error('Failed to update database');
-
-      const result = await res.json();
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Không đồng bộ được ví');
       if (result.user) setUser(result.user);
-      toast.success(`Synced ${balances.length} assets.`);
-      await fetchPortfolio();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to sync wallet balances';
-      toast.error(message);
-    } finally {
-      setIsSyncing(false);
+      await portfolio.mutate();
+      await proposals.mutate();
+      toast.success(`Đã đồng bộ ${balances.length} tài sản.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Không đồng bộ được ví');
     }
   };
-
-  const portfolio = data || { holdings: [], investments: [], watchlist: [], stats: { totalValue: 0 } };
-  const totalValue = portfolio.stats?.totalValue || portfolio.holdings.reduce((sum, holding) => sum + holding.value, 0);
-
-  const exposureRows = useMemo(() => {
-    return [...portfolio.holdings]
-      .sort((a, b) => b.value - a.value)
-      .map((holding) => {
-        const signal = signalRows.find((row) => row.tokenSymbol.toUpperCase() === holding.symbol.toUpperCase());
-        const allocation = totalValue > 0 ? (holding.value / totalValue) * 100 : 0;
-        return { ...holding, allocation, signal };
-      });
-  }, [portfolio.holdings, signalRows, totalValue]);
-
-  const overlays = useMemo(() => {
-    const heldSymbols = new Set(portfolio.holdings.map((holding) => holding.symbol.toUpperCase()));
-    const heldAlerts = signalRows
-      .filter((row) => heldSymbols.has(row.tokenSymbol.toUpperCase()))
-      .filter((row) => row.action === 'SELL' || row.divergence !== 'None')
-      .slice(0, 3);
-    const missedBuys = signalRows
-      .filter((row) => !heldSymbols.has(row.tokenSymbol.toUpperCase()))
-      .filter((row) => row.action === 'BUY' && row.confidence >= 70)
-      .slice(0, 3);
-    return { heldAlerts, missedBuys };
-  }, [portfolio.holdings, signalRows]);
 
   return (
     <Layout>
       <div className="space-y-6 animate-in fade-in duration-500">
-        <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-4">
-          <div>
-            <p className="text-xs uppercase tracking-[0.24em] text-cyan-400 font-bold mb-2">Portfolio Exposure</p>
-            <h1 className="text-4xl font-bold gradient-text">Portfolio</h1>
-            <p className="text-slate-400 mt-2 max-w-2xl">
-              Understand what you own, where exposure is concentrated, and which signals affect your holdings.
-            </p>
-          </div>
-          <button
-            onClick={handleSyncBalances}
-            disabled={isSyncing || !publicKey}
-            className="glass-card inline-flex items-center gap-2 rounded-xl border border-cyan-500/30 px-4 py-3 text-sm font-bold text-cyan-300 hover:bg-cyan-500/10 transition-colors disabled:opacity-50"
-          >
-            <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
-            {isSyncing ? 'Syncing wallet...' : 'Sync Wallet'}
-          </button>
-        </div>
+        <PageHeader
+          eyebrow="Danh mục"
+          title="Tài sản bạn đang nắm giữ"
+          description="Đây là đầu vào chính để NDL cá nhân hóa khuyến nghị, cảnh báo thiếu dữ liệu giá và gợi ý hành động theo từng Token."
+          actions={
+            <>
+              <Button onClick={handleSyncBalances} variant="outline" className="border-cyan-500/30 text-cyan-300">
+                <RefreshCw className="h-4 w-4" /> Cập nhật ví và giá
+              </Button>
+              <Button asChild className="bg-gradient-to-r from-purple-600 to-cyan-600 text-white">
+                <Link href="/diagnostics">Xem chẩn đoán</Link>
+              </Button>
+            </>
+          }
+        />
 
-        {!publicKey ? (
-          <div className="glass-card rounded-xl border border-dashed border-white/10 p-12 text-center">
-            <Wallet className="mx-auto mb-4 h-10 w-10 text-slate-600" />
-            <h2 className="text-xl font-bold text-white">Connect wallet to view portfolio exposure</h2>
-            <p className="mt-2 text-sm text-slate-500">Your exposure overlay depends on wallet holdings.</p>
-          </div>
-        ) : error ? (
-          <div className="glass-card rounded-xl border border-red-500/30 p-8 text-red-300">{error}</div>
-        ) : loading ? (
-          <div className="glass-card rounded-xl p-12 text-center text-slate-500">
-            <Loader2 className="mx-auto mb-3 h-8 w-8 animate-spin text-cyan-400" />
-            Loading portfolio...
-          </div>
+        {portfolio.isLoading ? (
+          <DataSkeleton rows={4} />
+        ) : portfolio.error ? (
+          <EmptyState title="Không tải được danh mục" description={portfolio.error.message} />
         ) : (
           <>
-            <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              {[
-                { label: 'Net worth', value: formatCurrency(totalValue), icon: Wallet, tone: 'text-cyan-300' },
-                { label: 'Holdings', value: portfolio.holdings.length, icon: BarChart3, tone: 'text-slate-200' },
-                { label: 'Open positions', value: portfolio.investments.length, icon: TrendingUp, tone: 'text-green-400' },
-                { label: 'Risk overlays', value: overlays.heldAlerts.length, icon: ShieldAlert, tone: overlays.heldAlerts.length ? 'text-amber-300' : 'text-slate-400' },
-              ].map((item) => {
-                const Icon = item.icon;
-                return (
-                  <div key={item.label} className="glass-card rounded-xl border border-white/5 bg-black/40 p-4">
-                    <div className="flex items-center justify-between">
-                      <p className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">{item.label}</p>
-                      <Icon className={`h-4 w-4 ${item.tone}`} />
-                    </div>
-                    <p className={`mt-3 text-xl font-bold ${item.tone}`}>{item.value}</p>
-                  </div>
-                );
-              })}
+            <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <MetricCard label="Tổng giá trị danh mục" value={totalValueLabel} />
+              <MetricCard label="Holdings" value={data?.holdings?.length ?? 0} />
+              <MetricCard label="Vị thế trade đang mở" value={data?.investments?.length ?? 0} hint="Lệnh đã execute từ proposal" />
+              <MetricCard label="Đề xuất đang chờ" value={data?.watchlist?.length ?? 0} hint="Từ /api/proposals" />
             </section>
 
-            <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px] gap-6">
-              <section className="glass-card rounded-xl border border-white/5 bg-black/20 p-5">
-                <div className="flex items-start justify-between gap-4 mb-5">
-                  <div>
-                    <h2 className="text-sm font-bold text-slate-200 uppercase tracking-widest">Asset Exposure</h2>
-                    <p className="mt-1 text-xs text-slate-500">Allocation, balance, price, and active signal affecting each holding.</p>
-                  </div>
-                </div>
+            <section className="glass-card rounded-xl border border-white/5 bg-black/20 p-5">
+              <h2 className="text-lg font-bold text-white">Danh sách holdings</h2>
+              <div className="mt-4 space-y-3">
+                {(data?.holdings ?? []).map((holding) => (
+                  <Link key={holding.tokenAddress ?? holding.symbol} href={`/tokens/${holding.symbol}`}>
+                    <HoldingRow holding={holding} totalValue={totalValue} />
+                  </Link>
+                ))}
+                {!data?.holdings?.length ? <EmptyState title="Chưa có dữ liệu holdings" description="Hãy đồng bộ ví để cập nhật số dư Blockchain." /> : null}
+              </div>
+            </section>
 
-                {exposureRows.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-white/10 bg-black/30 p-10 text-center text-slate-500">
-                    No wallet assets found. Sync wallet balances to populate exposure.
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {exposureRows.map((holding) => (
-                      <div key={holding.symbol} className="rounded-xl border border-white/5 bg-black/40 p-4">
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                          <div>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <p className="text-lg font-bold text-white">{holding.symbol}</p>
-                              {holding.signal && (
-                                <span className={`rounded-md border px-2 py-0.5 text-[10px] font-bold ${signalTone(holding.signal.action)}`}>
-                                  {holding.signal.action} signal
-                                </span>
-                              )}
-                            </div>
-                            <p className="mt-1 text-xs text-slate-500">
-                              {formatNumber(holding.balance)} tokens at {formatCurrency(holding.price, 6)}
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <p className="font-mono text-lg font-bold text-white">{formatCurrency(holding.value)}</p>
-                            <p className="text-xs text-slate-500">{holding.allocation.toFixed(1)}% allocation</p>
-                          </div>
+            <section className="grid gap-4 lg:grid-cols-2">
+              <div className="glass-card rounded-xl border border-white/5 bg-black/20 p-5">
+                <h2 className="text-lg font-bold text-white">Vị thế trade đang mở</h2>
+                <p className="mt-1 text-sm text-slate-500">Lệnh đã execute từ proposal.</p>
+                <div className="mt-4 space-y-3">
+                  {(data?.investments ?? []).map((position) => (
+                    <Link key={position._id} href={`/positions/${position._id}`} className="block rounded-xl border border-white/5 bg-black/40 p-4 hover:border-cyan-500/30">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="font-bold text-white">{position.symbol ?? position.tokenSymbol ?? 'TOKEN'}</p>
+                          <p className="text-sm text-slate-500">{position.direction ?? 'Long/Short'} · Leverage {position.leverage ?? 1}x</p>
                         </div>
-                        <div className="mt-3 h-2 rounded-full bg-slate-800 overflow-hidden">
-                          <div className="h-full rounded-full bg-gradient-to-r from-purple-500 to-cyan-400" style={{ width: `${Math.min(holding.allocation, 100)}%` }} />
-                        </div>
-                        {holding.signal && (
-                          <button
-                            onClick={() => router.push(`/proposal/${holding.signal?.id}`)}
-                            className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-cyan-300 hover:text-cyan-200"
-                          >
-                            Review affected signal <ArrowRight className="h-3 w-3" />
-                          </button>
-                        )}
+                        <p className="text-sm font-bold text-cyan-300">{formatCurrency(position.size)}</p>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </section>
+                    </Link>
+                  ))}
+                  {!data?.investments?.length ? <p className="text-sm text-slate-500">Chưa có vị thế đang mở.</p> : null}
+                </div>
+              </div>
 
-              <aside className="space-y-6">
-                <section className="glass-card rounded-xl border border-amber-500/20 bg-amber-500/5 p-5">
-                  <h2 className="text-sm font-bold text-amber-200 uppercase tracking-widest">Personalized Signal Overlay</h2>
-                  <div className="mt-4 space-y-3">
-                    {overlays.heldAlerts.length ? overlays.heldAlerts.map((row) => (
-                      <button
-                        key={row.id}
-                        onClick={() => router.push(`/proposal/${row.id}`)}
-                        className="w-full rounded-xl border border-white/5 bg-black/40 p-3 text-left hover:border-amber-500/30 transition-colors"
-                      >
-                        <p className="font-bold text-white">{row.tokenSymbol}</p>
-                        <p className="mt-1 text-sm text-amber-200">{row.action === 'SELL' ? 'You hold this and system suggests SELL' : row.divergence}</p>
-                      </button>
-                    )) : (
-                      <p className="rounded-xl border border-dashed border-white/10 bg-black/30 p-4 text-sm text-slate-500">
-                        No urgent signals affecting current holdings.
-                      </p>
-                    )}
-                  </div>
-                </section>
-
-                <section className="glass-card rounded-xl border border-white/5 bg-black/20 p-5">
-                  <h2 className="text-sm font-bold text-slate-200 uppercase tracking-widest">Opportunities Not Held</h2>
-                  <div className="mt-4 space-y-3">
-                    {overlays.missedBuys.length ? overlays.missedBuys.map((row) => (
-                      <button
-                        key={row.id}
-                        onClick={() => router.push(`/proposal/${row.id}`)}
-                        className="w-full rounded-xl border border-white/5 bg-black/40 p-3 text-left hover:border-cyan-500/30 transition-colors"
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="font-bold text-white">{row.tokenSymbol}</p>
-                          <p className="font-mono text-green-300">{row.confidence}%</p>
+              <div className="glass-card rounded-xl border border-white/5 bg-black/20 p-5">
+                <h2 className="text-lg font-bold text-white">Đề xuất liên quan đến tài sản bạn đang nắm giữ</h2>
+                <p className="mt-1 text-sm text-slate-500">Mỗi token chỉ hiển thị proposal mới nhất còn hiệu lực.</p>
+                <div className="mt-4 space-y-3">
+                  {proposals.isLoading ? (
+                    <DataSkeleton rows={1} />
+                  ) : (
+                    <>
+                      {relatedProposals.map((proposal) => (
+                        <div key={proposal._id} className="space-y-2">
+                          <ProposalCard proposal={proposal} href={`/proposal/${proposal._id}`} />
+                          {isExpiringSoon(proposal.expiresAt, 6 * 60 * 60 * 1000) ? (
+                            <Badge className="w-fit border-amber-500/30 bg-amber-500/10 text-amber-300" variant="outline">Sắp hết hạn</Badge>
+                          ) : null}
                         </div>
-                        <p className="mt-1 text-xs text-slate-500 line-clamp-2">{row.rationaleSummary}</p>
-                      </button>
-                    )) : (
-                      <p className="rounded-xl border border-dashed border-white/10 bg-black/30 p-4 text-sm text-slate-500">
-                        No high-confidence BUY signals outside your holdings.
-                      </p>
-                    )}
-                  </div>
-                </section>
-
-                <section className="glass-card rounded-xl border border-white/5 bg-black/20 p-5">
-                  <h2 className="text-sm font-bold text-slate-200 uppercase tracking-widest">Watchlist</h2>
-                  <div className="mt-4 space-y-3">
-                    {portfolio.watchlist.slice(0, 4).map((item) => (
-                      <button
-                        key={item._id}
-                        onClick={() => router.push(`/proposal/${item._id}`)}
-                        className="w-full rounded-xl border border-white/5 bg-black/40 p-3 text-left hover:border-purple-500/30 transition-colors"
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="font-bold text-purple-300">{item.tokenSymbol}</p>
-                          <p className="text-xs text-slate-500">{item.confidence ?? 0}% conf</p>
-                        </div>
-                        <p className="mt-1 text-xs text-slate-400 line-clamp-1">{item.title}</p>
-                      </button>
-                    ))}
-                    {portfolio.watchlist.length === 0 && (
-                      <p className="rounded-xl border border-dashed border-white/10 bg-black/30 p-4 text-sm text-slate-500">
-                        No watchlist proposals.
-                      </p>
-                    )}
-                  </div>
-                </section>
-
-                <button
-                  onClick={() => router.push('/positions')}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-cyan-600 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-purple-500/20 hover:from-purple-500 hover:to-cyan-500 transition-all"
-                >
-                  Manage Positions <ArrowRight className="h-4 w-4" />
-                </button>
-              </aside>
-            </div>
+                      ))}
+                      {!relatedProposals.length ? (
+                        <EmptyState
+                          title="Chưa có đề xuất nào phù hợp với tài sản bạn đang nắm giữ."
+                        />
+                      ) : null}
+                    </>
+                  )}
+                </div>
+              </div>
+            </section>
           </>
         )}
       </div>

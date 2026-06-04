@@ -24,7 +24,7 @@ async function main(): Promise<number> {
     const results = await computeRollingMetrics({
       windowHours: readNumberArg(
         "window-hours",
-        Number(process.env.ROLLING_METRICS_WINDOW_HOURS ?? 7 * 24)
+        Number(process.env.ROLLING_METRICS_WINDOW_HOURS ?? 24)
       ),
       bucketMinutes: readNumberArg("bucket-minutes", 15),
       minSamples: readNumberArg("min-samples", 6),

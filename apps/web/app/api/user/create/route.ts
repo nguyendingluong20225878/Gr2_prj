@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import UserModel from '@/models/User';
+import { requireSessionUser } from '@/server/auth/walletAuth';
+import { sanitizeUserProfileInput } from '@/lib/utils/userInput';
 
 type CreateUserRequest = {
-  walletAddress?: string;
   name?: string;
   email?: string;
   age?: number;
@@ -15,27 +16,27 @@ type CreateUserRequest = {
 
 export async function POST(req: Request) {
   try {
+    const session = await requireSessionUser(req);
     const body = (await req.json()) as CreateUserRequest;
+    const walletAddress = session.walletAddress;
+    const profile = sanitizeUserProfileInput(body);
+
     await connectDB();
 
-    if (!body.walletAddress) {
-      return NextResponse.json({ error: 'Wallet address required' }, { status: 400 });
-    }
-
-    const existingUser = await UserModel.findOne({ walletAddress: body.walletAddress });
+    const existingUser = await UserModel.findOne({ walletAddress });
     if (existingUser) {
       return NextResponse.json(existingUser);
     }
 
     const newUser = await UserModel.create({
-      walletAddress: body.walletAddress,
-      name: body.name || 'Anonymous',
-      email: body.email || '', 
-      age: body.age || 0, // Thêm dòng này để lưu tuổi
-      riskTolerance: body.riskTolerance || 'medium',
-      tradeStyle: body.tradeStyle || 'swing',
-      totalAssetUsd: Number(body.totalAssetUsd) || 0,
-      cryptoInvestmentUsd: Number(body.cryptoInvestmentUsd) || 0,
+      walletAddress,
+      name: profile.name || 'Anonymous',
+      email: profile.email || '',
+      age: profile.age || 0,
+      riskTolerance: profile.riskTolerance || 'medium',
+      tradeStyle: profile.tradeStyle || 'swing',
+      totalAssetUsd: profile.totalAssetUsd || 0,
+      cryptoInvestmentUsd: profile.cryptoInvestmentUsd || 0,
       notificationEnabled: true,
       role: 'user'
     });
@@ -44,6 +45,12 @@ export async function POST(req: Request) {
   } catch (error) {
     console.error('Create User Error:', error);
     const message = error instanceof Error ? error.message : 'Internal Server Error';
-    return NextResponse.json({ error: message }, { status: 500 });
+    const status =
+      error instanceof Error && error.name === 'AuthRequiredError'
+        ? 401
+        : message.includes('must be') || message.includes('invalid') || message.includes('too long')
+          ? 400
+          : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }

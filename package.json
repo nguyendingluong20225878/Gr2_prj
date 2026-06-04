@@ -12,6 +12,7 @@
   "scripts": {
     "dev": "turbo run dev",
     "dev:phase2": "node scripts/run-concurrent.mjs \"npm run scraper\" \"npm run metrics\" \"npm run weights\" \"npm run signal\"",
+    "pipeline:batch": "npm run scraper && npm run news && npm run prices:backfill:1d && npm run backtest:outcome && npm run metrics && npm run regime && npm run weights && npm run signal && npm --workspace @gr2/proposal-generator run layer3",
     "pipeline": "npm --workspace @gr2/run run dev",
     "build": "turbo run build",
     "scraper": "npm --workspace x-scaper run scraper",
@@ -26,8 +27,9 @@
     "start": "npm --workspace @gr2/run run start",
     "demo:backfill-prices": "npm --workspace @gr2/token-price-fetcher run backfill:demo",
     "prices:backfill:1d": "npm --workspace @gr2/token-price-fetcher run backfill:history:1d",
-    "demo:backtest": "tsx core/research/backtest/run-backtest.ts --horizon-hours=24 --delay-ms=0 --batch-delay-ms=0 --allow-current-price-fallback",
-    "demo:prepare-data": "npm run demo:backfill-prices && npm run demo:backtest",
+    "backtest:outcome": "tsx --env-file=core/research/.env core/research/backtest/run-backtest.ts --horizon-hours=12 --delay-ms=0 --batch-delay-ms=0",
+    "demo:backtest": "npm run backtest:outcome",
+    "demo:prepare-data": "npm run demo:backfill-prices && npm run backtest:outcome",
     "lint": "turbo run lint",
     "test": "turbo run test"
   },

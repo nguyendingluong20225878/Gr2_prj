@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import UserModel from '@/models/User';
+import { requireSessionUser } from '@/server/auth/walletAuth';
+import { sanitizeBalancesInput, sanitizeUserProfileInput } from '@/lib/utils/userInput';
+import { resolveToken } from '@gr2/shared';
 
 type UserBalanceUpdate = {
   tokenAddress: string;
@@ -9,7 +12,6 @@ type UserBalanceUpdate = {
 };
 
 type UserProfilePatchRequest = {
-  walletAddress?: string;
   name?: string;
   email?: string;
   age?: number;
@@ -21,42 +23,35 @@ type UserProfilePatchRequest = {
 
 export async function PATCH(req: NextRequest) {
   try {
+    const session = await requireSessionUser(req);
     const body = (await req.json()) as UserProfilePatchRequest;
-    const { 
-      walletAddress, 
-      name, 
-      email, 
-      age, 
-      riskTolerance, 
-      tradeStyle, 
-      notificationEnabled,
-      balances // Nhận mảng balances từ client gửi về
-    } = body;
+    const walletAddress = session.walletAddress;
+    const profile = sanitizeUserProfileInput(body);
+    const balances = sanitizeBalancesInput(body.balances);
+    const balancesWithToken = balances
+      ? await Promise.all(balances.map(async (balance) => {
+          const token = await resolveToken({
+            chain: 'solana',
+            addressOrMint: balance.tokenAddress,
+          });
 
-    if (!walletAddress) {
-      return NextResponse.json({ error: 'Wallet address is required' }, { status: 400 });
-    }
+          return {
+            ...balance,
+            ...(token?._id ? { token: token._id } : {}),
+          };
+        }))
+      : undefined;
 
     await connectDB();
 
-    // Xây dựng object update
-    const updateData: Partial<Omit<UserProfilePatchRequest, 'walletAddress'>> = {};
-
-    if (name !== undefined) updateData.name = name;
-    if (email !== undefined) updateData.email = email;
-    if (age !== undefined) updateData.age = age;
-    if (riskTolerance !== undefined) updateData.riskTolerance = riskTolerance;
-    if (tradeStyle !== undefined) updateData.tradeStyle = tradeStyle;
-    if (notificationEnabled !== undefined) updateData.notificationEnabled = notificationEnabled;
-
-    // Chỉ cập nhật balances nếu có dữ liệu gửi lên
-    if (balances && Array.isArray(balances)) {
-      updateData.balances = balances;
-    }
+    const updateData = {
+      ...profile,
+      ...(balancesWithToken !== undefined ? { balances: balancesWithToken } : {}),
+    };
 
     // Sử dụng findOneAndUpdate để cập nhật User
     const updatedUser = await UserModel.findOneAndUpdate(
-      { walletAddress: walletAddress },
+      { walletAddress },
       { $set: updateData },
       { new: true, runValidators: true }
     ).lean();
@@ -73,6 +68,12 @@ export async function PATCH(req: NextRequest) {
   } catch (error) {
     console.error('[API Profile PATCH] Error:', error);
     const message = error instanceof Error ? error.message : 'Internal Server Error';
-    return NextResponse.json({ error: message }, { status: 500 });
+    const status =
+      error instanceof Error && error.name === 'AuthRequiredError'
+        ? 401
+        : message.includes('must be') || message.includes('invalid') || message.includes('too long') || message.includes('required')
+          ? 400
+          : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }

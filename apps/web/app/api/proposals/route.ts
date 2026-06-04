@@ -24,6 +24,8 @@ type ProposalListRecord = {
   reason?: string[];
   sentimentType?: string;
   signalId?: mongoose.Types.ObjectId;
+  pnlPercentage?: number;
+  quantScore?: number;
   status?: string;
   summary?: string;
   suggestionType?: string;
@@ -34,11 +36,22 @@ type ProposalListRecord = {
 };
 
 const ProposalModel = Proposal as unknown as mongoose.Model<ProposalListRecord>;
+const PROPOSAL_TTL_MS = 24 * 60 * 60 * 1000;
 
 function normalizeAction(value?: string): 'BUY' | 'SELL' | 'HOLD' | 'UNKNOWN' {
   const upper = String(value ?? '').toUpperCase();
   if (upper === 'BUY' || upper === 'SELL' || upper === 'HOLD') return upper;
   return 'UNKNOWN';
+}
+
+function deriveExpiresAt(createdAt?: Date) {
+  return new Date((createdAt?.getTime() ?? Date.now()) + PROPOSAL_TTL_MS);
+}
+
+function nullableNumber(value: unknown) {
+  if (value === null || value === undefined || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
 }
 
 export async function GET() {
@@ -58,14 +71,8 @@ export async function GET() {
       .lean<ProposalListRecord[]>();
 
     const safeProposals = proposals.map((p) => {
-      const title = p.title || '';
-      const symbolMatch = title.match(/\b[A-Z]{2,6}\b/); 
-      const extractedSymbol = p.tokenSymbol || (symbolMatch ? symbolMatch[0] : 'TOKEN');
-      
       const action = normalizeAction(p.action ?? p.suggestionType);
-
-      // === FIX ROI: Ưu tiên lấy 'roi' từ DB, fallback sang 'percentChange' ===
-      const roi = p.financialImpact?.roi ?? p.financialImpact?.percentChange ?? null;
+      const roi = nullableNumber(p.financialImpact?.roi);
 
       // Chuẩn hóa confidence
       const rawConfidence = typeof p.confidence === 'number' ? p.confidence : null;
@@ -78,23 +85,26 @@ export async function GET() {
 
       return {
         _id: p._id.toString(),
-        tokenSymbol: extractedSymbol, 
-        tokenName: p.tokenName || p.title,
+        tokenSymbol: p.tokenSymbol || null,
+        tokenName: p.tokenName || p.title || null,
         action: action,
         financialImpact: {
-          currentValue: p.financialImpact?.currentValue || 0,
-          projectedValue: p.financialImpact?.projectedValue || 0,
-          riskLevel: (p.financialImpact?.riskLevel || 'MEDIUM').toUpperCase(),
-          roi: roi, // Trả về trường roi chuẩn
-          percentChange: roi, // Giữ tương thích ngược
+          currentValue: nullableNumber(p.financialImpact?.currentValue),
+          projectedValue: nullableNumber(p.financialImpact?.projectedValue),
+          riskLevel: p.financialImpact?.riskLevel?.toUpperCase() ?? null,
+          roi,
+          percentChange: nullableNumber(p.financialImpact?.percentChange),
         },
+        roiStatus: roi === null ? 'NOT_AVAILABLE' : 'AVAILABLE',
         title: p.title,
         summary: p.summary,
         reason: p.reason || [],
         confidence: confidence,
         sentimentType,
-        expiresAt: p.expiresAt || new Date(Date.now() + 86400000), 
+        expiresAt: p.expiresAt ?? deriveExpiresAt(p.createdAt),
         createdAt: p.createdAt,
+        quantScore: nullableNumber(p.quantScore),
+        pnlPercentage: nullableNumber(p.pnlPercentage),
         status: p.status || p.executionStatus?.toLowerCase() || 'pending', // === FIX STATUS: Trả về status thực ===
       };
     });

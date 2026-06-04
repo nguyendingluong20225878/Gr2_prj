@@ -1,111 +1,62 @@
-# Token Price Update Batch Job
+# @gr2/token-price-fetcher
 
-A small batch job that periodically updates token prices stored in the database using the Jupiter price API.
+`core/token-price-fetcher` updates latest token prices and historical price records using the Jupiter price API.
 
-## Features
+## Responsibilities
 
-- Fetch token prices from Jupiter API (`https://api.jup.ag/price/v2`).
-- Persist latest prices and historical price records in MongoDB.
-- Run periodically (default: every 10 minutes) or in one-time mode.
-- Optionally fetch price for a specific token.
+- Fetch token prices from Jupiter.
+- Persist latest price snapshots in MongoDB.
+- Backfill historical price records for backtests and portfolio valuation.
+- Run once or on a cron schedule.
 
-## Quickstart (local development)
+## Structure
 
-### Quickstart (local development)
+```text
+core/token-price-fetcher
+├── scripts/
+│   ├── backfill-token-price-history.ts
+│   ├── import-top-coins.ts
+│   └── update-token-prices.ts
+└── src/
+    ├── index.ts
+    ├── process.ts
+    └── server.ts
+```
+
+## Commands
+
+Run from the repository root:
 
 ```bash
-# One-time mode (update all token prices once)
-pnpm run job:token-price
+# One-time server/dev mode
+npm --workspace @gr2/token-price-fetcher run dev
 
-# CRON mode (background periodic execution)
-pnpm run job:token-price:cron
+# Cron mode
+npm --workspace @gr2/token-price-fetcher run dev:cron
 
-# Fetch price for a specific token
-cd apps/token-price-job
-pnpm run dev -- --token=<TOKEN_ADDRESS>
+# Generic history backfill
+npm --workspace @gr2/token-price-fetcher run backfill:history
+
+# One-day backfill used by the root pipeline
+npm run prices:backfill:1d
+
+# Demo backfill
+npm run demo:backfill-prices
+
+# Build
+npm --workspace @gr2/token-price-fetcher run build
 ```
 
-### Per-package execution (inside the app directory)
+## Environment
 
-```bash
-# Change to directory
-cd apps/token-price-job
-
-# Install dependencies
-pnpm install
-
-# Development mode (one-time run)
-pnpm run dev
-
-# CRON mode (background periodic execution)
-pnpm run dev:cron
-
-# Fetch price for a specific token
-pnpm run dev -- --token=<TOKEN_ADDRESS>
+```env
+MONGODB_URI=mongodb://localhost:27017/gr2
+PRICE_UPDATE_CRON=*/10 * * * *
+JUPITER_API_URL=https://api.jup.ag/price/v2
 ```
 
-## Environment variables
+## Notes
 
-### Environment variables
-
-Create a `.env` file and set the following variables:
-
-```
-# MongoDB connection string (required for persistence)
-MONGODB_URI="mongodb://localhost:27017/your-db"
-PRICE_UPDATE_CRON="*/10 * * * *"
-JUPITER_API_URL="https://api.jup.ag/price/v2"
-```
-
-- `MONGODB_URI`: MongoDB connection string (used to persist token prices and history)
-
-- `PRICE_UPDATE_CRON`: Cron expression for periodic updates (default: `*/10 * * * *`).
-- `JUPITER_API_URL`: Jupiter API endpoint for token prices.
-
-## Deployment
-
-### AWS Lambda
-
-1. Create a Lambda function
-2. Set environment variables
-3. Prepare the deployment package:
-
-```bash
-pnpm build
-cd dist
-zip -r ../function.zip .
-```
-
-4. Configure a CloudWatch Events rule to schedule the function
-
-### AWS ECS / Fargate
-
-You can also run it as a container using a Dockerfile:
-
-```bash
-# Build image
-docker build -t token-price-job .
-
-# Run container (one-time)
-docker run --env-file .env token-price-job
-
-# Run container (CRON mode)
-docker run --env-file .env token-price-job --cron
-```
-
-### Vercel Cron Jobs
-
-To use Vercel Cron Jobs, add the following to `vercel.json`:
-
-```json
-{
-  "crons": [
-    {
-      "path": "/api/update-token-prices",
-      "schedule": "*/10 * * * *"
-    }
-  ]
-}
-```
-
-Then create a corresponding API endpoint in your Next.js application.
+- Historical prices are consumed by `core/research/backtest` and portfolio pages.
+- `backfill:history:1d` uses delays and retries to reduce rate-limit failures.
+- Missing prices should remain visible to the UI as missing data instead of being silently replaced with fake values.

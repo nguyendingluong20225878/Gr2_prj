@@ -33,6 +33,7 @@ export interface Proposal {
     pnlPercentage?: number | null;
     backtestedAt?: Date | null;
     backtestMeta?: Record<string, unknown>;
+    signalUpdatedAt?: Date | null;
     status?: string;
     action?: string;
     title?: string;
@@ -142,6 +143,7 @@ const proposalSchema = new Schema<Proposal>({
     pnlPercentage: { type: Number, default: null },
     backtestedAt: { type: Date, default: null, index: true },
     backtestMeta: { type: Schema.Types.Mixed, default: {} },
+    signalUpdatedAt: { type: Date, default: null, index: true },
 
     // Compatibility fields used by the Next.js app and older proposal documents.
     userId: { type: Schema.Types.ObjectId, ref: "User", index: true },

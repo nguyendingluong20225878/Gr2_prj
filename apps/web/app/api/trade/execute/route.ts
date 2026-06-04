@@ -1,12 +1,11 @@
 import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import mongoose from 'mongoose';
+import { requireSessionUser } from '@/server/auth/walletAuth';
 
 type TradeDirection = 'LONG' | 'SHORT';
 
 type TradeExecuteRequest = {
-  userId?: string;
-  walletAddress?: string;
   tokenSymbol?: string;
   tokenAddress?: string;
   amount?: number | string;
@@ -60,9 +59,9 @@ const assertObjectId = (value: string | undefined, fieldName: string) => {
 
 export async function POST(req: Request) {
   try {
+    const sessionUser = await requireSessionUser(req);
     const body = (await req.json()) as TradeExecuteRequest;
     const { 
-      userId, 
       tokenSymbol, 
       tokenAddress, 
       amount, 
@@ -72,8 +71,8 @@ export async function POST(req: Request) {
       proposalId 
     } = body;
 
-    const walletAddress = body.walletAddress?.trim();
-    if (!walletAddress || !amount || !entryPrice || !proposalId) {
+    const walletAddress = sessionUser.walletAddress;
+    if (!amount || !entryPrice || !proposalId) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
@@ -89,10 +88,6 @@ export async function POST(req: Request) {
 
     if (!user) {
       return NextResponse.json({ error: 'Wallet session is not associated with a user' }, { status: 401 });
-    }
-
-    if (userId && (!mongoose.Types.ObjectId.isValid(userId) || !user._id.equals(new mongoose.Types.ObjectId(userId)))) {
-      return NextResponse.json({ error: 'User does not match wallet session' }, { status: 403 });
     }
 
     const proposalObjectId = assertObjectId(proposalId, 'proposalId');
@@ -273,7 +268,12 @@ export async function POST(req: Request) {
   } catch (error) {
     console.error('Execute Trade Error:', error);
     const message = error instanceof Error ? error.message : 'Internal Error';
-    const status = message.includes('invalid') || message.includes('must be') ? 400 : 500;
+    const status =
+      error instanceof Error && error.name === 'AuthRequiredError'
+        ? 401
+        : message.includes('invalid') || message.includes('must be')
+          ? 400
+          : 500;
     return NextResponse.json({ error: message }, { status });
   }
 }

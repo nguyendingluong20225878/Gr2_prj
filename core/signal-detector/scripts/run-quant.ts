@@ -218,12 +218,17 @@ async function main(): Promise<number> {
                 uncertaintyEntropy: res.uncertaintyEntropy ?? res.volatilityFlag ?? 0,
                 realizedVolatility: res.realizedVolatility ?? null,
                 signalMode: res.signalMode ?? res.metadata?.signalMode ?? null,
+                status: "RAW",
+                layer3LockedAt: null,
+                layer3LockedBy: null,
+                layer3RetryCount: 0,
+                lastLayer3Error: null,
+                errorType: null,
                 updatedAt: new Date()
               },
               $setOnInsert: {
                 createdAt: new Date(),
-                detectedAt,
-                status: "RAW"
+                detectedAt
               }
             },
             upsert: true

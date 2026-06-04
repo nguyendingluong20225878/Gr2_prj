@@ -55,7 +55,16 @@ export * from "./constants/index.js";
 
 // ===== TOKENS =====
 export { tokensTable } from "./db/schema/tokens.js";
-export type { TokenDocument } from "./db/schema/tokens.js";
+export type { TokenAlias, TokenDocument } from "./db/schema/tokens.js";
+export {
+  TokenIdentityResolver,
+  resolveToken,
+} from "./services/token-identity-resolver.js";
+export type {
+  ResolvedToken,
+  ResolveTokenInput,
+  ResolveTokenOptions,
+} from "./services/token-identity-resolver.js";
 
 export { tokenPriceHistory } from "./db/schema/token_price_history.js";
 export type {

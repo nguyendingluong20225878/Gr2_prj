@@ -4,6 +4,7 @@ import {
   tokenPricesTable,
   Logger,
   proposalsTable,
+  resolveToken,
   signalsTable,
 } from "@gr2/shared";
 import {
@@ -150,28 +151,18 @@ async function hasExistingHistoricalPriceNear(params: {
 
 export class TokenPriceService {
     async getTokenPrice(tokenAddress: string): Promise<number | null> {
-      const token = await tokensTable
-        .findOne({
-          $or: [
-            { address: tokenAddress },
-            { coingeckoId: tokenAddress.replace(/^coingecko:/, "") },
-          ],
-        })
-        .lean();
-
-      const candidateKeys = new Set([tokenAddress]);
-      if (token?.coingeckoId) {
-        candidateKeys.add(token.coingeckoId);
-        candidateKeys.add(`coingecko:${token.coingeckoId}`);
-      }
+      const token = await resolveToken({
+        chain: "solana",
+        addressOrMint: tokenAddress,
+        tokenKey: tokenAddress.startsWith("coingecko:") ? tokenAddress : undefined,
+        coingeckoId: tokenAddress.startsWith("coingecko:")
+          ? tokenAddress.replace(/^coingecko:/, "")
+          : undefined,
+      });
 
       const priceDoc = await tokenPricesTable
         .findOne({
-          $or: [
-            { tokenKey: { $in: [...candidateKeys] } },
-            { tokenAddress },
-            ...(token?._id ? [{ token: token._id }] : []),
-          ],
+          ...(token?._id ? { token: token._id } : { tokenKey: tokenAddress }),
         })
         .lean();
       return priceDoc?.priceUsd ?? null;

@@ -1,8 +1,9 @@
 'use client';
 
-import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import React, { createContext, useCallback, useContext, useState, ReactNode, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useWallet } from '@solana/wallet-adapter-react';
+import bs58 from 'bs58';
 
 // Định nghĩa cấu trúc User
 interface UserBalance {
@@ -45,49 +46,82 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(false);
   
   const router = useRouter();
-  const { disconnect } = useWallet();
+  const { disconnect, publicKey, signMessage } = useWallet();
 
-  // Hàm xác thực ví quan trọng nhất
-  const verifyWallet = async (address: string) => {
-    if (!address) return;
+  const routeAfterAuth = useCallback((data: { user?: User | null; requiresOnboarding?: boolean }) => {
+    if (data.user) {
+      setUser(data.user);
+    }
+
+    router.push('/overview');
+  }, [router]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const hydrateSession = async () => {
+      try {
+        setIsLoading(true);
+        const res = await fetch('/api/auth/verify');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled && data.user) setUser(data.user);
+      } catch (error) {
+        console.error('Session hydrate error:', error);
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    };
+
+    void hydrateSession();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const verifyWallet = useCallback(async (address: string) => {
+    if (!address || !publicKey) return;
+    if (!signMessage) {
+      throw new Error('Wallet does not support message signing');
+    }
     
     try {
       setIsLoading(true);
-      console.log("🔐 Verifying wallet:", address);
+      console.log('Verifying wallet signature:', address);
 
-      // Gọi API kiểm tra
-      const res = await fetch('/api/auth/verify', {
+      const nonceRes = await fetch('/api/auth/nonce', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ walletAddress: address }),
       });
-      
-      const data = await res.json();
+      const nonceData = await nonceRes.json();
+      if (!nonceRes.ok) throw new Error(nonceData.error || 'Cannot create auth nonce');
 
-      // LOGIC ĐIỀU HƯỚNG CHÍNH
-      if (data.user && !data.requiresOnboarding) {
-        // Trường hợp 1: User đã tồn tại và đủ thông tin -> Overview decision workspace
-        console.log("✅ User verified, redirecting to Overview");
-        setUser(data.user);
-        router.push('/overview');
-      } else {
-        // Trường hợp 2: User chưa có HOẶC thiếu thông tin -> Onboarding
-        console.log("🆕 New or incomplete user, redirecting to Onboarding");
-        // Nếu user tồn tại nhưng thiếu thông tin, ta vẫn set tạm để trang Onboarding có thể dùng (nếu cần)
-        // Nhưng an toàn nhất là để null hoặc user tạm để Onboarding form xử lý
-        if (data.user) setUser(data.user); 
-        router.push('/onboarding');
-      }
-
+      const messageBytes = new TextEncoder().encode(nonceData.message);
+      const signature = await signMessage(messageBytes);
+      const verifyRes = await fetch('/api/auth/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          walletAddress: publicKey.toBase58(),
+          message: nonceData.message,
+          signature: bs58.encode(signature),
+        }),
+      });
+      const data = await verifyRes.json();
+      if (!verifyRes.ok) throw new Error(data.error || 'Signature verification failed');
+      routeAfterAuth(data);
     } catch (error) {
-      console.error("❌ Verify Error:", error);
+      console.error('Verify Error:', error);
+      throw error;
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [publicKey, routeAfterAuth, signMessage]);
 
   const logout = async () => {
     setUser(null);
+    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => null);
     await disconnect();
     router.push('/');
   };

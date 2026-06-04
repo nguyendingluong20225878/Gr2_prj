@@ -3,60 +3,67 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/app/contexts/AuthContext';
-import { Activity, BarChart3, Bell, LineChart, Radar, User, Wallet, LogOut, ChevronDown } from 'lucide-react';
-import { Button } from '@/app/components/ui/button';
-import { useState } from 'react';
+import {
+  Activity,
+  BarChart3,
+  Bell,
+  BrainCircuit,
+  HeartPulse,
+  LineChart,
+  LogOut,
+  Search,
+  Star,
+  User,
+  Wallet,
+} from 'lucide-react';
+
+const navItems = [
+  { path: '/overview', label: 'Tổng quan', icon: Activity },
+  { path: '/portfolio', label: 'Danh mục', icon: Wallet },
+  { path: '/diagnostics', label: 'Chẩn đoán', icon: HeartPulse },
+  { path: '/recommendations', label: 'Khuyến nghị', icon: BarChart3 },
+  { path: '/opportunities', label: 'Cơ hội', icon: Search },
+  { path: '/watchlist', label: 'Theo dõi', icon: Star },
+  { path: '/positions', label: 'Vị thế', icon: LineChart },
+  { path: '/alerts', label: 'Cảnh báo', icon: Bell },
+  { path: '/model-health', label: 'Mô hình', icon: BrainCircuit },
+] as const;
 
 export function Navbar() {
   const pathname = usePathname();
   const { user, logout } = useAuth();
-  const [showDropdown, setShowDropdown] = useState(false);
 
-  const navItems = [
-    { path: '/overview', label: 'Overview', icon: Activity },
-    { path: '/signals', label: 'Signals', icon: BarChart3 },
-    { path: '/signals/daily', label: 'Alpha', icon: Radar },
-    { path: '/positions', label: 'Positions', icon: LineChart },
-    { path: '/portfolio', label: 'Portfolio', icon: Wallet },
-    { path: '/alerts', label: 'Alerts', icon: Bell },
-  ];
-
-  const formatWalletAddress = (address: string) => {
-    return `${address.slice(0, 4)}...${address.slice(-4)}`;
-  };
+  const formatWalletAddress = (address: string) => `${address.slice(0, 4)}...${address.slice(-4)}`;
 
   return (
     <nav className="sticky top-0 z-50 border-b border-border/50 glass-card">
       <div className="container mx-auto px-4 py-4">
-        <div className="flex items-center justify-between">
-          {/* Logo */}
-          <Link href="/dashboard" className="flex items-center space-x-3 group">
-            <div className="relative">
-              <div className="absolute inset-0 bg-primary rounded-lg blur-lg opacity-50 group-hover:opacity-75 transition-opacity"></div>
-              <div className="relative bg-gradient-purple-cyan p-2 rounded-lg">
+        <div className="flex items-center justify-between gap-4">
+          <Link href="/overview" className="flex items-center space-x-3 group">
+            <span className="relative">
+              <span className="absolute inset-0 rounded-lg bg-primary opacity-50 blur-lg transition-opacity group-hover:opacity-75" />
+              <span className="relative flex rounded-lg bg-gradient-purple-cyan p-2">
                 <Activity className="h-6 w-6 text-white" />
-              </div>
-            </div>
-            <div>
-              <h1 className="text-xl font-bold gradient-text">NDL AI</h1>
-              <p className="text-xs text-muted-foreground">Solana Trading Assistant</p>
-            </div>
+              </span>
+            </span>
+            <span>
+              <span className="block text-xl font-bold gradient-text">NDL</span>
+              <span className="block text-xs text-muted-foreground">Solana DeFi Dashboard</span>
+            </span>
           </Link>
 
-          {/* Navigation Links */}
-          <div className="hidden md:flex items-center space-x-1">
+          <div className="hidden max-w-5xl flex-1 items-center justify-center gap-1 overflow-x-auto xl:flex">
             {navItems.map((item) => {
               const Icon = item.icon;
-              const isActive = pathname === item.path;
-              
+              const isActive = pathname === item.path || pathname.startsWith(`${item.path}/`);
               return (
                 <Link
                   key={item.path}
                   href={item.path}
-                  className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-all ${
+                  className={`flex items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm transition-all ${
                     isActive
-                      ? 'bg-primary/20 text-primary border border-primary/50'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+                      ? 'border border-primary/50 bg-primary/20 text-primary'
+                      : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                   }`}
                 >
                   <Icon className="h-4 w-4" />
@@ -66,84 +73,52 @@ export function Navbar() {
             })}
           </div>
 
-          {/* User Menu */}
-          {user && (
-          <div className="relative">
-            <button
-              onClick={() => setShowDropdown(!showDropdown)}
-              className="flex items-center gap-3 px-4 py-2 rounded-lg bg-slate-900/50 border border-slate-700 hover:border-cyber-purple/50 transition-all"
-            >
-              {/* SỬA: div -> span */}
-              <span className="w-8 h-8 rounded-full bg-gradient-to-br from-cyber-purple to-cyber-cyan flex items-center justify-center text-sm font-semibold text-white">
-                {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
-              </span>
-              
-              {/* SỬA: div -> span, và các con bên trong cũng đổi thành span */}
-              <span className="hidden md:block text-left">
-                <span className="block text-sm font-medium text-slate-100">
-                  {user.name || 'User'}
+          {user ? (
+            <div className="flex items-center gap-2">
+              <Link
+                href="/portfolio"
+                className="hidden items-center gap-3 rounded-lg border border-slate-700 bg-slate-900/50 px-3 py-2 transition-all hover:border-cyan-500/50 md:flex"
+              >
+                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-cyber-purple to-cyber-cyan text-sm font-semibold text-white">
+                  {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
                 </span>
-                <span className="block text-xs text-slate-400">
-                  {formatWalletAddress(user.walletAddress)}
+                <span className="text-left">
+                  <span className="block text-sm font-medium text-slate-100">{user.name || 'Người dùng'}</span>
+                  <span className="block text-xs text-slate-400">{formatWalletAddress(user.walletAddress)}</span>
                 </span>
-              </span>
-              
-              <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
-            </button>
-
-              {/* Dropdown Menu */}
-              {showDropdown && (
-                <>
-                  <div 
-                    className="fixed inset-0 z-40" 
-                    onClick={() => setShowDropdown(false)}
-                  />
-                  <div className="absolute right-0 mt-2 w-56 glass-card rounded-lg border border-slate-700 shadow-xl z-50">
-                    <div className="p-2 space-y-1">
-                      <Link
-                        href="/profile"
-                        onClick={() => setShowDropdown(false)}
-                        className="flex items-center gap-3 px-3 py-2 rounded-lg text-slate-300 hover:bg-slate-800 hover:text-slate-100 transition-colors"
-                      >
-                        <User className="w-4 h-4" />
-                        <span>Profile Settings</span>
-                      </Link>
-                      <button
-                        onClick={() => {
-                          setShowDropdown(false);
-                          logout();
-                        }}
-                        className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-red-400 hover:bg-red-500/10 transition-colors"
-                      >
-                        <LogOut className="w-4 h-4" />
-                        <span>Logout</span>
-                      </button>
-                    </div>
-                  </div>
-                </>
-              )}
+              </Link>
+              <button
+                onClick={logout}
+                className="rounded-lg border border-red-500/20 bg-red-500/10 p-2 text-red-300 transition-colors hover:bg-red-500/15"
+                aria-label="Đăng xuất"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
             </div>
+          ) : (
+            <Link href="/" className="inline-flex items-center gap-2 rounded-lg border border-cyan-500/30 px-3 py-2 text-sm font-bold text-cyan-300">
+              <User className="h-4 w-4" />
+              Đăng nhập
+            </Link>
           )}
         </div>
 
-        {/* Mobile Navigation */}
-        <div className="md:hidden flex items-center justify-center space-x-2 mt-4">
+        <div className="mt-4 flex gap-2 overflow-x-auto pb-1 xl:hidden" aria-label="Điều hướng chính trên mobile">
           {navItems.map((item) => {
             const Icon = item.icon;
-            const isActive = pathname === item.path;
-            
+            const isActive = pathname === item.path || pathname.startsWith(`${item.path}/`);
             return (
               <Link
                 key={item.path}
                 href={item.path}
-                className={`flex items-center space-x-2 px-3 py-2 rounded-lg transition-all flex-1 justify-center ${
+                className={`flex min-w-fit items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all ${
                   isActive
-                    ? 'bg-primary/20 text-primary border border-primary/50'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+                    ? 'border border-primary/50 bg-primary/20 text-primary'
+                    : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                 }`}
               >
                 <Icon className="h-4 w-4" />
-                <span className="text-sm">{item.label}</span>
+                <span>{item.label}</span>
               </Link>
             );
           })}

@@ -44,7 +44,6 @@ export function useWalletSync() {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          walletAddress: publicKey.toBase58(),
           balances: balances // Gửi mảng balances thật về server
         }),
       });
