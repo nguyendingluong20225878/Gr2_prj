@@ -101,6 +101,7 @@ export function RecommendationCard({
     : archived
       ? 'PnL/ROI'
       : 'PnL/ROI';
+  const currentPriceLabel = status === 'VERIFIED' ? 'Giá sau 24h' : 'Giá hiện tại';
 
   return (
     <article className={`rounded-xl border p-4 transition-colors ${
@@ -152,9 +153,8 @@ export function RecommendationCard({
           <MiniStat label="Điểm tín hiệu" value={formatNumber(quantScore, 2)} />
         ) : null}
         <MiniStat label={showLivePerformance ? 'Giá vào tạm tính' : 'Giá vào'} value={formatDollarAmount(displayEntryPrice)} />
-        <MiniStat label="Giá hiện tại" value={formatDollarAmount(displayCurrentPrice)} />
+        <MiniStat label={currentPriceLabel} value={formatDollarAmount(displayCurrentPrice)} />
         <MiniStat label={pnlLabel} value={displayRoi === null || displayRoi === undefined ? formatDollarAmount(projectedPnL) : formatPercent(displayRoi)} />
-        <MiniStat label="Ưu tiên" value={score === null || score === undefined ? id.slice(-4).toUpperCase() : formatNumber(score, 1)} />
       </div>
     </article>
   );

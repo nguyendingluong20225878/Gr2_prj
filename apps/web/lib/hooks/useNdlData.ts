@@ -189,6 +189,7 @@ export type ProposalTimelineData = {
 export type ProposalTimelineMarker = {
   id: string;
   date?: string | null;
+  dateSource?: 'SIGNAL_DETECTED_AT' | 'BACKTEST_DETECTED_AT' | 'PROPOSAL_CREATED_AT' | 'UNKNOWN';
   action: 'BUY' | 'SELL' | 'HOLD' | string;
   confidence?: number | null;
   quant?: number | null;

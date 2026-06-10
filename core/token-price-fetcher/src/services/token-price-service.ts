@@ -8,12 +8,14 @@ import {
   signalsTable,
 } from "@gr2/shared";
 import {
+  CoinGeckoError,
   fetchMarketChartRangeFromCoingecko,
   fetchPricesFromCoingecko,
 } from "./providers/coingecko.provider.js";
 
 const logger = new Logger("TokenPriceService");
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const DEFAULT_RATE_LIMIT_RETRY_MS = 90_000;
 
 type HistoricalPricePoint = { timestamp: Date; priceUsd: number };
 type TokenBackfillRow = {
@@ -67,6 +69,17 @@ function positiveInteger(value: number | undefined, fallback: number): number {
   if (!Number.isFinite(value)) return fallback;
   const normalized = Math.floor(Number(value));
   return normalized > 0 ? normalized : fallback;
+}
+
+function retryDelayForAttempt(error: unknown, baseDelayMs: number, attempt: number): number {
+  const exponentialDelay = baseDelayMs * Math.pow(2, attempt);
+  const rateLimitDelay =
+    error instanceof CoinGeckoError && error.status === 429
+      ? error.retryAfterMs ?? DEFAULT_RATE_LIMIT_RETRY_MS
+      : 0;
+  const jitterMs = Math.floor(Math.random() * Math.min(5_000, Math.max(baseDelayMs, 1)));
+
+  return Math.max(exponentialDelay, rateLimitDelay) + jitterMs;
 }
 
 async function runWithConcurrency<T>(
@@ -311,7 +324,7 @@ export class TokenPriceService {
           break;
         } catch (error) {
           const isLastAttempt = attempt >= maxRetries;
-          const waitMs = retryDelayMs * Math.pow(2, attempt);
+          const waitMs = retryDelayForAttempt(error, retryDelayMs, attempt);
           logger.warn(
             `Lỗi backfill ${token.symbol} (${coingeckoId}) attempt ${attempt + 1}/${maxRetries + 1}`,
             { error: String(error), retryInMs: isLastAttempt ? 0 : waitMs }

@@ -29,7 +29,8 @@ type VerificationRow = {
   marker: ProposalTimelineMarker;
   time: number;
   price: number | null;
-  matchedTime?: number;
+  matchedTime?: number | null;
+  priceGapMs?: number | null;
   plotted: boolean;
 };
 
@@ -74,6 +75,30 @@ function buildMaxMarkerGapMs(prices: ChartPoint[]) {
   if (!gaps.length) return 60 * 60 * 1000;
   const median = gaps.sort((a, b) => a - b)[Math.floor(gaps.length / 2)];
   return Math.max(median * 2.5, 60 * 60 * 1000);
+}
+
+function formatDuration(milliseconds?: number | null) {
+  if (milliseconds === null || milliseconds === undefined || !Number.isFinite(milliseconds)) return null;
+  const minutes = Math.round(milliseconds / 60_000);
+  if (minutes < 60) return `${Math.max(1, minutes)} phút`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} giờ`;
+  return `${Math.round(hours / 24)} ngày`;
+}
+
+function formatTokenUsd(value?: number | null) {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) return 'Chưa có dữ liệu';
+  return `${Number(value).toLocaleString('vi-VN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 3,
+  })} USD`;
+}
+
+function getDateSourceLabel(source?: ProposalTimelineMarker['dateSource']) {
+  if (source === 'SIGNAL_DETECTED_AT') return 'Thời điểm tín hiệu';
+  if (source === 'BACKTEST_DETECTED_AT') return 'Thời điểm backtest';
+  if (source === 'PROPOSAL_CREATED_AT') return 'Thời điểm tạo proposal';
+  return 'Không rõ nguồn thời điểm';
 }
 
 function buildMarkerPoints(timeline: ProposalTimelineData, prices: ChartPoint[]): MarkerPoint[] {
@@ -127,6 +152,7 @@ function buildVerificationRows(timeline: ProposalTimelineData, markerPoints: Mar
         time,
         price: plotted?.price ?? marker.markerPrice ?? null,
         matchedTime: plotted?.matchedTime ?? (marker.matchedPriceAt ? new Date(marker.matchedPriceAt).getTime() : undefined),
+        priceGapMs: plotted?.priceGapMs ?? marker.priceGapMs ?? null,
         plotted: Boolean(plotted),
       };
     })
@@ -191,6 +217,15 @@ function MarkerShape(props: any) {
   );
 }
 
+function buildMarkerOverlapCount(markerPoints: MarkerPoint[]) {
+  const buckets = new Map<string, number>();
+  markerPoints.forEach((point) => {
+    const key = `${Math.round(point.time / 60_000)}:${Number(point.price).toFixed(6)}`;
+    buckets.set(key, (buckets.get(key) ?? 0) + 1);
+  });
+  return Array.from(buckets.values()).reduce((sum, count) => sum + Math.max(0, count - 1), 0);
+}
+
 function ChartTooltip({ active, payload }: { active?: boolean; payload?: any[] }) {
   if (!active || !payload?.length) return null;
   const markerPoint = payload.find((item) => item.payload?.marker)?.payload as MarkerPoint | undefined;
@@ -201,14 +236,16 @@ function ChartTooltip({ active, payload }: { active?: boolean; payload?: any[] }
     <div className="max-w-xs rounded-lg border border-white/10 bg-slate-950/95 p-3 text-sm text-slate-100 shadow-xl">
       {marker ? (
         <>
-          <p className="font-semibold text-white">{formatVietnameseDateTime(marker.date)}</p>
+          <p className="font-semibold text-white">Thời điểm ghi nhận tín hiệu : {formatVietnameseDateTime(marker.date)}</p>
           <p className="mt-1">{marker.action} khuyến nghị {marker.isCurrent ? '(hiện tại)' : ''}</p>
           <div className="mt-2 space-y-1 text-xs text-slate-300">
-            <p>Giá: {formatCurrency(markerPoint?.price, 3)}</p>
+            <p>Giá khớp: {formatTokenUsd(markerPoint?.price)}</p>
+            <p>Nguồn thời điểm: {getDateSourceLabel(marker.dateSource)}</p>
             {markerPoint?.matchedTime ? <p>Giá khớp gần nhất: {formatVietnameseDateTime(new Date(markerPoint.matchedTime))}</p> : null}
+            {markerPoint?.priceGapMs ? <p>Lệch thời gian giá: {formatDuration(markerPoint.priceGapMs)}</p> : null}
             <p>Tin cậy: {marker.confidence === null || marker.confidence === undefined ? 'Chưa có dữ liệu' : `${marker.confidence}%`}</p>
             <p>Điểm tín hiệu: {formatNumber(marker.quant, 2)}</p>
-            <p>Kiểm chứng: {marker.pnlPercentage === null || marker.pnlPercentage === undefined ? 'Đang chờ' : formatPercent(marker.pnlPercentage)}</p>
+            <p>Kiểm chứng: {marker.pnlPercentage === null || marker.pnlPercentage === undefined ? 'Đang chờ kiểm chứng sau 24h' : formatPercent(marker.pnlPercentage)}</p>
             <p>Kết quả: {marker.result}</p>
             <p>Giá vào: {formatCurrency(marker.entryPrice)}</p>
             <p>Giá ra: {formatCurrency(marker.exitPrice)}</p>
@@ -218,7 +255,7 @@ function ChartTooltip({ active, payload }: { active?: boolean; payload?: any[] }
       ) : (
         <>
           <p className="font-semibold text-white">{linePoint?.time ? formatVietnameseDateTime(new Date(linePoint.time)) : 'Chưa có dữ liệu'}</p>
-          <p className="mt-1 text-xs text-slate-300">Giá: {formatCurrency(linePoint?.price, 3)}</p>
+          <p className="mt-1 text-xs text-slate-300">Giá: {formatTokenUsd(linePoint?.price)}</p>
           <p className="mt-1 text-xs text-slate-300">Tín hiệu: Không có</p>
         </>
       )}
@@ -235,9 +272,10 @@ export default function ProposalAccuracyChart({ timeline }: { timeline: Proposal
   const yDomain = buildZoomedDomain(pricePoints);
   const xDomain = buildTimeDomain(pricePoints);
   const unplottedCount = verificationRows.filter((row) => !row.plotted).length;
+  const overlapCount = buildMarkerOverlapCount(markerPoints);
   const canDrawLine = pricePoints.length >= 2;
   const summary = buildBacktestSummary(timeline);
-  const dataWarnings = buildTimelineWarnings(timeline, pricePoints.length, unplottedCount);
+  const dataWarnings = buildTimelineWarnings(timeline, pricePoints.length);
 
   return (
     <div className="space-y-5">
@@ -249,10 +287,11 @@ export default function ProposalAccuracyChart({ timeline }: { timeline: Proposal
       </div>
       <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/10 p-3 text-sm text-cyan-100">
         Kết quả kiểm chứng là dữ liệu tham khảo, không đảm bảo kết quả tương lai.
+        Win-rate và ROI trung bình được tính trên toàn bộ lịch sử tương tự, không chỉ 8 dòng gần nhất trong bảng.
       </div>
       {dataWarnings.length ? (
         <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-100">
-          <p className="font-semibold">Chất lượng dữ liệu cần chú ý</p>
+          <p className="font-semibold">Ghi chú dữ liệu</p>
           <ul className="mt-2 list-disc space-y-1 pl-5">
             {dataWarnings.map((warning) => <li key={warning}>{warning}</li>)}
           </ul>
@@ -268,13 +307,17 @@ export default function ProposalAccuracyChart({ timeline }: { timeline: Proposal
                 type="number"
                 domain={xDomain}
                 stroke="#64748b"
-                tickFormatter={(value) => new Date(value).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}
+                tickFormatter={(value) => new Date(value).toLocaleDateString('vi-VN', {
+                  timeZone: 'Asia/Ho_Chi_Minh',
+                  day: '2-digit',
+                  month: '2-digit',
+                })}
               />
               <YAxis
                 domain={yDomain}
                 allowDataOverflow={false}
                 stroke="#64748b"
-                tickFormatter={(value) => `$${formatNumber(value, 3)}`}
+                tickFormatter={(value) => formatTokenUsd(value).replace(' USD', '')}
                 width={72}
               />
               <Tooltip content={<ChartTooltip />} cursor={{ stroke: 'rgba(34,211,238,0.25)' }} />
@@ -299,7 +342,12 @@ export default function ProposalAccuracyChart({ timeline }: { timeline: Proposal
       </div>
       {unplottedCount > 0 ? (
         <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-100">
-          Có {unplottedCount} khuyến nghị không được vẽ lên biểu đồ vì thiếu giá quanh thời điểm tạo hoặc nằm ngoài vùng giá. Bảng bên dưới vẫn giữ các dòng này để kiểm tra lại, nhưng không gắn điểm lên đường giá.
+          Có {unplottedCount} khuyến nghị chỉ hiển thị trong bảng vì không tìm được giá đủ gần với thời điểm ghi nhận tín hiệu. Các dòng này vẫn được giữ để bạn kiểm tra lịch sử, nhưng không đặt marker lên đường giá.
+        </div>
+      ) : null}
+      {overlapCount > 0 ? (
+        <div className="rounded-lg border border-white/10 bg-white/5 p-3 text-sm text-slate-300">
+          Có {overlapCount} marker trùng rất gần nhau về thời điểm và giá, nên trên biểu đồ có thể nhìn như một điểm duy nhất. Bảng bên dưới vẫn liệt kê từng khuyến nghị riêng.
         </div>
       ) : null}
       <VerificationTable rows={verificationRows} />
@@ -332,14 +380,13 @@ function buildBacktestSummary(timeline: ProposalTimelineData): BacktestSummary {
   };
 }
 
-function buildTimelineWarnings(timeline: ProposalTimelineData, plottedPriceCount: number, unplottedCount: number) {
+function buildTimelineWarnings(timeline: ProposalTimelineData, plottedPriceCount: number) {
   const warnings = new Set<string>();
   const pointCount = timeline.priceCoverage?.pointCount ?? plottedPriceCount;
 
   timeline.missingData.forEach((item) => warnings.add(readableMissingTimelineData(item)));
   if (!timeline.priceHistory.length) warnings.add('Chưa có lịch sử giá để dựng đường giá token.');
   if (pointCount > 0 && pointCount < 20) warnings.add(`Dữ liệu giá còn mỏng: chỉ có ${formatNumber(pointCount, 0)} điểm giá.`);
-  if (unplottedCount > 0) warnings.add(`${unplottedCount} marker không được vẽ do thiếu giá quanh thời điểm tạo hoặc nằm ngoài vùng giá.`);
 
   return Array.from(warnings);
 }
@@ -353,9 +400,9 @@ function readableMissingTimelineData(value: string) {
 }
 
 function VerificationTable({ rows: inputRows }: { rows: VerificationRow[] }) {
-  const rows = [...inputRows]
-    .sort((a, b) => b.time - a.time)
-    .slice(0, 8);
+  const sortedRows = [...inputRows].sort((a, b) => b.time - a.time);
+  const rows = sortedRows.slice(0, 8);
+  const hiddenCount = Math.max(0, sortedRows.length - rows.length);
 
   if (!rows.length) {
     return (
@@ -366,28 +413,53 @@ function VerificationTable({ rows: inputRows }: { rows: VerificationRow[] }) {
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-white/5 bg-black/30">
-      <div className="min-w-[720px]">
-        <div className="grid grid-cols-[1.1fr_0.7fr_0.8fr_0.8fr_0.8fr_0.9fr] gap-3 border-b border-white/5 px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500">
-          <span>Thời điểm</span>
-          <span>Hành động</span>
-          <span>Kết quả</span>
-          <span>PnL</span>
-          <span>Tin cậy</span>
-          <span>Giá</span>
-        </div>
-        {rows.map(({ marker, price, plotted }) => (
-          <div key={marker.id} className="grid grid-cols-[1.1fr_0.7fr_0.8fr_0.8fr_0.8fr_0.9fr] gap-3 border-b border-white/5 px-4 py-3 text-sm text-slate-300 last:border-b-0">
-            <span className="text-slate-400">{formatVietnameseDateTime(marker.date)}</span>
-            <span className="font-semibold" style={{ color: ACTION_COLOR[String(marker.action).toUpperCase()] ?? ACTION_COLOR.HOLD }}>
-              {marker.action}
-            </span>
-            <span className={resultClass(marker.result)}>{toVietnameseResult(marker.result)}</span>
-            <span>{marker.pnlPercentage === null || marker.pnlPercentage === undefined ? 'Chưa kiểm chứng' : formatPercent(marker.pnlPercentage)}</span>
-            <span>{marker.confidence === null || marker.confidence === undefined ? 'Chưa có dữ liệu' : `${marker.confidence}%`}</span>
-            <span>{plotted && price !== null ? formatCurrency(price, 3) : getPriceStatusLabel(marker.priceStatus)}</span>
+    <div className="rounded-lg border border-white/5 bg-black/30">
+      <div className="border-b border-white/5 px-4 py-3 text-xs text-slate-400">
+        Hiển thị {rows.length} khuyến nghị gần nhất trong tổng số {sortedRows.length}. {hiddenCount > 0 ? `${hiddenCount} khuyến nghị cũ hơn đang được tính trong thống kê nhưng không hiển thị trong bảng này.` : 'Toàn bộ khuyến nghị đang được hiển thị trong bảng này.'}
+      </div>
+      <div className="overflow-x-auto">
+        <div className="min-w-[800px]">
+          <div className="grid grid-cols-[1.1fr_0.7fr_0.8fr_0.8fr_0.8fr_0.9fr] gap-3 border-b border-white/5 px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+            <span>Thời điểm tín hiệu (giờ VN)</span>
+            <span>Hành động</span>
+            <span>Kết quả</span>
+            <span>PnL</span>
+            <span>Tin cậy</span>
+            <span>Giá khớp / trạng thái</span>
           </div>
-        ))}
+          {rows.map(({ marker, price, matchedTime, priceGapMs, plotted }) => (
+            <div key={marker.id} className="grid grid-cols-[1.1fr_0.7fr_0.8fr_0.8fr_0.8fr_0.9fr] gap-3 border-b border-white/5 px-4 py-3 text-sm text-slate-300 last:border-b-0">
+              <span className="text-slate-400">
+                <span className="block">{formatVietnameseDateTime(marker.date)}</span>
+                <span className="mt-1 block text-[11px] text-slate-500">{getDateSourceLabel(marker.dateSource)}</span>
+              </span>
+              <span className="font-semibold" style={{ color: ACTION_COLOR[String(marker.action).toUpperCase()] ?? ACTION_COLOR.HOLD }}>
+                {marker.action}
+              </span>
+              <span className={resultClass(marker.result)}>{toVietnameseResult(marker.result)}</span>
+              <span>{marker.pnlPercentage === null || marker.pnlPercentage === undefined ? '-' : formatPercent(marker.pnlPercentage)}</span>
+              <span>{marker.confidence === null || marker.confidence === undefined ? 'Chưa có dữ liệu' : `${marker.confidence}%`}</span>
+              <span>
+                {plotted && price !== null ? (
+                  <>
+                    <span className="block">{formatTokenUsd(price)}</span>
+                    {matchedTime ? (
+                      <span className="mt-1 block text-[11px] text-slate-500">
+                        Khớp {formatVietnameseDateTime(new Date(matchedTime))}
+                        {priceGapMs ? `, lệch ${formatDuration(priceGapMs)}` : ''}
+                      </span>
+                    ) : null}
+                  </>
+                ) : (
+                  <>
+                    <span className="block">{getPriceStatusLabel(marker.priceStatus)}</span>
+                    <span className="mt-1 block text-[11px] text-slate-500">Không đặt marker</span>
+                  </>
+                )}
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -404,7 +476,7 @@ function toVietnameseResult(result: ProposalTimelineMarker['result']) {
   if (result === 'Win') return 'Win';
   if (result === 'Loss') return 'Loss';
   if (result === 'Breakeven') return 'Hòa vốn';
-  return 'Chưa kiểm chứng';
+  return 'Đang chờ kiểm chứng sau 24h';
 }
 
 function resultClass(result: ProposalTimelineMarker['result']) {

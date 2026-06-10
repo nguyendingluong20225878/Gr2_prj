@@ -28,12 +28,12 @@ async function runHourlyBackfill() {
   const result = await TokenPriceService.backfillHistoricalPrices({
     concurrency: readNumberArg("concurrency", 1),
     days: readNumberArg("days", 0.05),
-    delayMs: readNonNegativeNumberArg("delay-ms", 5000),
+    delayMs: readNonNegativeNumberArg("delay-ms", 15000),
     existingToleranceMinutes: readNumberArg("existing-tolerance-minutes", 90),
     intervalHours: readNumberArg("interval-hours", 1),
-    maxRetries: readNumberArg("max-retries", 5),
+    maxRetries: readNumberArg("max-retries", 3),
     recentOnlyDays: readNumberArg("recent-only-days", 1),
-    retryDelayMs: readNonNegativeNumberArg("retry-delay-ms", 20000),
+    retryDelayMs: readNonNegativeNumberArg("retry-delay-ms", 60000),
     skipExisting: true,
     targetHoursAgo: readNumberArg("target-hours-ago", 1),
   });

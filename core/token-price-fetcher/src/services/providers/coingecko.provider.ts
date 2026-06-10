@@ -1,7 +1,51 @@
 // src/services/providers/coingecko.provider.ts
 import fetch from "node-fetch";
 
-const BASE_URL = "https://api.coingecko.com/api/v3";
+const BASE_URL = process.env.COINGECKO_BASE_URL ?? "https://api.coingecko.com/api/v3";
+const COINGECKO_API_KEY = process.env.COINGECKO_API_KEY ?? process.env.CG_API_KEY;
+const COINGECKO_API_KEY_HEADER =
+  process.env.COINGECKO_API_KEY_HEADER ??
+  (BASE_URL.includes("pro-api") ? "x-cg-pro-api-key" : "x-cg-demo-api-key");
+
+export class CoinGeckoError extends Error {
+  status: number;
+  retryAfterMs?: number;
+
+  constructor(message: string, status: number, retryAfterMs?: number) {
+    super(message);
+    this.name = "CoinGeckoError";
+    this.status = status;
+    this.retryAfterMs = retryAfterMs;
+  }
+}
+
+function parseRetryAfterMs(value: string | null): number | undefined {
+  if (!value) return undefined;
+
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return seconds * 1000;
+  }
+
+  const dateMs = Date.parse(value);
+  if (Number.isFinite(dateMs)) {
+    return Math.max(0, dateMs - Date.now());
+  }
+
+  return undefined;
+}
+
+function buildHeaders() {
+  return COINGECKO_API_KEY ? { [COINGECKO_API_KEY_HEADER]: COINGECKO_API_KEY } : undefined;
+}
+
+function coingeckoError(message: string, res: { status: number; statusText: string; headers: { get(name: string): string | null } }) {
+  return new CoinGeckoError(
+    `${message}: ${res.status} ${res.statusText}`,
+    res.status,
+    parseRetryAfterMs(res.headers.get("retry-after"))
+  );
+}
 
 /**
  * Lấy top coin theo market cap
@@ -14,9 +58,9 @@ export async function fetchTopCoinsByMarketCap(limit = 100) {
     `&per_page=${limit}` +
     `&page=1`;
 
-  const res = await fetch(url);
+  const res = await fetch(url, { headers: buildHeaders() });
   if (!res.ok) {
-    throw new Error(`CoinGecko error: ${res.statusText}`);
+    throw coingeckoError("CoinGecko error", res);
   }
 
   return res.json() as Promise<
@@ -41,9 +85,9 @@ export async function fetchPricesFromCoingecko(ids: string[]) {
     `?ids=${ids.join(",")}` +
     `&vs_currencies=usd`;
 
-  const res = await fetch(url);
+  const res = await fetch(url, { headers: buildHeaders() });
   if (!res.ok) {
-    throw new Error(`CoinGecko error: ${res.statusText}`);
+    throw coingeckoError("CoinGecko error", res);
   }
 
   const data = await res.json();
@@ -72,9 +116,9 @@ export async function fetchMarketChartRangeFromCoingecko(
     `&from=${fromUnixSeconds}` +
     `&to=${toUnixSeconds}`;
 
-  const res = await fetch(url);
+  const res = await fetch(url, { headers: buildHeaders() });
   if (!res.ok) {
-    throw new Error(`CoinGecko market_chart/range error for ${id}: ${res.status} ${res.statusText}`);
+    throw coingeckoError(`CoinGecko market_chart/range error for ${id}`, res);
   }
 
   const data = await res.json() as {

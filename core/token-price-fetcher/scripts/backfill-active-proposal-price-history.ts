@@ -47,12 +47,12 @@ async function main() {
   const result = await TokenPriceService.backfillHistoricalPrices({
     concurrency: readNumberArg("concurrency", 1),
     days,
-    delayMs: readNonNegativeNumberArg("delay-ms", 1500),
+    delayMs: readNonNegativeNumberArg("delay-ms", 15000),
     existingToleranceMinutes: readNumberArg("existing-tolerance-minutes", 90),
     intervalHours: readNumberArg("interval-hours", 1),
     maxRetries: readNumberArg("max-retries", 3),
     recentOnlyDays: days,
-    retryDelayMs: readNonNegativeNumberArg("retry-delay-ms", 10000),
+    retryDelayMs: readNonNegativeNumberArg("retry-delay-ms", 60000),
     skipExisting: hasFlag("skip-existing"),
     targetHoursAgo: readNumberArg("target-hours-ago", 1),
   });

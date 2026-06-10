@@ -15,6 +15,7 @@ export function formatVietnameseDateTime(value?: string | Date | null) {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return 'Chưa có dữ liệu';
   return date.toLocaleString('vi-VN', {
+    timeZone: 'Asia/Ho_Chi_Minh',
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',

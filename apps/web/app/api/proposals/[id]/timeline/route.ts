@@ -8,6 +8,7 @@ import { normalizeAction, normalizeConfidence, normalizePercent } from '@/lib/ut
 export const dynamic = 'force-dynamic';
 
 type AnyRecord = Record<string, any>;
+type MarkerDateSource = 'SIGNAL_DETECTED_AT' | 'BACKTEST_DETECTED_AT' | 'PROPOSAL_CREATED_AT' | 'UNKNOWN';
 
 const ProposalModel = Proposal as unknown as mongoose.Model<AnyRecord>;
 const PriceHistoryModel = tokenPriceHistory as unknown as mongoose.Model<AnyRecord>;
@@ -24,6 +25,19 @@ function markerResult(proposal: AnyRecord, backtest?: AnyRecord | null) {
   if (raw === 'LOSS') return 'Loss';
   if (raw === 'BREAKEVEN') return 'Breakeven';
   return 'Pending';
+}
+
+function resolveMarkerDateValue(proposal: AnyRecord, backtest?: AnyRecord | null): { value: unknown; source: MarkerDateSource } {
+  if (proposal.backtestMeta?.detectedAt) {
+    return { value: proposal.backtestMeta.detectedAt, source: 'SIGNAL_DETECTED_AT' };
+  }
+  if (backtest?.detectedAt) {
+    return { value: backtest.detectedAt, source: 'BACKTEST_DETECTED_AT' };
+  }
+  if (proposal.createdAt) {
+    return { value: proposal.createdAt, source: 'PROPOSAL_CREATED_AT' };
+  }
+  return { value: null, source: 'UNKNOWN' };
 }
 
 type PricePoint = {
@@ -142,12 +156,14 @@ function resolveMarkerPrice(markerDate: Date | null, pricePoints: PricePoint[], 
 
 function markerFromProposal(proposal: AnyRecord, currentId: string, backtest: AnyRecord | null | undefined, pricePoints: PricePoint[], coverage: PriceCoverage) {
   const result = markerResult(proposal, backtest);
-  const markerDateValue = proposal.createdAt ?? proposal.backtestMeta?.detectedAt ?? backtest?.detectedAt ?? null;
-  const markerDate = markerDateValue ? new Date(markerDateValue) : null;
+  const markerDateValue = resolveMarkerDateValue(proposal, backtest);
+  const markerDateRaw = markerDateValue.value;
+  const markerDate = markerDateRaw ? new Date(markerDateRaw as string | number | Date) : null;
   const markerPrice = resolveMarkerPrice(markerDate && Number.isFinite(markerDate.getTime()) ? markerDate : null, pricePoints, coverage);
   return {
     id: proposal._id.toString(),
-    date: markerDateValue,
+    date: markerDateRaw,
+    dateSource: markerDateValue.source,
     action: normalizeAction(proposal.action ?? proposal.suggestionType ?? proposal.type),
     confidence: normalizeConfidence(proposal.confidence),
     quant: numeric(proposal.quantScore ?? proposal.scoreComponents?.finalScore),
@@ -178,8 +194,8 @@ function buildPriceQuery(tokenIds: mongoose.Types.ObjectId[], tokenAddressKeys: 
 }
 
 function markerDateFromProposal(proposal: AnyRecord, backtest?: AnyRecord | null) {
-  const value = proposal.createdAt ?? proposal.backtestMeta?.detectedAt ?? backtest?.detectedAt ?? null;
-  const date = value ? new Date(value) : null;
+  const value = resolveMarkerDateValue(proposal, backtest).value;
+  const date = value ? new Date(value as string | number | Date) : null;
   return date && Number.isFinite(date.getTime()) ? date : null;
 }
 

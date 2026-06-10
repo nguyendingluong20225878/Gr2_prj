@@ -4,7 +4,7 @@ import Link from 'next/link';
 import type React from 'react';
 import { useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { AlertTriangle, ArrowLeft, CheckCircle2, Loader2, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CheckCircle2, HelpCircle, Loader2, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { Layout } from '@/app/components/layout/Layout';
 import { Button } from '@/app/components/ui/button';
@@ -34,7 +34,6 @@ import {
   deriveRecommendationStatus,
   getPortfolioImpactLabel,
   getRecommendationStatusLabel,
-  hasMissingDecisionData,
   hasVerificationResult,
   type PortfolioImpact,
   type RecommendationStatus,
@@ -137,13 +136,13 @@ export default function ProposalDetailPage() {
               onReject={() => submitDecision('REJECT')}
             />
 
-            <DecisionSupportSection data={data} dataStatus={dataStatus} />
-
             <RationaleSection
               data={data}
               expanded={showFullRationale}
               onToggle={() => setShowFullRationale((value) => !value)}
             />
+
+            <DecisionSupportSection data={data} />
 
             <section className="glass-card rounded-xl border border-white/5 bg-black/20 p-5">
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -232,21 +231,19 @@ function DecisionHeader({
   const [signalScoreDrawerOpen, setSignalScoreDrawerOpen] = useState(false);
   const completed = hasVerificationResult(data);
   const expired = isExpired(data.expiresAt);
-  const missingData = hasMissingDecisionData(data) || dataStatus.some((item) => item.includes('Thiếu') || item.includes('Chưa có giá'));
   const executed = status === 'EXECUTED';
   const actionable = !completed && !expired && !executed;
-  const canPrepareTrade = actionable && !missingData && !executed;
+  const canPrepareTrade = actionable && !executed;
   const canWatchData = actionable && !executed;
   const signalScore = data.quantScore ?? data.scoreComponents?.finalScore ?? null;
+  const observedAt = getProposalObservedAt(data);
   const disabledReason = expired
     ? 'Tín hiệu đã hết hiệu lực. Không nên xem đây là cơ hội hành động mới.'
     : executed
       ? 'Khuyến nghị đã được thực hiện, không mở thêm luồng giao dịch mới từ màn này.'
-      : completed
+    : completed
       ? 'Khuyến nghị đã có kết quả kiểm chứng, chỉ nên dùng để tham khảo.'
-      : missingData
-        ? 'Thiếu dữ liệu giá, nguồn hoặc lịch sử. Hãy kiểm tra trước khi giao dịch.'
-        : null;
+      : null;
 
   return (
     <section className="glass-card rounded-xl border border-white/5 bg-black/20 p-5">
@@ -270,7 +267,7 @@ function DecisionHeader({
               {toDisplayAction(data.action ?? data.suggestionType)}
             </Badge>
             <PortfolioImpactBadge impact={portfolioImpact} />
-            <StatusBadge status={status} />
+            {status !== 'MISSING_DATA' ? <StatusBadge status={status} /> : null}
             {isWatched ? <Badge className="border-cyan-500/30 bg-cyan-500/10 text-cyan-300" variant="outline">Đã theo dõi</Badge> : null}
             {!completed ? <CountdownBadge value={data.expiresAt} /> : null}
           </div>
@@ -286,7 +283,7 @@ function DecisionHeader({
             <Mini label="Rủi ro" value={toDisplayRisk(data.financialImpact?.riskLevel)} />
             <Mini label="Thời hạn" value={formatExpiry(data.expiresAt)} />
             <Mini label="Ảnh hưởng danh mục" value={getPortfolioImpactLabel(portfolioImpact)} />
-            <Mini label="Tạo" value={formatVietnameseDateTime(data.createdAt)} />
+            <Mini label="Ghi nhận tín hiệu" value={formatVietnameseDateTime(observedAt)} />
             <Mini label="Cập nhật" value={formatVietnameseDateTime(data.updatedAt ?? data.createdAt)} />
           </div>
           {disabledReason ? (
@@ -295,13 +292,6 @@ function DecisionHeader({
               <span>{disabledReason}</span>
             </div>
           ) : null}
-          <div className="mt-4 flex flex-wrap gap-2">
-            {dataStatus.map((status) => (
-              <Badge key={status} variant="outline" className="border-white/10 bg-white/5 text-slate-300">
-                {status}
-              </Badge>
-            ))}
-          </div>
         </div>
         <div className="flex flex-wrap gap-2 xl:max-w-xs xl:justify-end">
           {canWatchData ? (
@@ -351,19 +341,133 @@ function DecisionHeader({
 }
 
 function StatWithHelp({ href, onClick, value }: { href?: string; onClick?: () => void; value: React.ReactNode }) {
+  const className = 'inline-flex h-6 items-center gap-1 rounded-full border border-cyan-500/25 bg-cyan-500/10 px-2 text-[11px] font-semibold text-cyan-200 transition-colors hover:border-cyan-400/50 hover:bg-cyan-500/15 hover:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500';
+
   return (
-    <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-      <span>{value}</span>
+    <span className="inline-flex min-w-0 flex-wrap items-center gap-2">
+      <span className="min-w-0">{value}</span>
       {onClick ? (
-        <button type="button" onClick={onClick} className="text-xs font-semibold text-cyan-300 hover:text-cyan-200 focus:outline-none focus:ring-2 focus:ring-cyan-500">
-          Cách tính
+        <button type="button" onClick={onClick} className={className} title="Xem cách tính">
+          <HelpCircle className="h-3.5 w-3.5" />
+          Giải thích
         </button>
       ) : href ? (
-        <Link href={href} className="text-xs font-semibold text-cyan-300 hover:text-cyan-200">
-          Cách tính
+        <Link href={href} className={className} title="Xem cách tính">
+          <HelpCircle className="h-3.5 w-3.5" />
+          Giải thích
         </Link>
       ) : null}
     </span>
+  );
+}
+
+function clampScore(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function normalizeConfidencePercent(value?: number | null) {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) return null;
+  const numericValue = Number(value);
+  return clampScore(numericValue <= 1 ? numericValue * 100 : numericValue, 0, 100);
+}
+
+function getConfidenceTone(value: number | null) {
+  if (value === null) return {
+    bar: 'bg-slate-500',
+    border: 'border-slate-500/20',
+    label: 'Chưa có dữ liệu',
+    text: 'text-slate-300',
+    track: 'bg-slate-500/10',
+  };
+  if (value < 50) return {
+    bar: 'bg-red-400',
+    border: 'border-red-500/25',
+    label: 'Thấp',
+    text: 'text-red-200',
+    track: 'bg-red-500/10',
+  };
+  if (value < 75) return {
+    bar: 'bg-amber-300',
+    border: 'border-amber-500/25',
+    label: 'Cần kiểm tra',
+    text: 'text-amber-100',
+    track: 'bg-amber-500/10',
+  };
+  return {
+    bar: 'bg-green-300',
+    border: 'border-green-500/25',
+    label: 'Mạnh',
+    text: 'text-green-100',
+    track: 'bg-green-500/10',
+  };
+}
+
+function ConfidenceMeter({ value }: { value?: number | null }) {
+  const percent = normalizeConfidencePercent(value);
+  const tone = getConfidenceTone(percent);
+
+  return (
+    <div className={`rounded-lg border ${tone.border} bg-black/30 p-4`}>
+      <div className="flex items-end justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Confidence</p>
+          <p className={`mt-1 text-3xl font-black ${tone.text}`}>{percent === null ? 'N/A' : `${formatNumber(percent, 0)}%`}</p>
+        </div>
+        <span className={`rounded-full px-2 py-1 text-xs font-semibold ${tone.track} ${tone.text}`}>{tone.label}</span>
+      </div>
+      <div className={`mt-4 h-2 rounded-full ${tone.track}`}>
+        <div className={`h-full rounded-full ${tone.bar}`} style={{ width: `${percent ?? 0}%` }} />
+      </div>
+      <div className="mt-2 flex justify-between text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+        <span>&lt;50</span>
+        <span>50-75</span>
+        <span>&gt;75</span>
+      </div>
+      <p className="mt-3 text-sm leading-6 text-slate-400">
+        Chỉ số này đo mức đáng tin của luận điểm sau khi xét độ mạnh tín hiệu, cỡ mẫu, nguồn và dữ liệu thiếu. Đây không phải xác suất chắc chắn có lời.
+      </p>
+    </div>
+  );
+}
+
+function getQuantLabel(score: number | null) {
+  if (score === null) return { label: 'Chưa có dữ liệu', text: 'text-slate-300' };
+  if (score > 1) return { label: 'Nghiêng bullish', text: 'text-green-200' };
+  if (score < -1) return { label: 'Nghiêng bearish', text: 'text-red-200' };
+  return { label: 'Gần trung lập', text: 'text-slate-300' };
+}
+
+function QuantGauge({ value }: { value?: number | null }) {
+  const score = value === null || value === undefined || !Number.isFinite(Number(value)) ? null : Number(value);
+  const clamped = score === null ? 0 : clampScore(score, -3, 3);
+  const markerLeft = ((clamped + 3) / 6) * 100;
+  const tone = getQuantLabel(score);
+
+  return (
+    <div className="rounded-lg border border-white/10 bg-black/30 p-4">
+      <div className="flex items-end justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Quant Z-Score</p>
+          <p className={`mt-1 text-3xl font-black ${tone.text}`}>{score === null ? 'N/A' : formatNumber(score, 2)}</p>
+        </div>
+        <span className={`rounded-full border border-white/10 bg-white/5 px-2 py-1 text-xs font-semibold ${tone.text}`}>{tone.label}</span>
+      </div>
+      <div className="relative mt-5 h-3 rounded-full bg-gradient-to-r from-red-500/80 via-slate-500/40 to-green-400/80">
+        <div className="absolute left-1/2 top-1/2 h-7 w-px -translate-y-1/2 bg-white/60" />
+        <div
+          className="absolute top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-slate-950 shadow-lg shadow-black/40"
+          style={{ left: `${markerLeft}%` }}
+        />
+      </div>
+      <div className="mt-2 grid grid-cols-3 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+        <span>Bearish</span>
+        <span className="text-center">0</span>
+        <span className="text-right">Bullish</span>
+      </div>
+      <p className="mt-3 text-sm leading-6 text-slate-400">
+        Điểm dương cho thấy tín hiệu nổi bật theo hướng bullish; điểm âm nghiêng bearish. Gauge được kẹp trong vùng -3 đến +3 để tránh một outlier làm méo hiển thị.
+      </p>
+    </div>
   );
 }
 
@@ -416,6 +520,7 @@ function ConfidenceExplanationDrawer({
               Chưa đủ dữ liệu để giải thích độ tin cậy. NDL vẫn dùng dữ liệu khuyến nghị hiện có để hiển thị phần tóm tắt.
             </p>
           ) : null}
+          <ConfidenceMeter value={confidence} />
           {missingItems.length ? (
             <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 p-3 text-sm text-amber-100">
               <p className="font-semibold">Có dữ liệu cần kiểm tra thêm</p>
@@ -496,7 +601,7 @@ function getSourceQualityItems(data: ProposalData, explanation?: ScoreExplanatio
 }
 
 function getFreshnessItems(data: ProposalData, dataStatus: string[], explanation?: ScoreExplanationData) {
-  const items = [`Cập nhật: ${formatVietnameseDateTime(data.createdAt)}.`];
+  const items = [`Ghi nhận tín hiệu: ${formatVietnameseDateTime(getProposalObservedAt(data))}.`];
   if (data.expiresAt) items.push(`Thời hạn: ${formatExpiry(data.expiresAt)}.`);
   if (explanation?.missingData?.length || dataStatus.some((item) => item.includes('Thiếu') || item.includes('Chưa'))) {
     items.push('Một phần dữ liệu còn thiếu hoặc cần kiểm tra lại trước khi giao dịch.');
@@ -604,6 +709,7 @@ function SignalScoreExplanationDrawer({
               Chưa đủ dữ liệu để giải thích điểm tín hiệu.
             </p>
           ) : null}
+          <QuantGauge value={finalScore} />
           {missingItems.length ? (
             <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 p-3 text-sm text-amber-100">
               <p className="font-semibold">Dữ liệu cần bổ sung</p>
@@ -676,7 +782,7 @@ function getTimingItems(data: ProposalData, explanation?: ScoreExplanationData) 
   if (timeZ !== null && timeZ !== undefined) {
     items.push(`Yếu tố thời điểm: ${formatNumber(Number(timeZ), 2)}.`);
   }
-  if (data.createdAt) items.push(`Tín hiệu được ghi nhận: ${formatVietnameseDateTime(data.createdAt)}.`);
+  if (getProposalObservedAt(data)) items.push(`Tín hiệu được ghi nhận: ${formatVietnameseDateTime(getProposalObservedAt(data))}.`);
   if (factor) items.push(factor);
   return items;
 }
@@ -731,7 +837,7 @@ function getFactorByKeywords(explanation: ScoreExplanationData | undefined, keyw
   });
 }
 
-function DecisionSupportSection({ data, dataStatus }: { data: ProposalData; dataStatus: string[] }) {
+function DecisionSupportSection({ data }: { data: ProposalData }) {
   const currentPrice = data.financialImpact?.currentPrice ?? data.financialImpact?.currentValue;
   const targetValue = data.financialImpact?.targetPrice ?? data.financialImpact?.projectedValue;
   const roi = normalizePercentValue(data.pnlPercentage ?? data.financialImpact?.roi);
@@ -742,16 +848,19 @@ function DecisionSupportSection({ data, dataStatus }: { data: ProposalData; data
   return (
     <section className="glass-card rounded-xl border border-white/5 bg-black/20 p-5">
       <div className="mb-4">
-        <p className="text-xs font-bold uppercase tracking-widest text-cyan-300">Hỗ trợ quyết định</p>
-        <h2 className="mt-1 text-lg font-bold text-white">Các số cần kiểm tra trước khi hành động</h2>
+        <p className="text-xs font-bold uppercase tracking-widest text-cyan-300">Dữ liệu xem xét</p>
+        <h2 className="mt-1 text-lg font-bold text-white">Snapshot trước khi quyết định</h2>
+        <p className="mt-1 text-sm leading-6 text-slate-400">
+          Các số dưới đây là dữ liệu tham khảo tại thời điểm xem. Kết quả kiểm chứng cuối cùng được cập nhật sau mốc 24h hoặc khi khuyến nghị hết hiệu lực.
+        </p>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        <Mini label="Giá hiện tại" value={formatCurrency(currentPrice)} />
-        <Mini label="Giá vào gợi ý" value={formatCurrency(data.entryPrice ?? data.financialImpact?.currentPrice)} />
-        <Mini label="Mục tiêu" value={formatCurrency(targetValue)} />
-        <Mini label="Cắt lỗ" value="Chưa có dữ liệu" />
-        <Mini label="PnL/ROI dự kiến" value={projectedReturn} />
-        <Mini label="Chất lượng dữ liệu" value={dataStatus.join(' · ')} />
+        <Mini label="Giá tham chiếu hiện tại" value={formatCurrency(currentPrice)} />
+        <Mini label="Giá vào đề xuất" value={formatCurrency(data.entryPrice ?? data.financialImpact?.currentPrice)} />
+        <Mini label="Mục tiêu / giá kỳ vọng" value={formatCurrency(targetValue)} />
+        <Mini label="PnL/ROI kỳ vọng" value={projectedReturn} />
+        <Mini label="Rủi ro" value={toDisplayRisk(data.financialImpact?.riskLevel)} />
+        <Mini label="Mốc kiểm chứng 24h" value={formatVietnameseDateTime(data.expiresAt)} />
       </div>
     </section>
   );
@@ -765,8 +874,7 @@ function RationaleSection({ data, expanded, onToggle }: { data: ProposalData; ex
 
   return (
     <section className="glass-card rounded-xl border border-cyan-500/15 bg-cyan-950/10 p-5">
-      <p className="text-xs font-bold uppercase tracking-widest text-cyan-300">Luận điểm</p>
-      <h2 className="mt-1 text-xl font-bold text-white">Vì sao khuyến nghị này đáng đọc?</h2>
+      <p className="text-xs font-bold uppercase tracking-widest text-cyan-300">Giải thích lí do</p>
       <p className={`mt-4 text-sm leading-6 text-slate-200 ${expanded ? 'whitespace-pre-line' : 'line-clamp-5'}`}>{rationale}</p>
       {bullets.length > 1 ? (
         <ul className="mt-4 space-y-2 text-sm text-slate-300">
@@ -872,7 +980,7 @@ function KeyInformation({ data, dataStatus }: { data: ProposalData; dataStatus: 
       <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         <Mini label="Giá hiện tại" value={formatCurrency(currentPrice)} />
         <Mini label="Mục tiêu dự kiến" value={formatCurrency(targetValue)} />
-        <Mini label="Kết quả kiểm chứng" value={data.roiStatus === 'NOT_AVAILABLE' || roi === null ? 'Chưa kiểm chứng' : formatPercent(roi)} />
+        <Mini label="Kết quả kiểm chứng" value={data.roiStatus === 'NOT_AVAILABLE' || roi === null ? 'Đang chờ kiểm chứng sau 24h' : formatPercent(roi)} />
         <Mini label="Rủi ro" value={toDisplayRisk(data.financialImpact?.riskLevel)} />
         <Mini label="Chất lượng dữ liệu" value={dataStatus.join(' · ')} />
         <Mini label="Thời hạn" value={formatVietnameseDateTime(data.expiresAt)} />
@@ -933,7 +1041,6 @@ function Legend() {
       <span className="flex items-center gap-1"><i className="h-2.5 w-2.5 rounded-full border-2 border-green-500" /> Win</span>
       <span className="flex items-center gap-1"><i className="h-2.5 w-2.5 rounded-full border-2 border-red-500" /> Loss</span>
       <span className="flex items-center gap-1"><i className="h-2.5 w-2.5 rounded-full border-2 border-amber-500" /> Hòa vốn</span>
-      <span className="flex items-center gap-1"><i className="h-2.5 w-2.5 rounded-full border border-slate-500 opacity-50" /> Dữ liệu hạn chế</span>
     </div>
   );
 }
@@ -987,12 +1094,15 @@ function getSystemBadge(data?: { activeConfig?: { status?: string; metrics?: Rec
 
 function getDataStatus(data: ProposalData, timelineMissing: string[] = []) {
   const missing = new Set<string>();
-  if (!data.pnlPercentage && data.pnlPercentage !== 0) missing.add('Chưa kiểm chứng');
   if (!data.sources?.length) missing.add('Chưa có nguồn liên kết');
-  if (!data.financialImpact?.currentPrice && !data.financialImpact?.currentValue) missing.add('Chưa có giá token');
+  if (!data.financialImpact?.currentPrice && !data.financialImpact?.currentValue) missing.add('Giá tham chiếu chưa sẵn sàng');
   if (timelineMissing.includes('priceHistory')) missing.add('Thiếu lịch sử giá');
   if (!missing.size) return ['Dữ liệu đủ để đọc nhanh'];
   return Array.from(missing);
+}
+
+function getProposalObservedAt(data: ProposalData) {
+  return data.backtestMeta?.detectedAt ?? data.createdAt;
 }
 
 function confidenceLevel(value?: number | null) {
