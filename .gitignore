@@ -24,7 +24,7 @@ lerna-debug.log*
 # --- Build Outputs (TypeScript & Packages) ---
 dist/
 build/
-lib/
+/lib/
 *.tsbuildinfo
 
 # --- Next.js (apps/web) ---
