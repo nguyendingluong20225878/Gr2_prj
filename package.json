@@ -32,7 +32,8 @@
     "demo:backtest": "npm run backtest:outcome",
     "demo:prepare-data": "npm run demo:backfill-prices && npm run backtest:outcome",
     "lint": "turbo run lint",
-    "test": "turbo run test"
+    "test": "turbo run test",
+    "pipeline:core": "npm run scraper && npm run news && npm run backtest:outcome && npm run metrics && npm run regime && npm run weights && npm run signal && npm --workspace @gr2/proposal-generator run layer3"
   },
   "keywords": [],
   "author": "",
