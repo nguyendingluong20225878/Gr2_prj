@@ -245,35 +245,43 @@ function buildConfidenceBreakdown(signal: any) {
 
   if (Number.isFinite(finalScore) && Math.abs(finalScore) >= 1.5) {
     breakdown.push({
-      label: finalScore > 0 ? 'Strong positive alpha' : 'Strong negative alpha',
+      label: finalScore > 0
+        ? 'Tín hiệu tăng đủ mạnh so với dữ liệu so sánh'
+        : 'Tín hiệu giảm đủ mạnh so với dữ liệu so sánh',
       impact: 'positive',
     });
   }
 
   if (Number.isFinite(components.timeZ)) {
     breakdown.push({
-      label: `Time-Z ${Number(components.timeZ).toFixed(2)}`,
+      label: Math.abs(Number(components.timeZ)) >= 1
+        ? 'Tín hiệu nổi bật so với bối cảnh thời gian gần đây'
+        : 'Tín hiệu chưa nổi bật rõ theo bối cảnh thời gian',
       impact: Math.abs(Number(components.timeZ)) >= 1 ? 'positive' : 'neutral',
     });
   }
 
   if (Number.isFinite(sampleSize)) {
     breakdown.push({
-      label: `${sampleSize} evidence item${sampleSize === 1 ? '' : 's'}`,
+      label: sampleSize >= 3
+        ? 'Có nhiều nguồn dữ liệu cùng hỗ trợ tín hiệu'
+        : 'Nguồn dữ liệu còn mỏng nên cần đọc thận trọng',
       impact: sampleSize >= 3 ? 'positive' : 'negative',
     });
   }
 
   if (Number.isFinite(entropy)) {
     breakdown.push({
-      label: `Entropy ${Number(entropy).toFixed(2)}`,
+      label: Number(entropy) > 0.82
+        ? 'Mức đồng thuận giữa các nguồn còn thấp'
+        : 'Mức đồng thuận giữa các nguồn chưa phát hiện bất thường lớn',
       impact: Number(entropy) > 0.82 ? 'negative' : 'neutral',
     });
   }
 
   if (signal.metadata?.signalMode === 'COLD_START') {
     breakdown.push({
-      label: 'Cold-start confidence cap',
+      label: 'Token còn ít lịch sử nên confidence bị giới hạn thận trọng',
       impact: 'negative',
     });
   }

@@ -1,0 +1,76 @@
+flowchart TD
+    home["/ wallet login"]
+    onboarding["/onboarding"]
+    shell["Authenticated layout with navbar"]
+    overview["/overview"]
+    portfolio["/portfolio"]
+    diagnostics["/diagnostics"]
+    recommendations["/recommendations"]
+    opportunities["/opportunities"]
+    opportunityDetail["/opportunities/:id"]
+    watchlist["/watchlist"]
+    positions["/positions"]
+    positionDetail["/positions/:id"]
+    alerts["/alerts"]
+    profile["/profile"]
+    signals["/signals"]
+    dailySignals["/signals/daily"]
+    signalDetail["/signals/:id"]
+    signalExplanation["/signals/:id/explanation"]
+    proposalDetail["/proposal/:id"]
+    proposalExplanation["/proposal/:id/explanation"]
+    proposalQuant["/proposal/:id/explanation/quant"]
+    proposalConfidence["/proposal/:id/explanation/confidence"]
+    proposalScenario["/proposal/:id/scenario"]
+    proposalTrade["/proposal/:id/trade"]
+    tokenDetail["/tokens/:symbol"]
+    modelHealth["/model-health"]
+    dataCheck["/data-check"]
+
+    home --> onboarding
+    home --> shell
+    onboarding --> shell
+    shell --> overview
+    shell --> portfolio
+    shell --> diagnostics
+    shell --> recommendations
+    shell --> opportunities
+    shell --> watchlist
+    shell --> positions
+    shell --> alerts
+    shell --> profile
+    shell --> signals
+    shell --> modelHealth
+    shell --> dataCheck
+
+    overview --> proposalDetail
+    overview --> signalDetail
+    overview --> tokenDetail
+    portfolio --> positionDetail
+    portfolio --> proposalDetail
+    recommendations --> proposalDetail
+    opportunities --> opportunityDetail
+    opportunities --> proposalDetail
+    watchlist --> proposalDetail
+    positions --> positionDetail
+    signals --> dailySignals
+    signals --> signalDetail
+    signalDetail --> signalExplanation
+    signalDetail --> proposalDetail
+    proposalDetail --> proposalExplanation
+    proposalDetail --> proposalScenario
+    proposalDetail --> proposalTrade
+    proposalExplanation --> proposalQuant
+    proposalExplanation --> proposalConfidence
+    proposalScenario --> proposalTrade
+    proposalTrade --> positions
+
+    loading["Important UI state: loading skeleton or spinner"]
+    empty["Important UI state: empty list"]
+    error["Important UI state: API error toast or fallback"]
+    unauth["Important UI state: unauthenticated redirect"]
+
+    shell --> loading
+    shell --> empty
+    shell --> error
+    shell --> unauth --> home

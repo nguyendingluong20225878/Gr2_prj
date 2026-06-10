@@ -10,6 +10,8 @@ const signalSchema = new Schema({
     tokenAddress: { type: String, required: true, index: true },
     signalKey: { type: String, required: false },
     detectedAt: { type: Date, default: Date.now, required: true },
+    batchId: { type: String, required: false, index: true },
+    batchStartedAt: { type: Date, required: false, index: true },
     sources: {
         type: [
             {

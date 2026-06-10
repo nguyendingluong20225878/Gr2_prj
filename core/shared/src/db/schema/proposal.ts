@@ -3,6 +3,7 @@ import mongoose, { HydratedDocument, Model, Schema, Types, model } from "mongoos
 
 export type ProposalExecutionStatus = "PENDING" | "EXECUTED" | "IGNORED";
 export type ProposalWinLossStatus = "WIN" | "LOSS" | "BREAKEVEN" | "SKIPPED";
+export type ProposalLifecycleStatus = "ACTIVE" | "EXPIRED" | "OVERRIDDEN";
 
 export interface ProposalSource {
     label: string;
@@ -17,6 +18,12 @@ export interface Proposal {
     sentimentType: string;
     quantScore: number;
     confidence: number;
+    batchId?: string | null;
+    batchStartedAt?: Date | null;
+    lifecycleStatus?: ProposalLifecycleStatus;
+    overriddenAt?: Date | null;
+    overriddenByProposalId?: Types.ObjectId | null;
+    expiredAt?: Date | null;
     volatilityFlag?: number | null;
     uncertaintyEntropy?: number | null;
     realizedVolatility?: number | null;
@@ -99,6 +106,17 @@ const proposalSchema = new Schema<Proposal>({
     sentimentType: { type: String, required: true },
     quantScore: { type: Number, required: true }, 
     confidence: { type: Number, required: true },
+    batchId: { type: String, default: null, index: true },
+    batchStartedAt: { type: Date, default: null, index: true },
+    lifecycleStatus: {
+        type: String,
+        enum: ["ACTIVE", "EXPIRED", "OVERRIDDEN"],
+        default: "ACTIVE",
+        index: true,
+    },
+    overriddenAt: { type: Date, default: null },
+    overriddenByProposalId: { type: Schema.Types.ObjectId, ref: "Proposal", default: null },
+    expiredAt: { type: Date, default: null },
     volatilityFlag: { type: Number, default: null },
     uncertaintyEntropy: { type: Number, default: null },
     realizedVolatility: { type: Number, default: null },
@@ -183,6 +201,13 @@ const proposalSchema = new Schema<Proposal>({
 proposalSchema.index(
     { signalId: 1, createdAt: -1, _id: -1 },
     { partialFilterExpression: { signalId: { $exists: true } } }
+);
+proposalSchema.index(
+    { tokenSymbol: 1 },
+    {
+        unique: true,
+        partialFilterExpression: { lifecycleStatus: "ACTIVE" },
+    }
 );
 
 export const proposalsTable: Model<Proposal> =

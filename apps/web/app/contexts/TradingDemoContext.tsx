@@ -332,7 +332,7 @@ export function TradingDemoProvider({ children }: { children: ReactNode }) {
       if (input.riskLevel === 'HIGH' || stressRoi < -1 || input.stopLossPct !== undefined) {
         setAlerts((current) => [{
           createdAt: filledAt,
-          detail: `${input.tokenSymbol} demo position requires review. Risk ${input.riskLevel}, projected ROI ${stressRoi.toFixed(2)}%, max loss ${input.maxLossUsd ? `$${input.maxLossUsd.toFixed(2)}` : 'N/A'}.`,
+          detail: `${input.tokenSymbol} demo position requires review. Risk ${input.riskLevel}, projected ROI ${stressRoi.toFixed(2)}%, max loss ${input.maxLossUsd ? `$${input.maxLossUsd.toFixed(2)}` : 'Chưa có dữ liệu'}.`,
           id: createId('alert'),
           positionId: position._id,
           proposalId: input.proposalId,

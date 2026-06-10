@@ -14,6 +14,7 @@
     "dev:phase2": "node scripts/run-concurrent.mjs \"npm run scraper\" \"npm run metrics\" \"npm run weights\" \"npm run signal\"",
     "pipeline:batch": "npm run scraper && npm run news && npm run prices:backfill:1d && npm run backtest:outcome && npm run metrics && npm run regime && npm run weights && npm run signal && npm --workspace @gr2/proposal-generator run layer3",
     "pipeline": "npm --workspace @gr2/run run dev",
+    "pipeline:scheduler": "npm --workspace @gr2/run run dev:scheduler",
     "build": "turbo run build",
     "scraper": "npm --workspace x-scaper run scraper",
     "news": "npm --workspace @gr2/news-scraper run scraper",

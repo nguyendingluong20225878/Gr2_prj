@@ -1,13 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Bell, Clock, Database, ShieldAlert } from 'lucide-react';
 import { Layout } from '@/app/components/layout/Layout';
 import { Button } from '@/app/components/ui/button';
-import { DataSkeleton, EmptyState, PageHeader } from '@/app/components/shared/NdlUi';
+import { DataSkeleton, EmptyState, getMissingPriceReasonLabel, PageHeader } from '@/app/components/shared/NdlUi';
 import { useNdlData } from '@/lib/hooks/useNdlData';
-import { getMockAlerts, type MockAlert } from '@/services/mockApi';
 import { getHoldingSymbolSet } from '@/lib/utils/proposals';
 import { formatExpiry, isExpiringSoon } from '@/lib/utils/time';
 
@@ -22,15 +21,11 @@ type AlertItem = {
   href: string;
   ctaLabel: string;
   expiresAt?: string;
+  detail?: string;
 };
 
 export default function AlertsPage() {
   const { portfolio, proposals, signals } = useNdlData();
-  const [mockAlerts, setMockAlerts] = useState<MockAlert[]>([]);
-
-  useEffect(() => {
-    void getMockAlerts().then(setMockAlerts);
-  }, []);
 
   const alerts = useMemo<AlertItem[]>(() => {
     const heldSymbols = getHoldingSymbolSet(portfolio.data?.holdings ?? []);
@@ -38,7 +33,7 @@ export default function AlertsPage() {
       .filter((signal) => isExpiringSoon(signal.expiresAt, 6 * 60 * 60 * 1000))
       .map((signal) => ({
         id: `signal-${signal._id}`,
-        title: `Signal ${signal.tokenSymbol ?? 'TOKEN'} sắp hết hạn`,
+        title: `Signal ${signal.tokenSymbol ?? 'Token chưa định danh'} sắp hết hạn`,
         tokenSymbol: signal.tokenSymbol,
         type: 'SIGNAL_EXPIRING' as const,
         level: 'critical' as const,
@@ -51,7 +46,7 @@ export default function AlertsPage() {
       .filter((proposal) => isExpiringSoon(proposal.expiresAt, 6 * 60 * 60 * 1000))
       .map((proposal) => ({
         id: `proposal-${proposal._id}`,
-        title: `Proposal ${proposal.tokenSymbol ?? 'TOKEN'} sắp hết hạn`,
+        title: `Khuyến nghị ${proposal.tokenSymbol ?? 'Token chưa định danh'} sắp hết hạn`,
         tokenSymbol: proposal.tokenSymbol,
         type: 'PROPOSAL_EXPIRING' as const,
         level: 'critical' as const,
@@ -64,7 +59,7 @@ export default function AlertsPage() {
       .filter((proposal) => String(proposal.financialImpact?.riskLevel ?? '').toUpperCase() === 'HIGH')
       .map((proposal) => ({
         id: `risk-${proposal._id}`,
-        title: `${proposal.tokenSymbol ?? 'TOKEN'} có rủi ro cao`,
+        title: `${proposal.tokenSymbol ?? 'Token chưa định danh'} có rủi ro cao`,
         tokenSymbol: proposal.tokenSymbol,
         type: 'RISK' as const,
         level: heldSymbols.has(String(proposal.tokenSymbol ?? '').toUpperCase()) ? 'critical' as const : 'warning' as const,
@@ -77,27 +72,17 @@ export default function AlertsPage() {
       .filter((holding) => holding.dataQuality === 'MISSING_PRICE')
       .map((holding) => ({
         id: `data-${holding.symbol}`,
-        title: `${holding.symbol} thiếu dữ liệu giá`,
+        title: `${holding.symbol} ${getMissingPriceReasonLabel(holding.missingReason).toLowerCase()}`,
         tokenSymbol: holding.symbol,
         type: 'DATA' as const,
         level: 'warning' as const,
         href: '/data-check',
         ctaLabel: 'Kiểm tra dữ liệu',
+        detail: getMissingPriceReasonLabel(holding.missingReason),
       }));
 
-    const entryAlerts = mockAlerts.map((alert) => ({
-      id: alert.id,
-      title: alert.title,
-      tokenSymbol: alert.tokenSymbol,
-      type: 'ENTRY_ZONE' as const,
-      level: 'info' as const,
-      href: '/watchlist',
-      ctaLabel: 'Mở watchlist',
-      expiresAt: alert.expiresAt,
-    }));
-
-    return dedupeAlertsByToken([...proposalAlerts, ...signalAlerts, ...riskAlerts, ...dataAlerts, ...entryAlerts]);
-  }, [mockAlerts, portfolio.data?.holdings, proposals.data, signals.data]);
+    return dedupeAlertsByToken([...proposalAlerts, ...signalAlerts, ...riskAlerts, ...dataAlerts]);
+  }, [portfolio.data?.holdings, proposals.data, signals.data]);
   const groupedAlerts = {
     critical: alerts.filter((alert) => alert.level === 'critical'),
     warning: alerts.filter((alert) => alert.level === 'warning'),
@@ -156,7 +141,7 @@ function AlertGroup({ title, alerts, empty }: { title: string; alerts: AlertItem
                   <span className="text-xs font-bold uppercase tracking-widest text-slate-500">{labelFor(alert.type)}</span>
                 </div>
                 <h3 className="mt-3 font-bold text-white">{alert.title}</h3>
-                <p className="mt-1 text-sm text-slate-500">{alert.tokenSymbol ?? 'N/A'}</p>
+                <p className="mt-1 text-sm text-slate-500">{alert.detail ?? alert.tokenSymbol ?? 'Chưa có token liên kết'}</p>
               </div>
               <span className="text-sm font-bold text-cyan-300">{alert.ctaLabel}</span>
             </div>
@@ -193,7 +178,7 @@ function iconFor(type: AlertItem['type']) {
 function labelFor(type: AlertItem['type']) {
   if (type === 'ENTRY_ZONE') return 'Entry zone';
   if (type === 'SIGNAL_EXPIRING') return 'Signal sắp hết hạn';
-  if (type === 'PROPOSAL_EXPIRING') return 'Proposal sắp hết hạn';
+  if (type === 'PROPOSAL_EXPIRING') return 'Khuyến nghị sắp hết hạn';
   if (type === 'DATA') return 'Dữ liệu giá';
   return 'Risk alert';
 }

@@ -4,8 +4,10 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "tsx --env-file=.env src/index.ts",
+    "dev": "tsx --env-file=.env src/index.ts --once",
+    "dev:scheduler": "tsx --env-file=.env src/index.ts --scheduler",
     "start": "node dist/index.js",
+    "start:scheduler": "node dist/index.js --scheduler",
     "metrics": "tsx ../research/jobs/run-rolling-metrics.ts",
     "weights": "tsx ../research/jobs/run-dynamic-weight.ts",
     "backtest": "tsx ../research/jobs/run-backtest.ts",

@@ -4,6 +4,10 @@ import { QuantSignalResponse } from "./types.js";
 export function mapQuantToMongoInsert(resp: QuantSignalResponse) {
   const detectedAt = new Date();
   const expiresAt = new Date(detectedAt.getTime() + 7 * 24 * 60 * 60 * 1000); // Tín hiệu sống 7 ngày
+  const batchStartedAt = process.env.PIPELINE_STARTED_AT
+    ? new Date(process.env.PIPELINE_STARTED_AT)
+    : detectedAt;
+  const batchId = process.env.PIPELINE_RUN_ID || process.env.BATCH_ID || batchStartedAt.toISOString();
 
   // Map Token 
   const tokenSymbol = resp.tokenSymbol || "UNKNOWN";
@@ -16,6 +20,8 @@ export function mapQuantToMongoInsert(resp: QuantSignalResponse) {
     signalDetected: true,
     detectedAt,
     expiresAt,
+    batchId,
+    batchStartedAt,
 
     // Điểm số đặc trưng của V3
     quantScore: resp.quantScore || 0,

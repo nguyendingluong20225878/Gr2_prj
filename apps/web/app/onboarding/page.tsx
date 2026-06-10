@@ -4,33 +4,48 @@ import { useEffect, useState } from 'react';
 import type React from 'react';
 import { useRouter } from 'next/navigation';
 import { useWallet } from '@solana/wallet-adapter-react';
-import { ArrowRight, Loader2, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
-import { Button } from '@/app/components/ui/button';
 import { useAuth } from '@/app/contexts/AuthContext';
+import { CompleteStep } from './components/CompleteStep';
+import { ProfileStep, type OnboardingFormData } from './components/ProfileStep';
+import { WalletSummaryStep } from './components/WalletSummaryStep';
+
+type OnboardingStep = 'wallet' | 'profile' | 'complete';
+
+const stepOrder: OnboardingStep[] = ['wallet', 'profile', 'complete'];
+const stepLabels: Record<OnboardingStep, string> = {
+  wallet: 'Ví',
+  profile: 'Hồ sơ',
+  complete: 'Hoàn tất',
+};
 
 export default function OnboardingPage() {
   const router = useRouter();
   const { publicKey, connected } = useWallet();
   const { setUser } = useAuth();
+  const [currentStep, setCurrentStep] = useState<OnboardingStep>('wallet');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<OnboardingFormData>({
     name: '',
     email: '',
     age: '',
     riskTolerance: 'medium',
     tradeStyle: 'swing',
-    totalAssetUsd: '',
-    cryptoInvestmentUsd: '',
   });
 
   useEffect(() => {
-    if (!connected && !publicKey) router.push('/');
+    if (!connected || !publicKey) router.push('/');
   }, [connected, publicKey, router]);
+
+  useEffect(() => {
+    if (currentStep !== 'complete') return;
+    const timer = window.setTimeout(() => router.push('/overview'), 900);
+    return () => window.clearTimeout(timer);
+  }, [currentStep, router]);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!publicKey) {
+    if (!connected || !publicKey) {
       toast.error('Vui lòng kết nối ví trước.');
       return;
     }
@@ -50,15 +65,13 @@ export default function OnboardingPage() {
           age: Number(formData.age),
           riskTolerance: formData.riskTolerance,
           tradeStyle: formData.tradeStyle,
-          totalAssetUsd: Number(formData.totalAssetUsd || 0),
-          cryptoInvestmentUsd: Number(formData.cryptoInvestmentUsd || 0),
           notificationEnabled: true,
         }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Không thể tạo hồ sơ');
       setUser(data);
-      router.push('/overview');
+      setCurrentStep('complete');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Không thể tạo hồ sơ');
     } finally {
@@ -68,89 +81,70 @@ export default function OnboardingPage() {
 
   if (!publicKey) return null;
 
+  const walletAddress = publicKey.toBase58();
+  const activeStepIndex = stepOrder.indexOf(currentStep);
+  const progress = ((activeStepIndex + 1) / stepOrder.length) * 100;
+
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#0a0118] p-4 text-white">
-      <section className="glass-card w-full max-w-2xl rounded-2xl border border-white/10 p-8">
-        <p className="mb-2 text-center text-xs font-bold uppercase tracking-[0.24em] text-cyan-400">Tạo hồ sơ</p>
-        <h1 className="text-center text-3xl font-bold gradient-text">Thiết lập Portfolio trước khi xem Signal</h1>
-        <p className="mx-auto mt-3 max-w-xl text-center text-sm text-slate-400">
-          NDL dùng thông tin này để cá nhân hóa khuyến nghị giao dịch và cảnh báo rủi ro.
-        </p>
+    <main className="relative flex min-h-dvh items-start justify-center overflow-x-hidden bg-[#0a0118] p-4 py-6 text-white sm:items-center">
+      <div className="absolute inset-0 cyber-grid opacity-10" />
+      <div className="absolute inset-0 bg-gradient-to-br from-purple-500/15 via-transparent to-cyan-500/15" />
 
-        <form onSubmit={handleSubmit} className="mt-8 space-y-5">
-          <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 p-3 font-mono text-xs text-slate-400">
-            <Wallet className="h-4 w-4" />
-            <span className="truncate">{publicKey.toBase58()}</span>
+      <section className="glass-card relative z-10 w-full max-w-3xl rounded-2xl border border-white/10 p-6 shadow-[0_0_40px_rgba(168,85,247,0.16)] md:p-8">
+        <div className="text-center">
+          <p className="mb-2 text-xs font-bold uppercase tracking-[0.24em] text-cyan-400">Tạo hồ sơ</p>
+          <h1 className="text-3xl font-bold gradient-text">Thiết lập danh mục trước khi xem khuyến nghị</h1>
+          <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-400">
+            NDL chỉ dùng thông tin cơ bản để điều chỉnh cách hiển thị khuyến nghị, không yêu cầu số tiền, thu nhập hoặc tổng tài sản.
+          </p>
+        </div>
+
+        <div className="mt-7">
+          <div className="flex items-center justify-between gap-2">
+            {stepOrder.map((step, index) => {
+              const isActive = step === currentStep;
+              const isDone = index < activeStepIndex;
+
+              return (
+                <div key={step} className="flex min-w-0 flex-1 flex-col items-center gap-2 text-center">
+                  <span
+                    className={`flex h-8 w-8 items-center justify-center rounded-full border text-xs font-bold ${
+                      isActive || isDone
+                        ? 'border-cyan-500/40 bg-cyan-500/15 text-cyan-200'
+                        : 'border-white/10 bg-black/30 text-slate-500'
+                    }`}
+                  >
+                    {index + 1}
+                  </span>
+                  <span className={`max-w-full truncate text-xs font-semibold ${isActive ? 'text-white' : 'text-slate-500'}`}>
+                    {stepLabels[step]}
+                  </span>
+                </div>
+              );
+            })}
           </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Tên" value={formData.name} onChange={(value) => setFormData({ ...formData, name: value })} required />
-            <Field label="Email" type="email" value={formData.email} onChange={(value) => setFormData({ ...formData, email: value })} required />
-            <Field label="Tuổi" type="number" value={formData.age} onChange={(value) => setFormData({ ...formData, age: value })} required />
-            <Field label="Tổng tài sản (USD)" type="number" value={formData.totalAssetUsd} onChange={(value) => setFormData({ ...formData, totalAssetUsd: value })} />
-            <Field label="Số tiền đầu tư crypto (USD)" type="number" value={formData.cryptoInvestmentUsd} onChange={(value) => setFormData({ ...formData, cryptoInvestmentUsd: value })} />
-            <div>
-              <label className="mb-2 block text-sm font-medium text-slate-300">Phong cách giao dịch</label>
-              <select
-                value={formData.tradeStyle}
-                onChange={(event) => setFormData({ ...formData, tradeStyle: event.target.value })}
-                className="w-full rounded-lg border border-white/10 bg-black/40 p-3 text-white outline-none focus:border-purple-500"
-              >
-                <option value="scalp">Scalp</option>
-                <option value="swing">Swing</option>
-                <option value="position">Position</option>
-              </select>
-            </div>
+          <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
+            <div className="h-full rounded-full bg-gradient-to-r from-purple-500 to-cyan-400 transition-all duration-300" style={{ width: `${progress}%` }} />
           </div>
+        </div>
 
-          <div>
-            <label className="mb-2 block text-sm font-medium text-slate-300">Mức chịu rủi ro</label>
-            <select
-              value={formData.riskTolerance}
-              onChange={(event) => setFormData({ ...formData, riskTolerance: event.target.value })}
-              className="w-full rounded-lg border border-white/10 bg-black/40 p-3 text-white outline-none focus:border-purple-500"
-            >
-              <option value="low">Thấp</option>
-              <option value="medium">Trung bình</option>
-              <option value="high">Cao</option>
-            </select>
-          </div>
-
-          <Button type="submit" disabled={isSubmitting} className="h-12 w-full rounded-xl bg-gradient-to-r from-purple-600 to-cyan-600 font-bold text-white">
-            {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
-            Tạo hồ sơ
-          </Button>
-        </form>
+        <div className="mt-8">
+          {currentStep === 'wallet' ? (
+            <WalletSummaryStep walletAddress={walletAddress} onContinue={() => setCurrentStep('profile')} />
+          ) : currentStep === 'profile' ? (
+            <ProfileStep
+              formData={formData}
+              isSubmitting={isSubmitting}
+              onBack={() => setCurrentStep('wallet')}
+              onChange={setFormData}
+              onSubmit={handleSubmit}
+              walletAddress={walletAddress}
+            />
+          ) : (
+            <CompleteStep />
+          )}
+        </div>
       </section>
     </main>
-  );
-}
-
-function Field({
-  label,
-  value,
-  onChange,
-  type = 'text',
-  required,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  type?: string;
-  required?: boolean;
-}) {
-  return (
-    <div>
-      <label className="mb-2 block text-sm font-medium text-slate-300">
-        {label} {required ? <span className="text-red-400">*</span> : null}
-      </label>
-      <input
-        required={required}
-        type={type}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-lg border border-white/10 bg-black/40 p-3 text-white outline-none focus:border-purple-500"
-      />
-    </div>
   );
 }

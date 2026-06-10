@@ -17,13 +17,13 @@ export default function DataCheckPage() {
     <Layout>
       <div className="space-y-6">
         <PageHeader
-          eyebrow="Kiểm tra dữ liệu và thời gian"
-          title="Recommendation có dựa trên dữ liệu mới không?"
-          description="Tổng hợp wallet sync, price quality, Signal lifecycle, proposal expiry, Backtest và model config để tránh quyết định dựa trên dữ liệu cũ."
+          eyebrow="Advanced · Trust Center"
+          title="Khuyến nghị có dựa trên dữ liệu mới không?"
+          description="Kiểm tra độ mới của dữ liệu ví, giá, tín hiệu và kết quả kiểm chứng trước khi ra quyết định. Đây là trang nâng cao để kiểm tra niềm tin vào dữ liệu."
           actions={
             <>
               <Button asChild className="bg-gradient-to-r from-purple-600 to-cyan-600 text-white"><Link href="/recommendations">Dữ liệu ổn</Link></Button>
-              <Button asChild variant="outline" className="border-cyan-500/30 text-cyan-300"><Link href="/model-health">Xem sức khỏe mô hình</Link></Button>
+              <Button asChild variant="outline" className="border-cyan-500/30 text-cyan-300"><Link href="/model-health">Xem độ tin cậy hệ thống</Link></Button>
             </>
           }
         />
@@ -33,9 +33,9 @@ export default function DataCheckPage() {
         ) : (
           <>
             <section className="grid gap-4 lg:grid-cols-3">
-              <Panel title="Wallet và giá">
-                <Mini label="Wallet sync time" value="Chưa có field sync time từ BE" />
-                <Mini label="Holdings thiếu giá" value={missingPrices.length} />
+              <Panel title="Ví và giá">
+                <Mini label="Thời điểm đồng bộ ví" value="Chưa có dữ liệu thời gian đồng bộ" />
+                <Mini label="Token thiếu giá" value={missingPrices.length} />
                 <div className="space-y-2">
                   {(portfolio.data?.holdings ?? []).slice(0, 6).map((holding) => (
                     <div key={holding.symbol} className="flex items-center justify-between rounded-lg border border-white/5 bg-black/40 px-3 py-2">
@@ -46,39 +46,39 @@ export default function DataCheckPage() {
                 </div>
               </Panel>
 
-              <Panel title="Signal mới nhất">
+              <Panel title="Tín hiệu mới nhất">
                 {latestSignal ? (
                   <>
-                    <Mini label="Token" value={latestSignal.tokenSymbol ?? 'TOKEN'} />
-                    <Mini label="Detected at" value={formatVietnameseDateTime(latestSignal.detectedAt)} />
-                    <Mini label="Expires at" value={formatVietnameseDateTime(latestSignal.expiresAt)} />
-                    <Mini label="Countdown" value={formatExpiry(latestSignal.expiresAt)} />
-                    <Mini label="Signal mode" value={latestSignal.metadata?.isNewToken ? 'COLD_START' : 'NORMALIZED_ALPHA'} />
-                    <Mini label="Data quality" value={`Sample size ${latestSignal.metadata?.sampleSize ?? 'N/A'}`} />
+                    <Mini label="Token" value={latestSignal.tokenSymbol ?? 'Token chưa định danh'} />
+                    <Mini label="Phát hiện lúc" value={formatVietnameseDateTime(latestSignal.detectedAt)} />
+                    <Mini label="Hết hiệu lực lúc" value={formatVietnameseDateTime(latestSignal.expiresAt)} />
+                    <Mini label="Thời gian còn lại" value={formatExpiry(latestSignal.expiresAt)} />
+                    <Mini label="Bối cảnh dữ liệu" value={latestSignal.metadata?.isNewToken ? 'Token còn ít lịch sử' : 'Có dữ liệu so sánh'} />
+                    <Mini label="Chất lượng dữ liệu" value={latestSignal.metadata?.sampleSize === null || latestSignal.metadata?.sampleSize === undefined ? 'Chưa có cỡ mẫu' : `Cỡ mẫu ${latestSignal.metadata.sampleSize}`} />
                   </>
-                ) : <EmptyState title="Chưa có Signal" />}
+                ) : <EmptyState title="Chưa có tín hiệu" />}
               </Panel>
 
-              <Panel title="Proposal và Backtest">
+              <Panel title="Khuyến nghị và kiểm chứng">
                 {latestProposal ? (
                   <>
-                    <Mini label="Token" value={latestProposal.tokenSymbol ?? 'TOKEN'} />
-                    <Mini label="Created at" value={formatVietnameseDateTime(latestProposal.createdAt)} />
-                    <Mini label="Expires at" value={formatVietnameseDateTime(latestProposal.expiresAt)} />
-                    <Mini label="Backtested at" value={formatVietnameseDateTime(latestProposal.backtestedAt)} />
-                    <Mini label="Backtest quality" value={latestProposal.backtestMeta?.dataQuality ?? 'Chưa có dữ liệu'} />
+                    <Mini label="Token" value={latestProposal.tokenSymbol ?? 'Token chưa định danh'} />
+                    <Mini label="Tạo lúc" value={formatVietnameseDateTime(latestProposal.createdAt)} />
+                    <Mini label="Hết hiệu lực lúc" value={formatVietnameseDateTime(latestProposal.expiresAt)} />
+                    <Mini label="Kiểm chứng lúc" value={formatVietnameseDateTime(latestProposal.backtestedAt)} />
+                    <Mini label="Chất lượng kiểm chứng" value={latestProposal.backtestMeta?.dataQuality ?? 'Chưa có dữ liệu'} />
                   </>
-                ) : <EmptyState title="Chưa có Proposal" />}
+                ) : <EmptyState title="Chưa có khuyến nghị" />}
               </Panel>
             </section>
 
             <section className="glass-card rounded-xl border border-white/5 bg-black/20 p-5">
-              <h2 className="text-lg font-bold text-white">Model config</h2>
+              <h2 className="text-lg font-bold text-white">Độ tin cậy hệ thống</h2>
               <div className="mt-4 grid gap-3 md:grid-cols-4">
-                <Mini label="Status" value={modelHealth.data?.activeConfig?.status ?? 'N/A'} />
-                <Mini label="Updated at" value={formatVietnameseDateTime(modelHealth.data?.activeConfig?.updatedAt)} />
-                <Mini label="Promoted at" value={formatVietnameseDateTime(modelHealth.data?.activeConfig?.promotedAt)} />
-                <Mini label="Latency" value={`${modelHealth.data?.latencyMs ?? 'N/A'} ms`} />
+                <Mini label="Trạng thái" value={toTrustStatusLabel(modelHealth.data?.activeConfig?.status)} />
+                <Mini label="Cập nhật lúc" value={formatVietnameseDateTime(modelHealth.data?.activeConfig?.updatedAt)} />
+                <Mini label="Kích hoạt lúc" value={formatVietnameseDateTime(modelHealth.data?.activeConfig?.promotedAt)} />
+                <Mini label="Độ trễ" value={modelHealth.data?.latencyMs === null || modelHealth.data?.latencyMs === undefined ? 'Chưa có dữ liệu' : `${modelHealth.data.latencyMs} ms`} />
               </div>
             </section>
           </>
@@ -86,6 +86,16 @@ export default function DataCheckPage() {
       </div>
     </Layout>
   );
+}
+
+function toTrustStatusLabel(status?: string | null) {
+  const normalized = String(status ?? '').toUpperCase();
+  if (!normalized) return 'Chưa có dữ liệu';
+  if (['ACTIVE', 'PROMOTED', 'READY', 'OK', 'HEALTHY'].includes(normalized)) return 'Đang dùng được';
+  if (['TRAINING', 'PENDING', 'WARMING_UP'].includes(normalized)) return 'Đang cập nhật';
+  if (['DEGRADED', 'STALE', 'LIMITED'].includes(normalized)) return 'Cần thận trọng';
+  if (['FAILED', 'ERROR', 'DISABLED'].includes(normalized)) return 'Không nên dựa vào';
+  return 'Cần kiểm tra thêm';
 }
 
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {

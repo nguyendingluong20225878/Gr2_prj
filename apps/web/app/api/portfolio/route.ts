@@ -61,6 +61,7 @@ type PerpPositionRecord = {
   proposalId?: mongoose.Types.ObjectId | string;
   requestedPrice?: number;
   roi?: number;
+  pnl?: number;
   slippagePct?: number;
   txHash?: string;
 };
@@ -234,14 +235,15 @@ export async function GET(req: Request) {
       requestedPrice: normalizeNullableNumber(p.requestedPrice ?? p.entryPrice),
       slippagePct: normalizeNullableNumber(p.slippagePct),
       txHash: p.txHash,
-      pnl: null,
+      pnl: normalizeNullableNumber(p.pnl),
       roi: normalizeNullableNumber(p.roi)
     }));
 
     // --- C. WATCHLIST ---
     const pendingProposals = await ProposalModel.find({
+      expiresAt: { $gt: new Date() },
       $or: [
-        { status: { $in: ['pending', 'active'] }, expiresAt: { $gt: new Date() } },
+        { status: { $in: ['pending', 'active'] } },
         { executionStatus: 'PENDING' },
       ],
     })
@@ -255,7 +257,8 @@ export async function GET(req: Request) {
       title: p.title,
       roi: normalizeNullableNumber(p.financialImpact?.roi),
       confidence: p.confidence,
-      createdAt: p.createdAt
+      createdAt: p.createdAt,
+      expiresAt: p.expiresAt,
     }));
 
     const totalValue = holdings.length > 0 && pricedHoldingsCount === 0

@@ -1,0 +1,70 @@
+flowchart TD
+    user["User with Solana wallet"]
+    wallet["Solana wallet adapter"]
+    web["Next.js web app"]
+    api["Next.js BFF API routes"]
+    auth["Wallet auth service"]
+    mongo["MongoDB"]
+    shared["@gr2/shared schemas and DB utilities"]
+    runner["core/run cron orchestrator"]
+    xscraper["core/x-scaper"]
+    news["core/news-scraper"]
+    prices["core/token-price-fetcher"]
+    research["core/research jobs"]
+    signal["core/signal-detector"]
+    layer3["core/layer3 proposal generator"]
+    gemini["Google Gemini API"]
+    finbert["HuggingFace FinBERT"]
+    priceapi["CoinGecko or Jupiter price API"]
+    xext["X/Twitter"]
+    newsext["News sites and Firecrawl"]
+
+    user --> wallet
+    wallet --> web
+    web --> api
+    api --> auth
+    auth --> mongo
+    api --> shared
+    shared --> mongo
+    api --> mongo
+
+    runner --> xscraper
+    runner --> news
+    runner --> prices
+    runner --> research
+    runner --> signal
+    runner --> layer3
+
+    xscraper --> xext
+    xscraper --> shared
+    news --> newsext
+    news --> shared
+    prices --> priceapi
+    prices --> shared
+    research --> shared
+    signal --> finbert
+    signal --> shared
+    layer3 --> gemini
+    layer3 --> shared
+
+    shared --> tweets["tweets"]
+    shared --> articles["news_articles"]
+    shared --> tokens["tokens and token_prices"]
+    shared --> signals["signals"]
+    shared --> proposals["proposals"]
+    shared --> backtests["backtest_results"]
+    shared --> portfolio["users, watchlist_items, perp_positions"]
+
+    tweets --> mongo
+    articles --> mongo
+    tokens --> mongo
+    signals --> mongo
+    proposals --> mongo
+    backtests --> mongo
+    portfolio --> mongo
+
+    signals --> layer3
+    proposals --> api
+    backtests --> api
+    portfolio --> api
+    api --> web

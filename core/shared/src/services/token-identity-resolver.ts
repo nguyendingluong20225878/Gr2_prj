@@ -1,4 +1,3 @@
-import type { FilterQuery } from "mongoose";
 import { tokensTable } from "../db/schema/tokens.js";
 import type { TokenSchema } from "../db/schema/tokens.js";
 
@@ -87,28 +86,28 @@ export class TokenIdentityResolver {
 
     if (aliasValues.length > 0) {
       const byAlias = await tokensTable
-        .findOne({ "aliases.value": { $in: aliasValues } } as FilterQuery<TokenSchema>)
+        .findOne({ "aliases.value": { $in: aliasValues } })
         .lean<ResolvedToken>();
       if (byAlias) return byAlias;
     }
 
     if (addressOrMint) {
       const byPrimaryAddress = await tokensTable
-        .findOne({ primaryAddress: addressOrMint } as FilterQuery<TokenSchema>)
+        .findOne({ primaryAddress: addressOrMint })
         .lean<ResolvedToken>();
       if (byPrimaryAddress) return byPrimaryAddress;
     }
 
     if (coingeckoId) {
       const byCoingeckoId = await tokensTable
-        .findOne({ coingeckoId } as FilterQuery<TokenSchema>)
+        .findOne({ coingeckoId })
         .lean<ResolvedToken>();
       if (byCoingeckoId) return byCoingeckoId;
     }
 
     if (symbol) {
       const bySymbolAndChain = await tokensTable
-        .findOne({ symbol, chain } as FilterQuery<TokenSchema>)
+        .findOne({ symbol, chain })
         .lean<ResolvedToken>();
       if (bySymbolAndChain) return bySymbolAndChain;
     }

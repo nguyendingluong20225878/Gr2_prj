@@ -1,37 +1,24 @@
 'use client';
 
+import { useState } from 'react';
+import type React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/app/contexts/AuthContext';
 import {
   Activity,
-  BarChart3,
-  Bell,
-  BrainCircuit,
-  HeartPulse,
-  LineChart,
+  ChevronDown,
   LogOut,
-  Search,
-  Star,
+  RotateCcw,
+  Settings,
   User,
-  Wallet,
 } from 'lucide-react';
-
-const navItems = [
-  { path: '/overview', label: 'Tổng quan', icon: Activity },
-  { path: '/portfolio', label: 'Danh mục', icon: Wallet },
-  { path: '/diagnostics', label: 'Chẩn đoán', icon: HeartPulse },
-  { path: '/recommendations', label: 'Khuyến nghị', icon: BarChart3 },
-  { path: '/opportunities', label: 'Cơ hội', icon: Search },
-  { path: '/watchlist', label: 'Theo dõi', icon: Star },
-  { path: '/positions', label: 'Vị thế', icon: LineChart },
-  { path: '/alerts', label: 'Cảnh báo', icon: Bell },
-  { path: '/model-health', label: 'Mô hình', icon: BrainCircuit },
-] as const;
+import { navItems } from './navigationItems';
 
 export function Navbar() {
   const pathname = usePathname();
   const { user, logout } = useAuth();
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   const formatWalletAddress = (address: string) => `${address.slice(0, 4)}...${address.slice(-4)}`;
 
@@ -48,7 +35,7 @@ export function Navbar() {
             </span>
             <span>
               <span className="block text-xl font-bold gradient-text">NDL</span>
-              <span className="block text-xs text-muted-foreground">Solana DeFi Dashboard</span>
+              <span className="block text-xs text-muted-foreground">Trợ lý quyết định crypto</span>
             </span>
           </Link>
 
@@ -74,26 +61,56 @@ export function Navbar() {
           </div>
 
           {user ? (
-            <div className="flex items-center gap-2">
-              <Link
-                href="/portfolio"
-                className="hidden items-center gap-3 rounded-lg border border-slate-700 bg-slate-900/50 px-3 py-2 transition-all hover:border-cyan-500/50 md:flex"
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setUserMenuOpen((value) => !value)}
+                className="flex items-center gap-3 rounded-lg border border-slate-700 bg-slate-900/50 px-3 py-2 text-left transition-all hover:border-cyan-500/50"
+                aria-expanded={userMenuOpen}
+                aria-haspopup="menu"
               >
                 <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-cyber-purple to-cyber-cyan text-sm font-semibold text-white">
                   {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
                 </span>
-                <span className="text-left">
+                <span className="hidden md:block">
                   <span className="block text-sm font-medium text-slate-100">{user.name || 'Người dùng'}</span>
                   <span className="block text-xs text-slate-400">{formatWalletAddress(user.walletAddress)}</span>
                 </span>
-              </Link>
-              <button
-                onClick={logout}
-                className="rounded-lg border border-red-500/20 bg-red-500/10 p-2 text-red-300 transition-colors hover:bg-red-500/15"
-                aria-label="Đăng xuất"
-              >
-                <LogOut className="h-4 w-4" />
+                <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${userMenuOpen ? 'rotate-180' : ''}`} />
               </button>
+              {userMenuOpen ? (
+                <div
+                  role="menu"
+                  className="absolute right-0 top-full z-50 mt-2 w-64 rounded-xl border border-white/10 bg-slate-950/95 p-2 shadow-2xl shadow-black/40 backdrop-blur"
+                >
+                  <div className="border-b border-white/10 px-3 py-2">
+                    <p className="truncate text-sm font-semibold text-white">{user.name || 'Người dùng'}</p>
+                    <p className="truncate font-mono text-xs text-slate-500">{user.walletAddress}</p>
+                  </div>
+                  <UserMenuLink href="/profile" icon={<User className="h-4 w-4" />} label="Hồ sơ" onClick={() => setUserMenuOpen(false)} />
+                  <button
+                    type="button"
+                    disabled
+                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-slate-600"
+                    title="Route cài đặt chưa có trong app"
+                  >
+                    <Settings className="h-4 w-4" />
+                    Cài đặt
+                  </button>
+                  <UserMenuLink href="/onboarding" icon={<RotateCcw className="h-4 w-4" />} label="Làm lại onboarding" onClick={() => setUserMenuOpen(false)} />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUserMenuOpen(false);
+                      void logout();
+                    }}
+                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-red-300 transition-colors hover:bg-red-500/10"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Đăng xuất
+                  </button>
+                </div>
+              ) : null}
             </div>
           ) : (
             <Link href="/" className="inline-flex items-center gap-2 rounded-lg border border-cyan-500/30 px-3 py-2 text-sm font-bold text-cyan-300">
@@ -103,7 +120,7 @@ export function Navbar() {
           )}
         </div>
 
-        <div className="mt-4 flex gap-2 overflow-x-auto pb-1 xl:hidden" aria-label="Điều hướng chính trên mobile">
+        <div className="mt-4 hidden gap-2 overflow-x-auto pb-1 lg:flex xl:hidden" aria-label="Điều hướng chính trên tablet">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = pathname === item.path || pathname.startsWith(`${item.path}/`);
@@ -125,5 +142,29 @@ export function Navbar() {
         </div>
       </div>
     </nav>
+  );
+}
+
+function UserMenuLink({
+  href,
+  icon,
+  label,
+  onClick,
+}: {
+  href: string;
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <Link
+      href={href}
+      onClick={onClick}
+      role="menuitem"
+      className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-slate-200 transition-colors hover:bg-white/5 hover:text-cyan-300"
+    >
+      {icon}
+      {label}
+    </Link>
   );
 }

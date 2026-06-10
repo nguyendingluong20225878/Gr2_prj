@@ -1,0 +1,44 @@
+flowchart TD
+    start["User opens proposal trade"]
+    input["Enter amount, leverage, direction"]
+    preview["POST /api/trade/preview"]
+    validPreview{"Valid proposalId, amount, leverage?"}
+    previewError["Return 400 validation error"]
+    proposalFound{"Proposal found?"}
+    notFound["Return 404"]
+    calc["Calculate notional, stop loss, max loss, fee and slippage"]
+    warning{"Missing price, stop loss, fee or slippage?"}
+    limited["Return LIMITED preview with warnings"]
+    ok["Return OK preview"]
+    confirm{"User confirms?"}
+    cancel["Stay on trade page"]
+    execute["POST /api/trade/execute"]
+    auth{"Session valid?"}
+    unauth["Return 401"]
+    userFound{"Wallet maps to user?"}
+    noUser["Return 401"]
+    executable{"Proposal executable and belongs to user?"}
+    forbidden["Return 403 or 404"]
+    duplicate{"Open position already exists?"}
+    conflict["Return 409"]
+    tx["Transaction: insert trade_execution, perp_position, proposal_decision"]
+    update["Update proposal EXECUTED"]
+    success["Return demo fill and positionId"]
+
+    start --> input --> preview --> validPreview
+    validPreview -- "no" --> previewError
+    validPreview -- "yes" --> proposalFound
+    proposalFound -- "no" --> notFound
+    proposalFound -- "yes" --> calc --> warning
+    warning -- "yes" --> limited --> confirm
+    warning -- "no" --> ok --> confirm
+    confirm -- "no" --> cancel
+    confirm -- "yes" --> execute --> auth
+    auth -- "no" --> unauth
+    auth -- "yes" --> userFound
+    userFound -- "no" --> noUser
+    userFound -- "yes" --> executable
+    executable -- "no" --> forbidden
+    executable -- "yes" --> duplicate
+    duplicate -- "yes" --> conflict
+    duplicate -- "no" --> tx --> update --> success

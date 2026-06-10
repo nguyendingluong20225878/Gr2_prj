@@ -1,0 +1,3 @@
+export const PROPOSAL_TTL_HOURS = 24;
+export const PROPOSAL_TTL_MS = PROPOSAL_TTL_HOURS * 60 * 60 * 1000;
+export const EXPIRING_SOON_WINDOW_MS = 6 * 60 * 60 * 1000;

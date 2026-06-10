@@ -1,5 +1,10 @@
-import { redirect } from 'next/navigation';
+import { Layout } from '@/app/components/layout/Layout';
+import { UserSettings } from './UserSettings';
 
 export default function ProfilePage() {
-  redirect('/portfolio');
+  return (
+    <Layout>
+      <UserSettings />
+    </Layout>
+  );
 }

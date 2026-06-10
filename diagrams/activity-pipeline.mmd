@@ -1,0 +1,39 @@
+flowchart TD
+    start["Cron tick or startup"]
+    running{"Pipeline already running?"}
+    skipRunning["Skip tick"]
+    lock["Acquire job_locks document"]
+    locked{"Lock acquired?"}
+    skipLocked["Skip because another owner holds lock"]
+    xcred{"Run X scraper enabled and credentials available?"}
+    xscrape["Scrape X/Twitter"]
+    news["Scrape crypto news"]
+    backfill["Backfill token prices"]
+    backtest["Update 12h backtest outcomes"]
+    metrics["Update rolling metrics"]
+    regime["Detect market regime"]
+    weights["Update dynamic source weights"]
+    signal["Run quant signal detector"]
+    layer3["Generate Layer3 proposals"]
+    release["Release job lock"]
+    done["Pipeline complete"]
+    error["Log error and continue finalizer"]
+
+    start --> running
+    running -- "yes" --> skipRunning
+    running -- "no" --> lock --> locked
+    locked -- "no" --> skipLocked
+    locked -- "yes" --> xcred
+    xcred -- "yes" --> xscrape --> news
+    xcred -- "no" --> news
+    news --> backfill --> backtest --> metrics --> regime --> weights --> signal --> layer3 --> release --> done
+    news -. "optional step error" .-> backfill
+    xscrape -. "optional step error" .-> news
+    backfill -. "fatal step error" .-> error
+    backtest -. "fatal step error" .-> error
+    metrics -. "fatal step error" .-> error
+    regime -. "fatal step error" .-> error
+    weights -. "fatal step error" .-> error
+    signal -. "fatal step error" .-> error
+    layer3 -. "fatal step error" .-> error
+    error --> release

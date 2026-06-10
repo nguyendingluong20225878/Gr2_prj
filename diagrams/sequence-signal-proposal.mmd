@@ -1,0 +1,35 @@
+sequenceDiagram
+    participant Cron as core/run scheduler
+    participant News as news scraper
+    participant Price as token price fetcher
+    participant Research as research jobs
+    participant Quant as signal-detector
+    participant FinBERT as HuggingFace FinBERT
+    participant DB as MongoDB
+    participant Layer3 as layer3 workflow
+    participant Gemini as Google Gemini
+    participant API as /api/signals and /api/proposals
+    participant UI as Next.js UI
+
+    Cron->>News: npm run news
+    News->>DB: upsert news_articles
+    Cron->>Price: npm run prices:backfill:1d
+    Price->>DB: write token_prices and token_price_history
+    Cron->>Research: run backtest, metrics, regime, weights
+    Research->>DB: update backtest_results, rolling_metrics, weights
+    Cron->>Quant: npm run signal
+    Quant->>DB: read tweets, news_articles, tokens, history
+    Quant->>FinBERT: score document sentiment
+    FinBERT-->>Quant: sentiment scores
+    Quant->>Quant: aggregate by token and evaluate alpha
+    Quant->>DB: insert signals with status RAW
+    Cron->>Layer3: npm run layer3
+    Layer3->>DB: claim RAW signal as PROCESSING
+    Layer3->>DB: resolve source content from tweets and news_articles
+    Layer3->>Gemini: generate Vietnamese rationale
+    Gemini-->>Layer3: rationaleSummary
+    Layer3->>DB: upsert active proposal and mark signal PROCESSED
+    UI->>API: GET /api/signals or /api/proposals
+    API->>DB: read signals, proposals and backtest fields
+    DB-->>API: enriched records
+    API-->>UI: signal and proposal payload

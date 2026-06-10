@@ -23,10 +23,10 @@ export default function PositionMonitorPage() {
   const positionRoi = normalizePercentValue(position?.roi);
 
   const warnings = [
-    proposal.data?.expiresAt && isExpired(proposal.data.expiresAt) ? 'Proposal gốc đã hết hạn.' : null,
-    latestSignal && Number(latestSignal.confidence ?? 0) < Number(proposal.data?.confidence ?? 0) ? 'Signal mới yếu hơn proposal ban đầu.' : null,
+    proposal.data?.expiresAt && isExpired(proposal.data.expiresAt) ? 'Khuyến nghị gốc đã hết hiệu lực.' : null,
+    latestSignal && Number(latestSignal.confidence ?? 0) < Number(proposal.data?.confidence ?? 0) ? 'Tín hiệu mới yếu hơn khuyến nghị ban đầu.' : null,
     positionRoi !== null && positionRoi < 0 ? 'Giá đang đi ngược hướng vị thế.' : null,
-    Number(position?.leverage ?? 1) >= 5 ? 'Risk vượt ngưỡng do Leverage cao.' : null,
+    Number(position?.leverage ?? 1) >= 5 ? 'Rủi ro vượt ngưỡng do đòn bẩy cao.' : null,
   ].filter((warning): warning is string => Boolean(warning));
 
   return (
@@ -44,18 +44,18 @@ export default function PositionMonitorPage() {
           <>
             <PageHeader
               eyebrow="Theo dõi vị thế"
-              title={`${tokenSymbol || 'TOKEN'} · ${position.direction ?? 'LONG'}`}
-              description="So sánh vị thế hiện tại với proposal/signal ban đầu và Signal mới cùng Token."
+              title={`${tokenSymbol || 'Token chưa định danh'} · ${position.direction ?? 'LONG'}`}
+              description="So sánh vị thế hiện tại với khuyến nghị ban đầu và tín hiệu mới cùng token."
               actions={
                 <>
                   {position.proposalId ? (
                     <Button asChild variant="outline" className="border-cyan-500/30 text-cyan-300">
-                      <Link href={`/proposal/${position.proposalId}`}>Xem đề xuất gốc</Link>
+                      <Link href={`/proposal/${position.proposalId}`}>Xem khuyến nghị gốc</Link>
                     </Button>
                   ) : null}
                   {latestSignal?._id ? (
                     <Button asChild variant="outline" className="border-purple-500/30 text-purple-300">
-                      <Link href={`/signals/${latestSignal._id}`}>Xem signal hiện tại</Link>
+                      <Link href={`/signals/${latestSignal._id}`}>Xem tín hiệu hiện tại</Link>
                     </Button>
                   ) : null}
                   <Button asChild className="bg-gradient-to-r from-purple-600 to-cyan-600 text-white">
@@ -67,12 +67,12 @@ export default function PositionMonitorPage() {
 
             <section className="grid gap-4 lg:grid-cols-3">
               <Panel title="Vị thế hiện tại">
-                <Mini label="Entry price" value={formatCurrency(position.entryPrice)} />
-                <Mini label="Current/mark price" value="Chưa có dữ liệu giá hiện tại" />
+                <Mini label="Giá vào" value={formatCurrency(position.entryPrice)} />
+                <Mini label="Giá hiện tại" value="Chưa có dữ liệu giá hiện tại" />
                 <Mini label="PnL" value={position.pnl === null || position.pnl === undefined ? 'Chưa có dữ liệu' : formatCurrency(position.pnl)} />
                 <Mini label="ROI" value={positionRoi === null ? 'Chưa có dữ liệu' : formatPercent(positionRoi)} />
-                <Mini label="Leverage" value={`${position.leverage ?? 1}x`} />
-                <Mini label="Direction" value={position.direction ?? 'LONG'} />
+                <Mini label="Đòn bẩy" value={`${position.leverage ?? 1}x`} />
+                <Mini label="Hướng giao dịch" value={position.direction ?? 'LONG'} />
               </Panel>
 
               <Panel title="Cảnh báo">
@@ -80,27 +80,27 @@ export default function PositionMonitorPage() {
                 {!warnings.length ? <p className="text-sm text-slate-500">Không có cảnh báo nghiêm trọng.</p> : null}
               </Panel>
 
-              <Panel title="Thông tin execute">
-                <Mini label="Requested price" value={formatCurrency(position.requestedPrice)} />
-                <Mini label="Executed price" value={formatCurrency(position.executedPrice)} />
-                <Mini label="Slippage" value={formatPercent(normalizePercentValue(position.slippagePct))} />
-                <Mini label="Tx hash" value={position.txHash ?? 'Chưa có dữ liệu'} />
+              <Panel title="Thông tin vào lệnh">
+                <Mini label="Giá yêu cầu" value={formatCurrency(position.requestedPrice)} />
+                <Mini label="Giá khớp" value={formatCurrency(position.executedPrice)} />
+                <Mini label="Trượt giá" value={formatPercent(normalizePercentValue(position.slippagePct))} />
+                <Mini label="Mã giao dịch" value={position.txHash ?? 'Chưa có dữ liệu'} />
               </Panel>
             </section>
 
             <section className="grid gap-4 lg:grid-cols-2">
               <section className="glass-card rounded-xl border border-white/5 bg-black/20 p-5">
-                <h2 className="text-lg font-bold text-white">Proposal gốc</h2>
+                <h2 className="text-lg font-bold text-white">Khuyến nghị gốc</h2>
                 <div className="mt-4">
-                  {proposal.data ? <ProposalCard proposal={proposal.data} href={`/proposal/${proposal.data._id}`} /> : <p className="text-sm text-slate-500">Chưa có dữ liệu proposal gốc.</p>}
+                  {proposal.data ? <ProposalCard proposal={proposal.data} href={`/proposal/${proposal.data._id}`} /> : <p className="text-sm text-slate-500">Chưa có dữ liệu khuyến nghị gốc.</p>}
                 </div>
               </section>
               <section className="glass-card rounded-xl border border-white/5 bg-black/20 p-5">
-                <h2 className="text-lg font-bold text-white">Signal hiện tại cùng Token</h2>
-                {latestSignal ? <p className="mt-1 text-sm text-slate-500">Signal mới nhất: {formatConfidence(latestSignal.confidence)}</p> : null}
+                <h2 className="text-lg font-bold text-white">Tín hiệu hiện tại cùng token</h2>
+                {latestSignal ? <p className="mt-1 text-sm text-slate-500">Tín hiệu mới nhất: {formatConfidence(latestSignal.confidence)}</p> : null}
                 <div className="mt-4 space-y-3">
                   {currentSignals.slice(0, 3).map((signal) => <SignalCard key={signal._id} signal={signal} href={`/signals/${signal._id}`} />)}
-                  {!currentSignals.length ? <p className="text-sm text-slate-500">Chưa có Signal mới cùng Token.</p> : null}
+                  {!currentSignals.length ? <p className="text-sm text-slate-500">Chưa có tín hiệu mới cùng token.</p> : null}
                 </div>
               </section>
             </section>

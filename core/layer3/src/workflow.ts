@@ -18,6 +18,8 @@ type RawSignal = {
   tokenAddress?: string;
   quantScore?: number;
   confidence?: number;
+  batchId?: string | null;
+  batchStartedAt?: Date | null;
   volatilityFlag?: number;
   detectedAt?: Date;
   uncertaintyEntropy?: number;
@@ -25,6 +27,8 @@ type RawSignal = {
   signalMode?: string | null;
   expiresAt?: Date;
   metadata?: {
+    batchId?: string;
+    batchStartedAt?: Date;
     scoreComponents?: Record<string, unknown>;
     uncertaintyEntropy?: number;
     signalMode?: string;
@@ -51,8 +55,104 @@ const DEFAULT_OPTIONS = {
   maxRetry: 3,
 };
 const PROCESSING_TTL_MS = 10 * 60 * 1000;
+const DEFAULT_RECOMMENDATION_TTL_HOURS = 24;
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function positiveNumberOrDefault(value: string | undefined, fallback: number) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+function validDate(value: unknown): Date | null {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(String(value));
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+
+function resolveSignalBatchStartedAt(signal: RawSignal) {
+  return (
+    validDate(signal.batchStartedAt) ??
+    validDate(signal.metadata?.batchStartedAt) ??
+    validDate(signal.detectedAt) ??
+    new Date()
+  );
+}
+
+function resolveSignalBatchId(signal: RawSignal) {
+  return signal.batchId ?? signal.metadata?.batchId ?? resolveSignalBatchStartedAt(signal).toISOString();
+}
+
+function resolveRecommendationExpiresAt(batchStartedAt: Date) {
+  const ttlHours = positiveNumberOrDefault(
+    process.env.LAYER3_RECOMMENDATION_TTL_HOURS,
+    DEFAULT_RECOMMENDATION_TTL_HOURS
+  );
+  return new Date(batchStartedAt.getTime() + ttlHours * 60 * 60 * 1000);
+}
+
+function getBatchTime(value: unknown) {
+  const date = validDate(value);
+  return date ? date.getTime() : null;
+}
+
+function compareSignalToProposalBatch(signal: RawSignal, proposal: any) {
+  const signalBatchId = resolveSignalBatchId(signal);
+  const proposalBatchId = proposal.batchId ? String(proposal.batchId) : null;
+  if (signalBatchId && proposalBatchId && signalBatchId === proposalBatchId) return 0;
+
+  const signalBatchTime = getBatchTime(resolveSignalBatchStartedAt(signal));
+  const proposalBatchTime =
+    getBatchTime(proposal.batchStartedAt) ??
+    getBatchTime(proposal.detectedAt) ??
+    getBatchTime(proposal.createdAt);
+
+  if (signalBatchTime !== null && proposalBatchTime !== null) {
+    if (signalBatchTime > proposalBatchTime) return 1;
+    if (signalBatchTime < proposalBatchTime) return -1;
+    return 0;
+  }
+
+  if (signalBatchId && proposalBatchId) return signalBatchId.localeCompare(proposalBatchId);
+  return 1;
+}
+
+function shouldReplaceWithinBatch(signal: RawSignal, proposal: any) {
+  const signalScore = Math.abs(Number(signal.quantScore ?? 0));
+  const proposalScore = Math.abs(Number(proposal.quantScore ?? 0));
+  return signalScore > proposalScore;
+}
+
+async function markSignalProcessed(signal: RawSignal, extra: Record<string, unknown> = {}) {
+  await signalsTable.updateOne(
+    layer3OwnershipFilter(signal),
+    {
+      $set: {
+        status: "PROCESSED",
+        updatedAt: new Date(),
+        layer3LockedAt: null,
+        layer3LockedBy: null,
+        ...extra,
+      },
+    }
+  );
+}
+
+async function expireElapsedActiveRecommendations(now: Date) {
+  await proposalsTable.updateMany(
+    {
+      lifecycleStatus: "ACTIVE",
+      expiresAt: { $lte: now },
+    },
+    {
+      $set: {
+        lifecycleStatus: "EXPIRED",
+        expiredAt: now,
+        updatedAt: now,
+      },
+    }
+  );
+}
 
 function validateRawSignal(signal: RawSignal): string | null {
   if (!signal._id) return "Missing signal id";
@@ -124,6 +224,7 @@ function layer3OwnershipFilter(signal: RawSignal) {
 }
 
 export async function processSignal(signal: RawSignal, options: Layer3WorkflowOptions = {}) {
+  const now = new Date();
   const validationError = validateRawSignal(signal);
   if (validationError) {
     await signalsTable.updateOne(
@@ -141,6 +242,35 @@ export async function processSignal(signal: RawSignal, options: Layer3WorkflowOp
     return { status: "FAILED" as const, reason: validationError };
   }
 
+  await expireElapsedActiveRecommendations(now);
+
+  const activeProposal = await (proposalsTable as any)
+    .findOne({
+      tokenAddress: signal.tokenAddress,
+      lifecycleStatus: "ACTIVE",
+      expiresAt: { $gt: now },
+    })
+    .sort({ batchStartedAt: -1, createdAt: -1 })
+    .lean();
+
+  if (activeProposal) {
+    const batchComparison = compareSignalToProposalBatch(signal, activeProposal);
+
+    if (batchComparison < 0) {
+      await markSignalProcessed(signal, {
+        layer3Decision: "IGNORED_OLD_BATCH",
+      });
+      return { status: "IGNORED_OLD_BATCH" as const, tokenSymbol: signal.tokenSymbol };
+    }
+
+    if (batchComparison === 0 && !shouldReplaceWithinBatch(signal, activeProposal)) {
+      await markSignalProcessed(signal, {
+        layer3Decision: "IGNORED_WEAKER_SAME_BATCH",
+      });
+      return { status: "IGNORED_SAME_BATCH" as const, tokenSymbol: signal.tokenSymbol };
+    }
+  }
+
   const sourcesContent = await enrichSignalSources(
     signal,
     options.sourceContentLimit ?? DEFAULT_OPTIONS.sourceContentLimit
@@ -152,16 +282,49 @@ export async function processSignal(signal: RawSignal, options: Layer3WorkflowOp
     return { status: "STALE_CLAIM" as const, tokenSymbol: signal.tokenSymbol };
   }
 
-  await proposalsTable.updateOne(
-    { signalId: signal._id },
+  const batchStartedAt = resolveSignalBatchStartedAt(signal);
+  const batchId = resolveSignalBatchId(signal);
+  const expiresAt = resolveRecommendationExpiresAt(batchStartedAt);
+  const replacesSameBatch = activeProposal
+    ? compareSignalToProposalBatch(signal, activeProposal) === 0
+    : false;
+  const isCrossBatchOverride = activeProposal
+    ? compareSignalToProposalBatch(signal, activeProposal) > 0
+    : false;
+  const proposalFilter = replacesSameBatch
+    ? { _id: activeProposal._id }
+    : { signalId: signal._id };
+
+  if (isCrossBatchOverride && activeProposal) {
+    await proposalsTable.updateOne(
+      { _id: activeProposal._id, lifecycleStatus: "ACTIVE" },
+      {
+        $set: {
+          lifecycleStatus: "OVERRIDDEN",
+          overriddenAt: new Date(),
+          updatedAt: new Date(),
+        },
+      }
+    );
+  }
+
+  const writeResult = await proposalsTable.updateOne(
+    proposalFilter,
     {
       $set: {
+        signalId: signal._id,
         tokenSymbol: signal.tokenSymbol,
         tokenAddress: signal.tokenAddress,
         suggestionType: signal.suggestionType,
         sentimentType: signal.sentimentType,
         quantScore: signal.quantScore,
         confidence: signal.confidence,
+        batchId,
+        batchStartedAt,
+        lifecycleStatus: "ACTIVE",
+        overriddenAt: null,
+        overriddenByProposalId: null,
+        expiredAt: null,
         volatilityFlag: signal.volatilityFlag ?? null,
         uncertaintyEntropy: signal.uncertaintyEntropy ?? signal.metadata?.uncertaintyEntropy ?? null,
         realizedVolatility: signal.realizedVolatility ?? null,
@@ -169,7 +332,7 @@ export async function processSignal(signal: RawSignal, options: Layer3WorkflowOp
         detectedAt: signal.detectedAt ?? null,
         signalUpdatedAt: signal.updatedAt ?? null,
         scoreComponents: signal.metadata?.scoreComponents ?? {},
-        expiresAt: signal.expiresAt ?? null,
+        expiresAt,
         sources: signal.sources ?? [],
         rationaleSummary: finalState.rationaleSummary,
         executionStatus: "PENDING",
@@ -187,19 +350,44 @@ export async function processSignal(signal: RawSignal, options: Layer3WorkflowOp
     { upsert: true }
   );
 
-  await signalsTable.updateOne(
-    layer3OwnershipFilter(signal),
-    {
-      $set: {
-        status: "PROCESSED",
-        updatedAt: new Date(),
-        layer3LockedAt: null,
-        layer3LockedBy: null,
-      },
-    }
-  );
+  if (isCrossBatchOverride && activeProposal) {
+    const newProposal = await (proposalsTable as any)
+      .findOne({ signalId: signal._id }, { _id: 1 })
+      .lean();
+    await proposalsTable.updateOne(
+      { _id: activeProposal._id },
+      {
+        $set: {
+          lifecycleStatus: "OVERRIDDEN",
+          overriddenAt: new Date(),
+          overriddenByProposalId: newProposal?._id ?? null,
+          updatedAt: new Date(),
+        },
+      }
+    );
+  }
 
-  return { status: "PROCESSED" as const, tokenSymbol: signal.tokenSymbol };
+  await markSignalProcessed(signal, {
+    layer3Decision: replacesSameBatch
+      ? "REPLACED_STRONGER_SAME_BATCH"
+      : isCrossBatchOverride
+        ? "OVERRIDDEN_PREVIOUS_BATCH"
+        : "CREATED_ACTIVE",
+    layer3ProposalWrite: {
+      matchedCount: writeResult.matchedCount,
+      modifiedCount: writeResult.modifiedCount,
+      upsertedId: writeResult.upsertedId ?? null,
+    },
+  });
+
+  return {
+    status: replacesSameBatch
+      ? "REPLACED_SAME_BATCH" as const
+      : isCrossBatchOverride
+        ? "OVERRIDDEN_PREVIOUS_BATCH" as const
+        : "PROCESSED" as const,
+    tokenSymbol: signal.tokenSymbol,
+  };
 }
 
 async function claimNextRawSignal(options: Required<Layer3WorkflowOptions>): Promise<RawSignal | null> {

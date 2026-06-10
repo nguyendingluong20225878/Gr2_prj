@@ -1,0 +1,51 @@
+graph LR
+    user["Retail investor"]
+    wallet["Solana wallet"]
+    operator["Pipeline operator"]
+    scraper["Data collector jobs"]
+    quant["Quant engine"]
+    analyst["Layer3 AI analyst"]
+    backtester["Research backtester"]
+
+    login(("Authenticate wallet"))
+    onboard(("Create or update profile"))
+    viewPortfolio(("View portfolio"))
+    viewSignals(("View signals"))
+    viewProposal(("Inspect proposal rationale"))
+    watch(("Manage watchlist"))
+    preview(("Preview trade"))
+    execute(("Execute demo trade"))
+    viewPositions(("View positions"))
+    viewHealth(("View diagnostics and model health"))
+    collect(("Collect tweets and news"))
+    updatePrices(("Update token prices"))
+    detect(("Detect quant signals"))
+    generate(("Generate proposal explanation"))
+    score(("Backtest proposal outcome"))
+    tune(("Update metrics, regime and weights"))
+    schedule(("Run scheduled pipeline"))
+
+    user --> login
+    user --> onboard
+    user --> viewPortfolio
+    user --> viewSignals
+    user --> viewProposal
+    user --> watch
+    user --> preview
+    user --> execute
+    user --> viewPositions
+    user --> viewHealth
+    wallet --> login
+    operator --> schedule
+    scraper --> collect
+    scraper --> updatePrices
+    quant --> detect
+    analyst --> generate
+    backtester --> score
+    backtester --> tune
+    schedule --> collect
+    schedule --> updatePrices
+    schedule --> score
+    schedule --> tune
+    schedule --> detect
+    schedule --> generate

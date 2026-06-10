@@ -28,6 +28,8 @@ const RUN_ON_START = process.env.PIPELINE_RUN_ON_START === "true";
 const PROJECT_ROOT = path.resolve(__dirname, "../../..");
 const NPM_BIN = process.platform === "win32" ? "npm.cmd" : "npm";
 const STEP_DELAY_MS = Math.max(0, Number(process.env.PIPELINE_STEP_DELAY_MS ?? 0));
+const SHOULD_RUN_ONCE =
+  process.argv.includes("--once") || process.env.PIPELINE_RUN_MODE === "once";
 
 type JobLockDocument = {
   _id: string;
@@ -226,6 +228,13 @@ async function start() {
     // 1. Kết nối DB
     await connectToDatabase();
     logger.info("Cơ sở dữ liệu đã kết nối. Bắt đầu thiết lập Cron Jobs...");
+
+    if (SHOULD_RUN_ONCE) {
+      logger.info("PIPELINE_RUN_MODE=once, chạy pipeline một lần rồi đóng process.");
+      await runPipelineOnce("startup");
+      await mongoose.connection.close();
+      return;
+    }
 
     // 2. Thiết lập Cron Job
     const task = cron.schedule(CRON_EXPRESSION, () => {

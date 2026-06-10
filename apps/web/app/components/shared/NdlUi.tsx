@@ -1,13 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import type React from 'react';
 import Link from 'next/link';
-import { ArrowRight, Clock, ExternalLink } from 'lucide-react';
+import { ArrowRight, Clock, ExternalLink, X } from 'lucide-react';
 import { Badge } from '@/app/components/ui/badge';
 import { Skeleton } from '@/app/components/ui/skeleton';
 import { formatConfidence, formatCurrency, formatNumber, formatPercent, normalizePercentValue, toDisplayAction, toDisplayRisk } from '@/lib/utils/formatters';
-import { formatExpiry, formatRelativeVietnamese, isExpiringSoon } from '@/lib/utils/time';
+import { formatExpiry, formatRelativeVietnamese, isExpired, isExpiringSoon } from '@/lib/utils/time';
 import type { Holding, ProposalData, SignalData } from '@/lib/hooks/useNdlData';
 
 function actionBadgeClass(action?: string | null) {
@@ -16,6 +16,14 @@ function actionBadgeClass(action?: string | null) {
   if (upper === 'SELL' || upper === 'SHORT') return 'border-red-500/30 bg-red-500/10 text-red-300';
   if (upper === 'HOLD' || upper === 'WAIT') return 'border-purple-500/30 bg-purple-500/10 text-purple-300';
   return 'border-slate-500/30 bg-slate-500/10 text-slate-300';
+}
+
+const UNKNOWN_TOKEN_SYMBOL = 'Token chưa định danh';
+
+export function getMissingPriceReasonLabel(reason?: string | null) {
+  if (reason === 'NO_TOKEN_MAPPING') return 'Thiếu mapping token';
+  if (reason === 'NO_PRICE') return 'Chưa có giá token';
+  return 'Chưa đủ dữ liệu giá';
 }
 
 export function PageHeader({
@@ -81,6 +89,82 @@ export function EmptyState({ title, description }: { title: string; description?
   );
 }
 
+export type ExplanationDrawerProps = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: string;
+  value?: React.ReactNode;
+  description?: React.ReactNode;
+  children: React.ReactNode;
+  footer?: React.ReactNode;
+};
+
+export function ExplanationDrawer({
+  children,
+  description,
+  footer,
+  onOpenChange,
+  open,
+  title,
+  value,
+}: ExplanationDrawerProps) {
+  const titleId = useId();
+
+  useEffect(() => {
+    if (!open) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onOpenChange(false);
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onOpenChange, open]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50" role="presentation">
+      <button
+        type="button"
+        aria-label="Đóng phần giải thích"
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+        onClick={() => onOpenChange(false)}
+      />
+      <aside
+        aria-labelledby={titleId}
+        aria-modal="true"
+        role="dialog"
+        className="fixed inset-x-0 bottom-0 flex max-h-[85dvh] flex-col rounded-t-xl border border-white/10 bg-slate-950 shadow-2xl outline-none md:inset-y-0 md:left-auto md:right-0 md:h-dvh md:max-h-none md:w-[min(460px,calc(100vw-2rem))] md:rounded-none md:border-y-0 md:border-r-0"
+      >
+        <div className="flex items-start justify-between gap-4 border-b border-white/10 p-5">
+          <div className="min-w-0">
+            <p id={titleId} className="text-lg font-bold text-white">{title}</p>
+            {value ? <div className="mt-2 text-3xl font-black text-cyan-200">{value}</div> : null}
+            {description ? <div className="mt-3 text-sm leading-6 text-slate-400">{description}</div> : null}
+          </div>
+          <button
+            type="button"
+            aria-label="Đóng phần giải thích"
+            onClick={() => onOpenChange(false)}
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-black/30 text-slate-300 transition-colors hover:border-cyan-500/30 hover:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-5">
+          {children}
+        </div>
+        {footer ? (
+          <div className="border-t border-white/10 p-5">
+            {footer}
+          </div>
+        ) : null}
+      </aside>
+    </div>
+  );
+}
+
 export function CountdownBadge({ value }: { value?: string | Date | null }) {
   const [now, setNow] = useState(Date.now());
 
@@ -89,20 +173,46 @@ export function CountdownBadge({ value }: { value?: string | Date | null }) {
     return () => window.clearInterval(timer);
   }, []);
 
+  const expired = isExpired(value);
   const urgent = isExpiringSoon(value, 6 * 60 * 60 * 1000);
+  const className = expired
+    ? 'border-slate-500/30 bg-slate-500/10 text-slate-300'
+    : urgent
+      ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+      : 'border-cyan-500/30 bg-cyan-500/10 text-cyan-300';
   return (
-    <Badge className={urgent ? 'border-amber-500/30 bg-amber-500/10 text-amber-300' : 'border-cyan-500/30 bg-cyan-500/10 text-cyan-300'} variant="outline">
+    <Badge className={className} variant="outline">
       <Clock className="h-3 w-3" />
       {formatExpiry(value, now)}
     </Badge>
   );
 }
 
+export function ProposalStatusBadge({ proposal }: { proposal: ProposalData }) {
+  const backtested = Boolean(proposal.backtestedAt || proposal.winLossStatus || proposal.pnlPercentage !== null && proposal.pnlPercentage !== undefined);
+  const expired = isExpired(proposal.expiresAt);
+  const expiring = isExpiringSoon(proposal.expiresAt, 6 * 60 * 60 * 1000);
+
+  if (backtested) {
+    return <Badge className="border-green-500/30 bg-green-500/10 text-green-300" variant="outline">Đã kiểm chứng</Badge>;
+  }
+
+  if (expired) {
+    return <Badge className="border-slate-500/30 bg-slate-500/10 text-slate-300" variant="outline">Đã hết hạn</Badge>;
+  }
+
+  if (expiring) {
+    return <Badge className="border-amber-500/30 bg-amber-500/10 text-amber-300" variant="outline">Sắp hết hạn</Badge>;
+  }
+
+  return <Badge className="border-cyan-500/30 bg-cyan-500/10 text-cyan-300" variant="outline">Còn hiệu lực</Badge>;
+}
+
 export function DataQualityBadge({ value }: { value?: string | null }) {
   const missing = value === 'MISSING_PRICE';
   return (
     <Badge className={missing ? 'border-amber-500/30 bg-amber-500/10 text-amber-300' : 'border-green-500/30 bg-green-500/10 text-green-300'} variant="outline">
-      {missing ? 'Thiếu giá' : 'Dữ liệu OK'}
+      {missing ? 'Chưa đủ dữ liệu giá' : 'Dữ liệu giá OK'}
     </Badge>
   );
 }
@@ -110,19 +220,21 @@ export function DataQualityBadge({ value }: { value?: string | null }) {
 export function ProposalCard({ proposal, href }: { proposal: ProposalData; href: string }) {
   const roi = normalizePercentValue(proposal.pnlPercentage ?? proposal.financialImpact?.roi);
   const risk = proposal.financialImpact?.riskLevel;
-  const roiLabel = proposal.roiStatus === 'NOT_AVAILABLE' || roi === null ? 'Chưa backtest' : formatPercent(roi);
+  const roiLabel = proposal.roiStatus === 'NOT_AVAILABLE' || roi === null ? 'Chưa kiểm chứng' : formatPercent(roi);
   const action = proposal.action ?? proposal.suggestionType;
   const description = proposal.summary ?? proposal.rationaleSummary ?? proposal.title;
+  const backtested = Boolean(proposal.backtestedAt || proposal.winLossStatus || proposal.pnlPercentage !== null && proposal.pnlPercentage !== undefined);
   return (
     <Link href={href} className="glass-card block rounded-xl border border-white/5 bg-black/40 p-5 transition-colors hover:border-cyan-500/30 hover:bg-white/[0.03]">
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-lg font-bold text-white">{proposal.tokenSymbol ?? 'TOKEN'}</span>
+            <span className="text-lg font-bold text-white">{proposal.tokenSymbol ?? UNKNOWN_TOKEN_SYMBOL}</span>
             <Badge className={actionBadgeClass(action)} variant="outline">
               {toDisplayAction(action)}
             </Badge>
-            <CountdownBadge value={proposal.expiresAt} />
+            <ProposalStatusBadge proposal={proposal} />
+            {!backtested ? <CountdownBadge value={proposal.expiresAt} /> : null}
           </div>
           {description ? <p className="mt-2 line-clamp-2 text-sm text-slate-300">{description}</p> : null}
         </div>
@@ -130,7 +242,7 @@ export function ProposalCard({ proposal, href }: { proposal: ProposalData; href:
       </div>
       <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
         <MiniStat label="Tin cậy" value={formatConfidence(proposal.confidence)} />
-        <MiniStat label="Quant" value={proposal.quantScore !== null && proposal.quantScore !== undefined ? formatNumber(proposal.quantScore, 2) : 'Chưa có dữ liệu'} />
+        <MiniStat label="Điểm tín hiệu" value={proposal.quantScore !== null && proposal.quantScore !== undefined ? formatNumber(proposal.quantScore, 2) : 'Chưa có dữ liệu'} />
         <MiniStat label="ROI/PnL" value={roiLabel} />
         <MiniStat label="Rủi ro" value={toDisplayRisk(risk)} />
       </div>
@@ -146,12 +258,12 @@ export function SignalCard({ signal, href }: { signal: SignalData; href: string 
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-lg font-bold text-white">{signal.tokenSymbol ?? proposal?.tokenSymbol ?? 'TOKEN'}</span>
-            <Badge className="border-purple-500/30 bg-purple-500/10 text-purple-300" variant="outline">
-              Signal
+            <span className="text-lg font-bold text-white">{signal.tokenSymbol ?? proposal?.tokenSymbol ?? UNKNOWN_TOKEN_SYMBOL}</span>
+            <Badge className="border-cyan-500/30 bg-cyan-500/10 text-cyan-300" variant="outline">
+              Dữ liệu định lượng
             </Badge>
             <Badge className="border-white/10 bg-black/40 text-slate-300" variant="outline">
-              {signal.lifecycleState ?? 'QUANT_READY'}
+              {toSignalLifecycleLabel(signal.lifecycleState)}
             </Badge>
             <CountdownBadge value={signal.expiresAt} />
           </div>
@@ -161,7 +273,7 @@ export function SignalCard({ signal, href }: { signal: SignalData; href: string 
       </div>
       <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
         <MiniStat label="Tin cậy" value={formatConfidence(signal.confidence)} />
-        <MiniStat label="Quant" value={formatNumber(quantScore, 2)} />
+        <MiniStat label="Điểm tín hiệu" value={quantScore === null || quantScore === undefined ? 'Chưa có dữ liệu' : formatNumber(quantScore, 2)} />
         <MiniStat label="Nguồn" value={signal.sources?.length ?? 0} />
         <MiniStat label="Phát hiện" value={formatRelativeVietnamese(signal.detectedAt)} />
       </div>
@@ -169,15 +281,29 @@ export function SignalCard({ signal, href }: { signal: SignalData; href: string 
   );
 }
 
+function toSignalLifecycleLabel(value?: string | null) {
+  const normalized = String(value ?? 'READY').toUpperCase();
+  if (normalized.includes('EXPIRED')) return 'Đã hết hiệu lực';
+  if (normalized.includes('VERIFIED') || normalized.includes('BACKTEST')) return 'Đã kiểm chứng';
+  if (normalized.includes('PROPOSAL') || normalized.includes('READY') || normalized.includes('ACTIVE')) return 'Đang có tín hiệu';
+  if (normalized.includes('ERROR') || normalized.includes('FAILED')) return 'Cần kiểm tra';
+  return 'Đang theo dõi';
+}
+
 export function HoldingRow({ holding, totalValue }: { holding: Holding; totalValue?: number | null }) {
   const allocation = totalValue && holding.value ? (holding.value / totalValue) * 100 : null;
   const priceLabel = holding.price === null || holding.price === undefined ? 'Chưa có giá' : formatCurrency(holding.price);
   const valueLabel = holding.value === null || holding.value === undefined ? 'Chưa đủ dữ liệu giá' : formatCurrency(holding.value);
+  const isUnknownToken = holding.symbol === UNKNOWN_TOKEN_SYMBOL || holding.missingReason === 'NO_TOKEN_MAPPING';
+  const dataHint = holding.dataQuality === 'MISSING_PRICE'
+    ? getMissingPriceReasonLabel(holding.missingReason)
+    : 'Token trong Portfolio';
   return (
     <div className="grid gap-3 rounded-xl border border-white/5 bg-black/40 p-4 md:grid-cols-[1.2fr_1fr_1fr_1fr_auto] md:items-center">
       <div>
-        <p className="font-bold text-white">{holding.symbol}</p>
-        <p className="text-xs text-slate-500">Token trong Portfolio</p>
+        <p className="font-bold text-white">{isUnknownToken ? UNKNOWN_TOKEN_SYMBOL : holding.symbol}</p>
+        <p className="text-xs text-slate-500">{dataHint}</p>
+        {holding.tokenAddress ? <p className="mt-1 truncate font-mono text-[11px] text-slate-600">{holding.tokenAddress}</p> : null}
       </div>
       <MiniStat label="Số lượng" value={formatNumber(holding.balance)} />
       <MiniStat label="Giá hiện tại" value={priceLabel} />

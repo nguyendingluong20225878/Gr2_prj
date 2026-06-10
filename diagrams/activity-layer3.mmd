@@ -1,0 +1,1384 @@
+flowchart TD
+    start["runLayer3Batch"]
+    claim["Claim next RAW or stale PROCESSING signal"]
+    found{"Signal found?"}
+    stop["Stop batch"]
+    validate{"Required signal fields valid?"}
+    fail["Mark signal FAILED"]
+    expire["Expire elapsed active proposals"]
+    active{"Active proposal exists for tokenAddress?"}
+    older{"Signal older than active proposal batch?"}
+    weaker{"Same batch and weaker score?"}
+    ignoredOld["Mark processed: IGNORED_OLD_BATCH"]
+    ignoredWeak["Mark process## Prompt 3: Complete `/recommendations` Recommendation Center Filters
+
+```txt
+Hãy audit và hoàn thiện `/recommendations` trong:
+
+- `apps/web/app/recommendations/page.tsx`
+- `apps/web/app/recommendations/components/RecommendationCard.tsx`
+
+Quan trọng:
+
+- Recommendation Center có thể đã có header, tabs, card hierarchy.
+- Trước khi sửa, liệt kê phần đã đạt và phần còn thiếu.
+- Trọng tâm prompt này là filter bar thật, URL search params, và các gap còn thiếu trên card.
+- Không gọi API riêng cho từng tab/filter.
+
+Mục tiêu UX:
+
+Recommendation Center gom toàn bộ recommendations và opportunities thành một workflow chuẩn hóa. User phải phân biệt được:
+
+- Cái gì cần xử lý ngay.
+- Cái gì liên quan danh mục.
+- Cái gì ngoài danh mục.
+- Cái gì đã kiểm chứng.
+- Cái gì hết hiệu lực.
+
+Yêu cầu layout:
+
+1. Header
+   - Eyebrow: `Trung tâm khuyến nghị`.
+   - Title: `Chọn việc cần quyết định tiếp theo`.
+   - Description: Ưu tiên danh mục trước, sau đó mới đến cơ hội ngoài ví.
+
+2. Filter bar
+   Thêm filter controls thật, ưu tiên search params để hỗ trợ back/forward:
+   - Token: tất cả / token symbols.
+   - Hành động: tất cả / BUY / SELL / HOLD / WAIT...
+   - Rủi ro: tất cả / low / medium / high / critical.
+   - Độ tin cậy: tất cả / >50 / >60 / >75.
+   - Thời hạn: tất cả / còn hiệu lực / sắp hết hạn / hết hiệu lực.
+   - Dữ liệu: tất cả / đủ dữ liệu / thiếu dữ liệu.
+   - Có `Reset filters`.
+
+Search params:
+
+- `tab=urgent|portfolio|outside-portfolio|verified|expired`
+- `token=SOL`
+- `action=BUY|SELL|HOLD|WAIT`
+- `risk=LOW|MEDIUM|HIGH|CRITICAL`
+- `confidence=50|60|75`
+- `expiry=active|expiring|expired|all`
+- `data=complete|missing|all`
+
+Implementation requirements:
+
+- Updating filters phải preserve `tab`.
+- Derive token options từ `proposals.data`.
+- Filters phải accessible và responsive.
+- Empty state phải phản ánh filtered result.
+
+3. Tabs
+   Giữ đúng 5 tabs:
+   - `Cần xử lý ngay` -> `?tab=urgent`.
+   - `Liên quan danh mục` -> `?tab=portfolio`.
+   - `Ngoài danh mục` -> `?tab=outside-portfolio`.
+   - `Đã kiểm chứng` -> `?tab=verified`.
+   - `Hết hiệu lực` -> `?tab=expired`.
+
+4. Recommendation list
+   - Urgent và portfolio tabs nên dùng list một cột để giữ priority order.
+   - Outside portfolio có thể dùng grid nếu hợp responsive.
+
+5. RecommendationCard
+   Card phải render theo hierarchy:
+   - Token.
+   - Action badge.
+   - Portfolio impact badge.
+   - Risk badge.
+   - Expiry/status badge.
+   - Watched badge.
+   - Confidence: `Tin cậy`.
+   - Quant score: `Điểm tín hiệu` nếu data có `quantScore` hoặc `scoreComponents.finalScore`.
+   - Short reason.
+   - Missing data warning nếu status `MISSING_DATA`.
+   - Expired note nếu status `EXPIRED`.
+   - CTA chính: `Xem chi tiết`.
+   - CTA phụ: `Theo dõi`, nếu chưa watched và không expired/executed.
+
+Logic bắt buộc:
+
+- Dùng `derivePortfolioImpact`, `deriveRecommendationStatus`, `deriveIsWatched`.
+- Không gọi API riêng cho từng tab; dùng data từ `useNdlData()` rồi filter frontend.
+- First derive all items.
+- Apply tab filter.
+- Apply filter bar.
+- Sort by priority.
+- Tab filter:
+  - `verified`: status `VERIFIED`.
+  - `expired`: status `EXPIRED`.
+  - `outside-portfolio`: impact `OUTSIDE`, bỏ `EXPIRED`, `VERIFIED`, `EXECUTED`.
+  - `portfolio`: impact `DIRECT` hoặc `INDIRECT`, bỏ `EXPIRED`, `VERIFIED`, `EXECUTED`.
+  - `urgent`: status `ACTIVE`, `EXPIRING_SOON`, `MISSING_DATA`.
+- Apply filter bar sau khi tab filter hoặc theo thứ tự hợp lý, nhưng UX phải nhất quán.
+- Priority score:
+  - Base confidence.
+  - Expiring soon bonus.
+  - Missing data bonus vừa phải.
+  - Direct > indirect > outside.
+  - SELL/high risk ưu tiên cao.
+
+Acceptance criteria:
+
+- Có filter bar hoạt động.
+- URL phản ánh filter hiện tại.
+- Browser back/forward hoạt động với filter.
+- Reset filters hoạt động và giữ tab hiện tại.
+- Có đủ 5 tabs.
+- Không có tab `Đang theo dõi`.
+- `Đã theo dõi` chỉ là badge.
+- Expired card muted, không có trade/execute CTA.
+- Missing data card có warning.
+- Card có `Điểm tín hiệu` nếu proposal có quant data.
+- Không dùng chữ `Proposal`, `Quant`, `Cross-impact` trong UI thường.
+```## Prompt 3: Complete `/recommendations` Recommendation Center Filters
+
+```txt
+Hãy audit và hoàn thiện `/recommendations` trong:
+
+- `apps/web/app/recommendations/page.tsx`
+- `apps/web/app/recommendations/components/RecommendationCard.tsx`
+
+Quan trọng:
+
+- Recommendation Center có thể đã có header, tabs, card hierarchy.
+- Trước khi sửa, liệt kê phần đã đạt và phần còn thiếu.
+- Trọng tâm prompt này là filter bar thật, URL search params, và các gap còn thiếu trên card.
+- Không gọi API riêng cho từng tab/filter.
+
+Mục tiêu UX:
+
+Recommendation Center gom toàn bộ recommendations và opportunities thành một workflow chuẩn hóa. User phải phân biệt được:
+
+- Cái gì cần xử lý ngay.
+- Cái gì liên quan danh mục.
+- Cái gì ngoài danh mục.
+- Cái gì đã kiểm chứng.
+- Cái gì hết hiệu lực.
+
+Yêu cầu layout:
+
+1. Header
+   - Eyebrow: `Trung tâm khuyến nghị`.
+   - Title: `Chọn việc cần quyết định tiếp theo`.
+   - Description: Ưu tiên danh mục trước, sau đó mới đến cơ hội ngoài ví.
+
+2. Filter bar
+   Thêm filter controls thật, ưu tiên search params để hỗ trợ back/forward:
+   - Token: tất cả / token symbols.
+   - Hành động: tất cả / BUY / SELL / HOLD / WAIT...
+   - Rủi ro: tất cả / low / medium / high / critical.
+   - Độ tin cậy: tất cả / >50 / >60 / >75.
+   - Thời hạn: tất cả / còn hiệu lực / sắp hết hạn / hết hiệu lực.
+   - Dữ liệu: tất cả / đủ dữ liệu / thiếu dữ liệu.
+   - Có `Reset filters`.
+
+Search params:
+
+- `tab=urgent|portfolio|outside-portfolio|verified|expired`
+- `token=SOL`
+- `action=BUY|SELL|HOLD|WAIT`
+- `risk=LOW|MEDIUM|HIGH|CRITICAL`
+- `confidence=50|60|75`
+- `expiry=active|expiring|expired|all`
+- `data=complete|missing|all`
+
+Implementation requirements:
+
+- Updating filters phải preserve `tab`.
+- Derive token options từ `proposals.data`.
+- Filters phải accessible và responsive.
+- Empty state phải phản ánh filtered result.
+
+3. Tabs
+   Giữ đúng 5 tabs:
+   - `Cần xử lý ngay` -> `?tab=urgent`.
+   - `Liên quan danh mục` -> `?tab=portfolio`.
+   - `Ngoài danh mục` -> `?tab=outside-portfolio`.
+   - `Đã kiểm chứng` -> `?tab=verified`.
+   - `Hết hiệu lực` -> `?tab=expired`.
+
+4. Recommendation list
+   - Urgent và portfolio tabs nên dùng list một cột để giữ priority order.
+   - Outside portfolio có thể dùng grid nếu hợp responsive.
+
+5. RecommendationCard
+   Card phải render theo hierarchy:
+   - Token.
+   - Action badge.
+   - Portfolio impact badge.
+   - Risk badge.
+   - Expiry/status badge.
+   - Watched badge.
+   - Confidence: `Tin cậy`.
+   - Quant score: `Điểm tín hiệu` nếu data có `quantScore` hoặc `scoreComponents.finalScore`.
+   - Short reason.
+   - Missing data warning nếu status `MISSING_DATA`.
+   - Expired note nếu status `EXPIRED`.
+   - CTA chính: `Xem chi tiết`.
+   - CTA phụ: `Theo dõi`, nếu chưa watched và không expired/executed.
+
+Logic bắt buộc:
+
+- Dùng `derivePortfolioImpact`, `deriveRecommendationStatus`, `deriveIsWatched`.
+- Không gọi API riêng cho từng tab; dùng data từ `useNdlData()` rồi filter frontend.
+- First derive all items.
+- Apply tab filter.
+- Apply filter bar.
+- Sort by priority.
+- Tab filter:
+  - `verified`: status `VERIFIED`.
+  - `expired`: status `EXPIRED`.
+  - `outside-portfolio`: impact `OUTSIDE`, bỏ `EXPIRED`, `VERIFIED`, `EXECUTED`.
+  - `portfolio`: impact `DIRECT` hoặc `INDIRECT`, bỏ `EXPIRED`, `VERIFIED`, `EXECUTED`.
+  - `urgent`: status `ACTIVE`, `EXPIRING_SOON`, `MISSING_DATA`.
+- Apply filter bar sau khi tab filter hoặc theo thứ tự hợp lý, nhưng UX phải nhất quán.
+- Priority score:
+  - Base confidence.
+  - Expiring soon bonus.
+  - Missing data bonus vừa phải.
+  - Direct > indirect > outside.
+  - SELL/high risk ưu tiên cao.
+
+Acceptance criteria:
+
+- Có filter bar hoạt động.
+- URL phản ánh filter hiện tại.
+- Browser back/forward hoạt động với filter.
+- Reset filters hoạt động và giữ tab hiện tại.
+- Có đủ 5 tabs.
+- Không có tab `Đang theo dõi`.
+- `Đã theo dõi` chỉ là badge.
+- Expired card muted, không có trade/execute CTA.
+- Missing data card có warning.
+- Card có `Điểm tín hiệu` nếu proposal có quant data.
+- Không dùng chữ `Proposal`, `Quant`, `Cross-impact` trong UI thường.
+```## Prompt 3: Complete `/recommendations` Recommendation Center Filters
+
+```txt
+Hãy audit và hoàn thiện `/recommendations` trong:
+
+- `apps/web/app/recommendations/page.tsx`
+- `apps/web/app/recommendations/components/RecommendationCard.tsx`
+
+Quan trọng:
+
+- Recommendation Center có thể đã có header, tabs, card hierarchy.
+- Trước khi sửa, liệt kê phần đã đạt và phần còn thiếu.
+- Trọng tâm prompt này là filter bar thật, URL search params, và các gap còn thiếu trên card.
+- Không gọi API riêng cho từng tab/filter.
+
+Mục tiêu UX:
+
+Recommendation Center gom toàn bộ recommendations và opportunities thành một workflow chuẩn hóa. User phải phân biệt được:
+
+- Cái gì cần xử lý ngay.
+- Cái gì liên quan danh mục.
+- Cái gì ngoài danh mục.
+- Cái gì đã kiểm chứng.
+- Cái gì hết hiệu lực.
+
+Yêu cầu layout:
+
+1. Header
+   - Eyebrow: `Trung tâm khuyến nghị`.
+   - Title: `Chọn việc cần quyết định tiếp theo`.
+   - Description: Ưu tiên danh mục trước, sau đó mới đến cơ hội ngoài ví.
+
+2. Filter bar
+   Thêm filter controls thật, ưu tiên search params để hỗ trợ back/forward:
+   - Token: tất cả / token symbols.
+   - Hành động: tất cả / BUY / SELL / HOLD / WAIT...
+   - Rủi ro: tất cả / low / medium / high / critical.
+   - Độ tin cậy: tất cả / >50 / >60 / >75.
+   - Thời hạn: tất cả / còn hiệu lực / sắp hết hạn / hết hiệu lực.
+   - Dữ liệu: tất cả / đủ dữ liệu / thiếu dữ liệu.
+   - Có `Reset filters`.
+
+Search params:
+
+- `tab=urgent|portfolio|outside-portfolio|verified|expired`
+- `token=SOL`
+- `action=BUY|SELL|HOLD|WAIT`
+- `risk=LOW|MEDIUM|HIGH|CRITICAL`
+- `confidence=50|60|75`
+- `expiry=active|expiring|expired|all`
+- `data=complete|missing|all`
+
+Implementation requirements:
+
+- Updating filters phải preserve `tab`.
+- Derive token options từ `proposals.data`.
+- Filters phải accessible và responsive.
+- Empty state phải phản ánh filtered result.
+
+3. Tabs
+   Giữ đúng 5 tabs:
+   - `Cần xử lý ngay` -> `?tab=urgent`.
+   - `Liên quan danh mục` -> `?tab=portfolio`.
+   - `Ngoài danh mục` -> `?tab=outside-portfolio`.
+   - `Đã kiểm chứng` -> `?tab=verified`.
+   - `Hết hiệu lực` -> `?tab=expired`.
+
+4. Recommendation list
+   - Urgent và portfolio tabs nên dùng list một cột để giữ priority order.
+   - Outside portfolio có thể dùng grid nếu hợp responsive.
+
+5. RecommendationCard
+   Card phải render theo hierarchy:
+   - Token.
+   - Action badge.
+   - Portfolio impact badge.
+   - Risk badge.
+   - Expiry/status badge.
+   - Watched badge.
+   - Confidence: `Tin cậy`.
+   - Quant score: `Điểm tín hiệu` nếu data có `quantScore` hoặc `scoreComponents.finalScore`.
+   - Short reason.
+   - Missing data warning nếu status `MISSING_DATA`.
+   - Expired note nếu status `EXPIRED`.
+   - CTA chính: `Xem chi tiết`.
+   - CTA phụ: `Theo dõi`, nếu chưa watched và không expired/executed.
+
+Logic bắt buộc:
+
+- Dùng `derivePortfolioImpact`, `deriveRecommendationStatus`, `deriveIsWatched`.
+- Không gọi API riêng cho từng tab; dùng data từ `useNdlData()` rồi filter frontend.
+- First derive all items.
+- Apply tab filter.
+- Apply filter bar.
+- Sort by priority.
+- Tab filter:
+  - `verified`: status `VERIFIED`.
+  - `expired`: status `EXPIRED`.
+  - `outside-portfolio`: impact `OUTSIDE`, bỏ `EXPIRED`, `VERIFIED`, `EXECUTED`.
+  - `portfolio`: impact `DIRECT` hoặc `INDIRECT`, bỏ `EXPIRED`, `VERIFIED`, `EXECUTED`.
+  - `urgent`: status `ACTIVE`, `EXPIRING_SOON`, `MISSING_DATA`.
+- Apply filter bar sau khi tab filter hoặc theo thứ tự hợp lý, nhưng UX phải nhất quán.
+- Priority score:
+  - Base confidence.
+  - Expiring soon bonus.
+  - Missing data bonus vừa phải.
+  - Direct > indirect > outside.
+  - SELL/high risk ưu tiên cao.
+
+Acceptance criteria:
+
+- Có filter bar hoạt động.
+- URL phản ánh filter hiện tại.
+- Browser back/forward hoạt động với filter.
+- Reset filters hoạt động và giữ tab hiện tại.
+- Có đủ 5 tabs.
+- Không có tab `Đang theo dõi`.
+- `Đã theo dõi` chỉ là badge.
+- Expired card muted, không có trade/execute CTA.
+- Missing data card có warning.
+- Card có `Điểm tín hiệu` nếu proposal có quant data.
+- Không dùng chữ `Proposal`, `Quant`, `Cross-impact` trong UI thường.
+```## Prompt 3: Complete `/recommendations` Recommendation Center Filters
+
+```txt
+Hãy audit và hoàn thiện `/recommendations` trong:
+
+- `apps/web/app/recommendations/page.tsx`
+- `apps/web/app/recommendations/components/RecommendationCard.tsx`
+
+Quan trọng:
+
+- Recommendation Center có thể đã có header, tabs, card hierarchy.
+- Trước khi sửa, liệt kê phần đã đạt và phần còn thiếu.
+- Trọng tâm prompt này là filter bar thật, URL search params, và các gap còn thiếu trên card.
+- Không gọi API riêng cho từng tab/filter.
+
+Mục tiêu UX:
+
+Recommendation Center gom toàn bộ recommendations và opportunities thành một workflow chuẩn hóa. User phải phân biệt được:
+
+- Cái gì cần xử lý ngay.
+- Cái gì liên quan danh mục.
+- Cái gì ngoài danh mục.
+- Cái gì đã kiểm chứng.
+- Cái gì hết hiệu lực.
+
+Yêu cầu layout:
+
+1. Header
+   - Eyebrow: `Trung tâm khuyến nghị`.
+   - Title: `Chọn việc cần quyết định tiếp theo`.
+   - Description: Ưu tiên danh mục trước, sau đó mới đến cơ hội ngoài ví.
+
+2. Filter bar
+   Thêm filter controls thật, ưu tiên search params để hỗ trợ back/forward:
+   - Token: tất cả / token symbols.
+   - Hành động: tất cả / BUY / SELL / HOLD / WAIT...
+   - Rủi ro: tất cả / low / medium / high / critical.
+   - Độ tin cậy: tất cả / >50 / >60 / >75.
+   - Thời hạn: tất cả / còn hiệu lực / sắp hết hạn / hết hiệu lực.
+   - Dữ liệu: tất cả / đủ dữ liệu / thiếu dữ liệu.
+   - Có `Reset filters`.
+
+Search params:
+
+- `tab=urgent|portfolio|outside-portfolio|verified|expired`
+- `token=SOL`
+- `action=BUY|SELL|HOLD|WAIT`
+- `risk=LOW|MEDIUM|HIGH|CRITICAL`
+- `confidence=50|60|75`
+- `expiry=active|expiring|expired|all`
+- `data=complete|missing|all`
+
+Implementation requirements:
+
+- Updating filters phải preserve `tab`.
+- Derive token options từ `proposals.data`.
+- Filters phải accessible và responsive.
+- Empty state phải phản ánh filtered result.
+
+3. Tabs
+   Giữ đúng 5 tabs:
+   - `Cần xử lý ngay` -> `?tab=urgent`.
+   - `Liên quan danh mục` -> `?tab=portfolio`.
+   - `Ngoài danh mục` -> `?tab=outside-portfolio`.
+   - `Đã kiểm chứng` -> `?tab=verified`.
+   - `Hết hiệu lực` -> `?tab=expired`.
+
+4. Recommendation list
+   - Urgent và portfolio tabs nên dùng list một cột để giữ priority order.
+   - Outside portfolio có thể dùng grid nếu hợp responsive.
+
+5. RecommendationCard
+   Card phải render theo hierarchy:
+   - Token.
+   - Action badge.
+   - Portfolio impact badge.
+   - Risk badge.
+   - Expiry/status badge.
+   - Watched badge.
+   - Confidence: `Tin cậy`.
+   - Quant score: `Điểm tín hiệu` nếu data có `quantScore` hoặc `scoreComponents.finalScore`.
+   - Short reason.
+   - Missing data warning nếu status `MISSING_DATA`.
+   - Expired note nếu status `EXPIRED`.
+   - CTA chính: `Xem chi tiết`.
+   - CTA phụ: `Theo dõi`, nếu chưa watched và không expired/executed.
+
+Logic bắt buộc:
+
+- Dùng `derivePortfolioImpact`, `deriveRecommendationStatus`, `deriveIsWatched`.
+- Không gọi API riêng cho từng tab; dùng data từ `useNdlData()` rồi filter frontend.
+- First derive all items.
+- Apply tab filter.
+- Apply filter bar.
+- Sort by priority.
+- Tab filter:
+  - `verified`: status `VERIFIED`.
+  - `expired`: status `EXPIRED`.
+  - `outside-portfolio`: impact `OUTSIDE`, bỏ `EXPIRED`, `VERIFIED`, `EXECUTED`.
+  - `portfolio`: impact `DIRECT` hoặc `INDIRECT`, bỏ `EXPIRED`, `VERIFIED`, `EXECUTED`.
+  - `urgent`: status `ACTIVE`, `EXPIRING_SOON`, `MISSING_DATA`.
+- Apply filter bar sau khi tab filter hoặc theo thứ tự hợp lý, nhưng UX phải nhất quán.
+- Priority score:
+  - Base confidence.
+  - Expiring soon bonus.
+  - Missing data bonus vừa phải.
+  - Direct > indirect > outside.
+  - SELL/high risk ưu tiên cao.
+
+Acceptance criteria:
+
+- Có filter bar hoạt động.
+- URL phản ánh filter hiện tại.
+- Browser back/forward hoạt động với filter.
+- Reset filters hoạt động và giữ tab hiện tại.
+- Có đủ 5 tabs.
+- Không có tab `Đang theo dõi`.
+- `Đã theo dõi` chỉ là badge.
+- Expired card muted, không có trade/execute CTA.
+- Missing data card có warning.
+- Card có `Điểm tín hiệu` nếu proposal có quant data.
+- Không dùng chữ `Proposal`, `Quant`, `Cross-impact` trong UI thường.
+```## Prompt 3: Complete `/recommendations` Recommendation Center Filters
+
+```txt
+Hãy audit và hoàn thiện `/recommendations` trong:
+
+- `apps/web/app/recommendations/page.tsx`
+- `apps/web/app/recommendations/components/RecommendationCard.tsx`
+
+Quan trọng:
+
+- Recommendation Center có thể đã có header, tabs, card hierarchy.
+- Trước khi sửa, liệt kê phần đã đạt và phần còn thiếu.
+- Trọng tâm prompt này là filter bar thật, URL search params, và các gap còn thiếu trên card.
+- Không gọi API riêng cho từng tab/filter.
+
+Mục tiêu UX:
+
+Recommendation Center gom toàn bộ recommendations và opportunities thành một workflow chuẩn hóa. User phải phân biệt được:
+
+- Cái gì cần xử lý ngay.
+- Cái gì liên quan danh mục.
+- Cái gì ngoài danh mục.
+- Cái gì đã kiểm chứng.
+- Cái gì hết hiệu lực.
+
+Yêu cầu layout:
+
+1. Header
+   - Eyebrow: `Trung tâm khuyến nghị`.
+   - Title: `Chọn việc cần quyết định tiếp theo`.
+   - Description: Ưu tiên danh mục trước, sau đó mới đến cơ hội ngoài ví.
+
+2. Filter bar
+   Thêm filter controls thật, ưu tiên search params để hỗ trợ back/forward:
+   - Token: tất cả / token symbols.
+   - Hành động: tất cả / BUY / SELL / HOLD / WAIT...
+   - Rủi ro: tất cả / low / medium / high / critical.
+   - Độ tin cậy: tất cả / >50 / >60 / >75.
+   - Thời hạn: tất cả / còn hiệu lực / sắp hết hạn / hết hiệu lực.
+   - Dữ liệu: tất cả / đủ dữ liệu / thiếu dữ liệu.
+   - Có `Reset filters`.
+
+Search params:
+
+- `tab=urgent|portfolio|outside-portfolio|verified|expired`
+- `token=SOL`
+- `action=BUY|SELL|HOLD|WAIT`
+- `risk=LOW|MEDIUM|HIGH|CRITICAL`
+- `confidence=50|60|75`
+- `expiry=active|expiring|expired|all`
+- `data=complete|missing|all`
+
+Implementation requirements:
+
+- Updating filters phải preserve `tab`.
+- Derive token options từ `proposals.data`.
+- Filters phải accessible và responsive.
+- Empty state phải phản ánh filtered result.
+
+3. Tabs
+   Giữ đúng 5 tabs:
+   - `Cần xử lý ngay` -> `?tab=urgent`.
+   - `Liên quan danh mục` -> `?tab=portfolio`.
+   - `Ngoài danh mục` -> `?tab=outside-portfolio`.
+   - `Đã kiểm chứng` -> `?tab=verified`.
+   - `Hết hiệu lực` -> `?tab=expired`.
+
+4. Recommendation list
+   - Urgent và portfolio tabs nên dùng list một cột để giữ priority order.
+   - Outside portfolio có thể dùng grid nếu hợp responsive.
+
+5. RecommendationCard
+   Card phải render theo hierarchy:
+   - Token.
+   - Action badge.
+   - Portfolio impact badge.
+   - Risk badge.
+   - Expiry/status badge.
+   - Watched badge.
+   - Confidence: `Tin cậy`.
+   - Quant score: `Điểm tín hiệu` nếu data có `quantScore` hoặc `scoreComponents.finalScore`.
+   - Short reason.
+   - Missing data warning nếu status `MISSING_DATA`.
+   - Expired note nếu status `EXPIRED`.
+   - CTA chính: `Xem chi tiết`.
+   - CTA phụ: `Theo dõi`, nếu chưa watched và không expired/executed.
+
+Logic bắt buộc:
+
+- Dùng `derivePortfolioImpact`, `deriveRecommendationStatus`, `deriveIsWatched`.
+- Không gọi API riêng cho từng tab; dùng data từ `useNdlData()` rồi filter frontend.
+- First derive all items.
+- Apply tab filter.
+- Apply filter bar.
+- Sort by priority.
+- Tab filter:
+  - `verified`: status `VERIFIED`.
+  - `expired`: status `EXPIRED`.
+  - `outside-portfolio`: impact `OUTSIDE`, bỏ `EXPIRED`, `VERIFIED`, `EXECUTED`.
+  - `portfolio`: impact `DIRECT` hoặc `INDIRECT`, bỏ `EXPIRED`, `VERIFIED`, `EXECUTED`.
+  - `urgent`: status `ACTIVE`, `EXPIRING_SOON`, `MISSING_DATA`.
+- Apply filter bar sau khi tab filter hoặc theo thứ tự hợp lý, nhưng UX phải nhất quán.
+- Priority score:
+  - Base confidence.
+  - Expiring soon bonus.
+  - Missing data bonus vừa phải.
+  - Direct > indirect > outside.
+  - SELL/high risk ưu tiên cao.
+
+Acceptance criteria:
+
+- Có filter bar hoạt động.
+- URL phản ánh filter hiện tại.
+- Browser back/forward hoạt động với filter.
+- Reset filters hoạt động và giữ tab hiện tại.
+- Có đủ 5 tabs.
+- Không có tab `Đang theo dõi`.
+- `Đã theo dõi` chỉ là badge.
+- Expired card muted, không có trade/execute CTA.
+- Missing data card có warning.
+- Card có `Điểm tín hiệu` nếu proposal có quant data.
+- Không dùng chữ `Proposal`, `Quant`, `Cross-impact` trong UI thường.
+```## Prompt 3: Complete `/recommendations` Recommendation Center Filters
+
+```txt
+Hãy audit và hoàn thiện `/recommendations` trong:
+
+- `apps/web/app/recommendations/page.tsx`
+- `apps/web/app/recommendations/components/RecommendationCard.tsx`
+
+Quan trọng:
+
+- Recommendation Center có thể đã có header, tabs, card hierarchy.
+- Trước khi sửa, liệt kê phần đã đạt và phần còn thiếu.
+- Trọng tâm prompt này là filter bar thật, URL search params, và các gap còn thiếu trên card.
+- Không gọi API riêng cho từng tab/filter.
+
+Mục tiêu UX:
+
+Recommendation Center gom toàn bộ recommendations và opportunities thành một workflow chuẩn hóa. User phải phân biệt được:
+
+- Cái gì cần xử lý ngay.
+- Cái gì liên quan danh mục.
+- Cái gì ngoài danh mục.
+- Cái gì đã kiểm chứng.
+- Cái gì hết hiệu lực.
+
+Yêu cầu layout:
+
+1. Header
+   - Eyebrow: `Trung tâm khuyến nghị`.
+   - Title: `Chọn việc cần quyết định tiếp theo`.
+   - Description: Ưu tiên danh mục trước, sau đó mới đến cơ hội ngoài ví.
+
+2. Filter bar
+   Thêm filter controls thật, ưu tiên search params để hỗ trợ back/forward:
+   - Token: tất cả / token symbols.
+   - Hành động: tất cả / BUY / SELL / HOLD / WAIT...
+   - Rủi ro: tất cả / low / medium / high / critical.
+   - Độ tin cậy: tất cả / >50 / >60 / >75.
+   - Thời hạn: tất cả / còn hiệu lực / sắp hết hạn / hết hiệu lực.
+   - Dữ liệu: tất cả / đủ dữ liệu / thiếu dữ liệu.
+   - Có `Reset filters`.
+
+Search params:
+
+- `tab=urgent|portfolio|outside-portfolio|verified|expired`
+- `token=SOL`
+- `action=BUY|SELL|HOLD|WAIT`
+- `risk=LOW|MEDIUM|HIGH|CRITICAL`
+- `confidence=50|60|75`
+- `expiry=active|expiring|expired|all`
+- `data=complete|missing|all`
+
+Implementation requirements:
+
+- Updating filters phải preserve `tab`.
+- Derive token options từ `proposals.data`.
+- Filters phải accessible và responsive.
+- Empty state phải phản ánh filtered result.
+
+3. Tabs
+   Giữ đúng 5 tabs:
+   - `Cần xử lý ngay` -> `?tab=urgent`.
+   - `Liên quan danh mục` -> `?tab=portfolio`.
+   - `Ngoài danh mục` -> `?tab=outside-portfolio`.
+   - `Đã kiểm chứng` -> `?tab=verified`.
+   - `Hết hiệu lực` -> `?tab=expired`.
+
+4. Recommendation list
+   - Urgent và portfolio tabs nên dùng list một cột để giữ priority order.
+   - Outside portfolio có thể dùng grid nếu hợp responsive.
+
+5. RecommendationCard
+   Card phải render theo hierarchy:
+   - Token.
+   - Action badge.
+   - Portfolio impact badge.
+   - Risk badge.
+   - Expiry/status badge.
+   - Watched badge.
+   - Confidence: `Tin cậy`.
+   - Quant score: `Điểm tín hiệu` nếu data có `quantScore` hoặc `scoreComponents.finalScore`.
+   - Short reason.
+   - Missing data warning nếu status `MISSING_DATA`.
+   - Expired note nếu status `EXPIRED`.
+   - CTA chính: `Xem chi tiết`.
+   - CTA phụ: `Theo dõi`, nếu chưa watched và không expired/executed.
+
+Logic bắt buộc:
+
+- Dùng `derivePortfolioImpact`, `deriveRecommendationStatus`, `deriveIsWatched`.
+- Không gọi API riêng cho từng tab; dùng data từ `useNdlData()` rồi filter frontend.
+- First derive all items.
+- Apply tab filter.
+- Apply filter bar.
+- Sort by priority.
+- Tab filter:
+  - `verified`: status `VERIFIED`.
+  - `expired`: status `EXPIRED`.
+  - `outside-portfolio`: impact `OUTSIDE`, bỏ `EXPIRED`, `VERIFIED`, `EXECUTED`.
+  - `portfolio`: impact `DIRECT` hoặc `INDIRECT`, bỏ `EXPIRED`, `VERIFIED`, `EXECUTED`.
+  - `urgent`: status `ACTIVE`, `EXPIRING_SOON`, `MISSING_DATA`.
+- Apply filter bar sau khi tab filter hoặc theo thứ tự hợp lý, nhưng UX phải nhất quán.
+- Priority score:
+  - Base confidence.
+  - Expiring soon bonus.
+  - Missing data bonus vừa phải.
+  - Direct > indirect > outside.
+  - SELL/high risk ưu tiên cao.
+
+Acceptance criteria:
+
+- Có filter bar hoạt động.
+- URL phản ánh filter hiện tại.
+- Browser back/forward hoạt động với filter.
+- Reset filters hoạt động và giữ tab hiện tại.
+- Có đủ 5 tabs.
+- Không có tab `Đang theo dõi`.
+- `Đã theo dõi` chỉ là badge.
+- Expired card muted, không có trade/execute CTA.
+- Missing data card có warning.
+- Card có `Điểm tín hiệu` nếu proposal có quant data.
+- Không dùng chữ `Proposal`, `Quant`, `Cross-impact` trong UI thường.
+```## Prompt 3: Complete `/recommendations` Recommendation Center Filters
+
+```txt
+Hãy audit và hoàn thiện `/recommendations` trong:
+
+- `apps/web/app/recommendations/page.tsx`
+- `apps/web/app/recommendations/components/RecommendationCard.tsx`
+
+Quan trọng:
+
+- Recommendation Center có thể đã có header, tabs, card hierarchy.
+- Trước khi sửa, liệt kê phần đã đạt và phần còn thiếu.
+- Trọng tâm prompt này là filter bar thật, URL search params, và các gap còn thiếu trên card.
+- Không gọi API riêng cho từng tab/filter.
+
+Mục tiêu UX:
+
+Recommendation Center gom toàn bộ recommendations và opportunities thành một workflow chuẩn hóa. User phải phân biệt được:
+
+- Cái gì cần xử lý ngay.
+- Cái gì liên quan danh mục.
+- Cái gì ngoài danh mục.
+- Cái gì đã kiểm chứng.
+- Cái gì hết hiệu lực.
+
+Yêu cầu layout:
+
+1. Header
+   - Eyebrow: `Trung tâm khuyến nghị`.
+   - Title: `Chọn việc cần quyết định tiếp theo`.
+   - Description: Ưu tiên danh mục trước, sau đó mới đến cơ hội ngoài ví.
+
+2. Filter bar
+   Thêm filter controls thật, ưu tiên search params để hỗ trợ back/forward:
+   - Token: tất cả / token symbols.
+   - Hành động: tất cả / BUY / SELL / HOLD / WAIT...
+   - Rủi ro: tất cả / low / medium / high / critical.
+   - Độ tin cậy: tất cả / >50 / >60 / >75.
+   - Thời hạn: tất cả / còn hiệu lực / sắp hết hạn / hết hiệu lực.
+   - Dữ liệu: tất cả / đủ dữ liệu / thiếu dữ liệu.
+   - Có `Reset filters`.
+
+Search params:
+
+- `tab=urgent|portfolio|outside-portfolio|verified|expired`
+- `token=SOL`
+- `action=BUY|SELL|HOLD|WAIT`
+- `risk=LOW|MEDIUM|HIGH|CRITICAL`
+- `confidence=50|60|75`
+- `expiry=active|expiring|expired|all`
+- `data=complete|missing|all`
+
+Implementation requirements:
+
+- Updating filters phải preserve `tab`.
+- Derive token options từ `proposals.data`.
+- Filters phải accessible và responsive.
+- Empty state phải phản ánh filtered result.
+
+3. Tabs
+   Giữ đúng 5 tabs:
+   - `Cần xử lý ngay` -> `?tab=urgent`.
+   - `Liên quan danh mục` -> `?tab=portfolio`.
+   - `Ngoài danh mục` -> `?tab=outside-portfolio`.
+   - `Đã kiểm chứng` -> `?tab=verified`.
+   - `Hết hiệu lực` -> `?tab=expired`.
+
+4. Recommendation list
+   - Urgent và portfolio tabs nên dùng list một cột để giữ priority order.
+   - Outside portfolio có thể dùng grid nếu hợp responsive.
+
+5. RecommendationCard
+   Card phải render theo hierarchy:
+   - Token.
+   - Action badge.
+   - Portfolio impact badge.
+   - Risk badge.
+   - Expiry/status badge.
+   - Watched badge.
+   - Confidence: `Tin cậy`.
+   - Quant score: `Điểm tín hiệu` nếu data có `quantScore` hoặc `scoreComponents.finalScore`.
+   - Short reason.
+   - Missing data warning nếu status `MISSING_DATA`.
+   - Expired note nếu status `EXPIRED`.
+   - CTA chính: `Xem chi tiết`.
+   - CTA phụ: `Theo dõi`, nếu chưa watched và không expired/executed.
+
+Logic bắt buộc:
+
+- Dùng `derivePortfolioImpact`, `deriveRecommendationStatus`, `deriveIsWatched`.
+- Không gọi API riêng cho từng tab; dùng data từ `useNdlData()` rồi filter frontend.
+- First derive all items.
+- Apply tab filter.
+- Apply filter bar.
+- Sort by priority.
+- Tab filter:
+  - `verified`: status `VERIFIED`.
+  - `expired`: status `EXPIRED`.
+  - `outside-portfolio`: impact `OUTSIDE`, bỏ `EXPIRED`, `VERIFIED`, `EXECUTED`.
+  - `portfolio`: impact `DIRECT` hoặc `INDIRECT`, bỏ `EXPIRED`, `VERIFIED`, `EXECUTED`.
+  - `urgent`: status `ACTIVE`, `EXPIRING_SOON`, `MISSING_DATA`.
+- Apply filter bar sau khi tab filter hoặc theo thứ tự hợp lý, nhưng UX phải nhất quán.
+- Priority score:
+  - Base confidence.
+  - Expiring soon bonus.
+  - Missing data bonus vừa phải.
+  - Direct > indirect > outside.
+  - SELL/high risk ưu tiên cao.
+
+Acceptance criteria:
+
+- Có filter bar hoạt động.
+- URL phản ánh filter hiện tại.
+- Browser back/forward hoạt động với filter.
+- Reset filters hoạt động và giữ tab hiện tại.
+- Có đủ 5 tabs.
+- Không có tab `Đang theo dõi`.
+- `Đã theo dõi` chỉ là badge.
+- Expired card muted, không có trade/execute CTA.
+- Missing data card có warning.
+- Card có `Điểm tín hiệu` nếu proposal có quant data.
+- Không dùng chữ `Proposal`, `Quant`, `Cross-impact` trong UI thường.
+```## Prompt 3: Complete `/recommendations` Recommendation Center Filters
+
+```txt
+Hãy audit và hoàn thiện `/recommendations` trong:
+
+- `apps/web/app/recommendations/page.tsx`
+- `apps/web/app/recommendations/components/RecommendationCard.tsx`
+
+Quan trọng:
+
+- Recommendation Center có thể đã có header, tabs, card hierarchy.
+- Trước khi sửa, liệt kê phần đã đạt và phần còn thiếu.
+- Trọng tâm prompt này là filter bar thật, URL search params, và các gap còn thiếu trên card.
+- Không gọi API riêng cho từng tab/filter.
+
+Mục tiêu UX:
+
+Recommendation Center gom toàn bộ recommendations và opportunities thành một workflow chuẩn hóa. User phải phân biệt được:
+
+- Cái gì cần xử lý ngay.
+- Cái gì liên quan danh mục.
+- Cái gì ngoài danh mục.
+- Cái gì đã kiểm chứng.
+- Cái gì hết hiệu lực.
+
+Yêu cầu layout:
+
+1. Header
+   - Eyebrow: `Trung tâm khuyến nghị`.
+   - Title: `Chọn việc cần quyết định tiếp theo`.
+   - Description: Ưu tiên danh mục trước, sau đó mới đến cơ hội ngoài ví.
+
+2. Filter bar
+   Thêm filter controls thật, ưu tiên search params để hỗ trợ back/forward:
+   - Token: tất cả / token symbols.
+   - Hành động: tất cả / BUY / SELL / HOLD / WAIT...
+   - Rủi ro: tất cả / low / medium / high / critical.
+   - Độ tin cậy: tất cả / >50 / >60 / >75.
+   - Thời hạn: tất cả / còn hiệu lực / sắp hết hạn / hết hiệu lực.
+   - Dữ liệu: tất cả / đủ dữ liệu / thiếu dữ liệu.
+   - Có `Reset filters`.
+
+Search params:
+
+- `tab=urgent|portfolio|outside-portfolio|verified|expired`
+- `token=SOL`
+- `action=BUY|SELL|HOLD|WAIT`
+- `risk=LOW|MEDIUM|HIGH|CRITICAL`
+- `confidence=50|60|75`
+- `expiry=active|expiring|expired|all`
+- `data=complete|missing|all`
+
+Implementation requirements:
+
+- Updating filters phải preserve `tab`.
+- Derive token options từ `proposals.data`.
+- Filters phải accessible và responsive.
+- Empty state phải phản ánh filtered result.
+
+3. Tabs
+   Giữ đúng 5 tabs:
+   - `Cần xử lý ngay` -> `?tab=urgent`.
+   - `Liên quan danh mục` -> `?tab=portfolio`.
+   - `Ngoài danh mục` -> `?tab=outside-portfolio`.
+   - `Đã kiểm chứng` -> `?tab=verified`.
+   - `Hết hiệu lực` -> `?tab=expired`.
+
+4. Recommendation list
+   - Urgent và portfolio tabs nên dùng list một cột để giữ priority order.
+   - Outside portfolio có thể dùng grid nếu hợp responsive.
+
+5. RecommendationCard
+   Card phải render theo hierarchy:
+   - Token.
+   - Action badge.
+   - Portfolio impact badge.
+   - Risk badge.
+   - Expiry/status badge.
+   - Watched badge.
+   - Confidence: `Tin cậy`.
+   - Quant score: `Điểm tín hiệu` nếu data có `quantScore` hoặc `scoreComponents.finalScore`.
+   - Short reason.
+   - Missing data warning nếu status `MISSING_DATA`.
+   - Expired note nếu status `EXPIRED`.
+   - CTA chính: `Xem chi tiết`.
+   - CTA phụ: `Theo dõi`, nếu chưa watched và không expired/executed.
+
+Logic bắt buộc:
+
+- Dùng `derivePortfolioImpact`, `deriveRecommendationStatus`, `deriveIsWatched`.
+- Không gọi API riêng cho từng tab; dùng data từ `useNdlData()` rồi filter frontend.
+- First derive all items.
+- Apply tab filter.
+- Apply filter bar.
+- Sort by priority.
+- Tab filter:
+  - `verified`: status `VERIFIED`.
+  - `expired`: status `EXPIRED`.
+  - `outside-portfolio`: impact `OUTSIDE`, bỏ `EXPIRED`, `VERIFIED`, `EXECUTED`.
+  - `portfolio`: impact `DIRECT` hoặc `INDIRECT`, bỏ `EXPIRED`, `VERIFIED`, `EXECUTED`.
+  - `urgent`: status `ACTIVE`, `EXPIRING_SOON`, `MISSING_DATA`.
+- Apply filter bar sau khi tab filter hoặc theo thứ tự hợp lý, nhưng UX phải nhất quán.
+- Priority score:
+  - Base confidence.
+  - Expiring soon bonus.
+  - Missing data bonus vừa phải.
+  - Direct > indirect > outside.
+  - SELL/high risk ưu tiên cao.
+
+Acceptance criteria:
+
+- Có filter bar hoạt động.
+- URL phản ánh filter hiện tại.
+- Browser back/forward hoạt động với filter.
+- Reset filters hoạt động và giữ tab hiện tại.
+- Có đủ 5 tabs.
+- Không có tab `Đang theo dõi`.
+- `Đã theo dõi` chỉ là badge.
+- Expired card muted, không có trade/execute CTA.
+- Missing data card có warning.
+- Card có `Điểm tín hiệu` nếu proposal có quant data.
+- Không dùng chữ `Proposal`, `Quant`, `Cross-impact` trong UI thường.
+```## Prompt 3: Complete `/recommendations` Recommendation Center Filters
+
+```txt
+Hãy audit và hoàn thiện `/recommendations` trong:
+
+- `apps/web/app/recommendations/page.tsx`
+- `apps/web/app/recommendations/components/RecommendationCard.tsx`
+
+Quan trọng:
+
+- Recommendation Center có thể đã có header, tabs, card hierarchy.
+- Trước khi sửa, liệt kê phần đã đạt và phần còn thiếu.
+- Trọng tâm prompt này là filter bar thật, URL search params, và các gap còn thiếu trên card.
+- Không gọi API riêng cho từng tab/filter.
+
+Mục tiêu UX:
+
+Recommendation Center gom toàn bộ recommendations và opportunities thành một workflow chuẩn hóa. User phải phân biệt được:
+
+- Cái gì cần xử lý ngay.
+- Cái gì liên quan danh mục.
+- Cái gì ngoài danh mục.
+- Cái gì đã kiểm chứng.
+- Cái gì hết hiệu lực.
+
+Yêu cầu layout:
+
+1. Header
+   - Eyebrow: `Trung tâm khuyến nghị`.
+   - Title: `Chọn việc cần quyết định tiếp theo`.
+   - Description: Ưu tiên danh mục trước, sau đó mới đến cơ hội ngoài ví.
+
+2. Filter bar
+   Thêm filter controls thật, ưu tiên search params để hỗ trợ back/forward:
+   - Token: tất cả / token symbols.
+   - Hành động: tất cả / BUY / SELL / HOLD / WAIT...
+   - Rủi ro: tất cả / low / medium / high / critical.
+   - Độ tin cậy: tất cả / >50 / >60 / >75.
+   - Thời hạn: tất cả / còn hiệu lực / sắp hết hạn / hết hiệu lực.
+   - Dữ liệu: tất cả / đủ dữ liệu / thiếu dữ liệu.
+   - Có `Reset filters`.
+
+Search params:
+
+- `tab=urgent|portfolio|outside-portfolio|verified|expired`
+- `token=SOL`
+- `action=BUY|SELL|HOLD|WAIT`
+- `risk=LOW|MEDIUM|HIGH|CRITICAL`
+- `confidence=50|60|75`
+- `expiry=active|expiring|expired|all`
+- `data=complete|missing|all`
+
+Implementation requirements:
+
+- Updating filters phải preserve `tab`.
+- Derive token options từ `proposals.data`.
+- Filters phải accessible và responsive.
+- Empty state phải phản ánh filtered result.
+
+3. Tabs
+   Giữ đúng 5 tabs:
+   - `Cần xử lý ngay` -> `?tab=urgent`.
+   - `Liên quan danh mục` -> `?tab=portfolio`.
+   - `Ngoài danh mục` -> `?tab=outside-portfolio`.
+   - `Đã kiểm chứng` -> `?tab=verified`.
+   - `Hết hiệu lực` -> `?tab=expired`.
+
+4. Recommendation list
+   - Urgent và portfolio tabs nên dùng list một cột để giữ priority order.
+   - Outside portfolio có thể dùng grid nếu hợp responsive.
+
+5. RecommendationCard
+   Card phải render theo hierarchy:
+   - Token.
+   - Action badge.
+   - Portfolio impact badge.
+   - Risk badge.
+   - Expiry/status badge.
+   - Watched badge.
+   - Confidence: `Tin cậy`.
+   - Quant score: `Điểm tín hiệu` nếu data có `quantScore` hoặc `scoreComponents.finalScore`.
+   - Short reason.
+   - Missing data warning nếu status `MISSING_DATA`.
+   - Expired note nếu status `EXPIRED`.
+   - CTA chính: `Xem chi tiết`.
+   - CTA phụ: `Theo dõi`, nếu chưa watched và không expired/executed.
+
+Logic bắt buộc:
+
+- Dùng `derivePortfolioImpact`, `deriveRecommendationStatus`, `deriveIsWatched`.
+- Không gọi API riêng cho từng tab; dùng data từ `useNdlData()` rồi filter frontend.
+- First derive all items.
+- Apply tab filter.
+- Apply filter bar.
+- Sort by priority.
+- Tab filter:
+  - `verified`: status `VERIFIED`.
+  - `expired`: status `EXPIRED`.
+  - `outside-portfolio`: impact `OUTSIDE`, bỏ `EXPIRED`, `VERIFIED`, `EXECUTED`.
+  - `portfolio`: impact `DIRECT` hoặc `INDIRECT`, bỏ `EXPIRED`, `VERIFIED`, `EXECUTED`.
+  - `urgent`: status `ACTIVE`, `EXPIRING_SOON`, `MISSING_DATA`.
+- Apply filter bar sau khi tab filter hoặc theo thứ tự hợp lý, nhưng UX phải nhất quán.
+- Priority score:
+  - Base confidence.
+  - Expiring soon bonus.
+  - Missing data bonus vừa phải.
+  - Direct > indirect > outside.
+  - SELL/high risk ưu tiên cao.
+
+Acceptance criteria:
+
+- Có filter bar hoạt động.
+- URL phản ánh filter hiện tại.
+- Browser back/forward hoạt động với filter.
+- Reset filters hoạt động và giữ tab hiện tại.
+- Có đủ 5 tabs.
+- Không có tab `Đang theo dõi`.
+- `Đã theo dõi` chỉ là badge.
+- Expired card muted, không có trade/execute CTA.
+- Missing data card có warning.
+- Card có `Điểm tín hiệu` nếu proposal có quant data.
+- Không dùng chữ `Proposal`, `Quant`, `Cross-impact` trong UI thường.
+```## Prompt 3: Complete `/recommendations` Recommendation Center Filters
+
+```txt
+Hãy audit và hoàn thiện `/recommendations` trong:
+
+- `apps/web/app/recommendations/page.tsx`
+- `apps/web/app/recommendations/components/RecommendationCard.tsx`
+
+Quan trọng:
+
+- Recommendation Center có thể đã có header, tabs, card hierarchy.
+- Trước khi sửa, liệt kê phần đã đạt và phần còn thiếu.
+- Trọng tâm prompt này là filter bar thật, URL search params, và các gap còn thiếu trên card.
+- Không gọi API riêng cho từng tab/filter.
+
+Mục tiêu UX:
+
+Recommendation Center gom toàn bộ recommendations và opportunities thành một workflow chuẩn hóa. User phải phân biệt được:
+
+- Cái gì cần xử lý ngay.
+- Cái gì liên quan danh mục.
+- Cái gì ngoài danh mục.
+- Cái gì đã kiểm chứng.
+- Cái gì hết hiệu lực.
+
+Yêu cầu layout:
+
+1. Header
+   - Eyebrow: `Trung tâm khuyến nghị`.
+   - Title: `Chọn việc cần quyết định tiếp theo`.
+   - Description: Ưu tiên danh mục trước, sau đó mới đến cơ hội ngoài ví.
+
+2. Filter bar
+   Thêm filter controls thật, ưu tiên search params để hỗ trợ back/forward:
+   - Token: tất cả / token symbols.
+   - Hành động: tất cả / BUY / SELL / HOLD / WAIT...
+   - Rủi ro: tất cả / low / medium / high / critical.
+   - Độ tin cậy: tất cả / >50 / >60 / >75.
+   - Thời hạn: tất cả / còn hiệu lực / sắp hết hạn / hết hiệu lực.
+   - Dữ liệu: tất cả / đủ dữ liệu / thiếu dữ liệu.
+   - Có `Reset filters`.
+
+Search params:
+
+- `tab=urgent|portfolio|outside-portfolio|verified|expired`
+- `token=SOL`
+- `action=BUY|SELL|HOLD|WAIT`
+- `risk=LOW|MEDIUM|HIGH|CRITICAL`
+- `confidence=50|60|75`
+- `expiry=active|expiring|expired|all`
+- `data=complete|missing|all`
+
+Implementation requirements:
+
+- Updating filters phải preserve `tab`.
+- Derive token options từ `proposals.data`.
+- Filters phải accessible và responsive.
+- Empty state phải phản ánh filtered result.
+
+3. Tabs
+   Giữ đúng 5 tabs:
+   - `Cần xử lý ngay` -> `?tab=urgent`.
+   - `Liên quan danh mục` -> `?tab=portfolio`.
+   - `Ngoài danh mục` -> `?tab=outside-portfolio`.
+   - `Đã kiểm chứng` -> `?tab=verified`.
+   - `Hết hiệu lực` -> `?tab=expired`.
+
+4. Recommendation list
+   - Urgent và portfolio tabs nên dùng list một cột để giữ priority order.
+   - Outside portfolio có thể dùng grid nếu hợp responsive.
+
+5. RecommendationCard
+   Card phải render theo hierarchy:
+   - Token.
+   - Action badge.
+   - Portfolio impact badge.
+   - Risk badge.
+   - Expiry/status badge.
+   - Watched badge.
+   - Confidence: `Tin cậy`.
+   - Quant score: `Điểm tín hiệu` nếu data có `quantScore` hoặc `scoreComponents.finalScore`.
+   - Short reason.
+   - Missing data warning nếu status `MISSING_DATA`.
+   - Expired note nếu status `EXPIRED`.
+   - CTA chính: `Xem chi tiết`.
+   - CTA phụ: `Theo dõi`, nếu chưa watched và không expired/executed.
+
+Logic bắt buộc:
+
+- Dùng `derivePortfolioImpact`, `deriveRecommendationStatus`, `deriveIsWatched`.
+- Không gọi API riêng cho từng tab; dùng data từ `useNdlData()` rồi filter frontend.
+- First derive all items.
+- Apply tab filter.
+- Apply filter bar.
+- Sort by priority.
+- Tab filter:
+  - `verified`: status `VERIFIED`.
+  - `expired`: status `EXPIRED`.
+  - `outside-portfolio`: impact `OUTSIDE`, bỏ `EXPIRED`, `VERIFIED`, `EXECUTED`.
+  - `portfolio`: impact `DIRECT` hoặc `INDIRECT`, bỏ `EXPIRED`, `VERIFIED`, `EXECUTED`.
+  - `urgent`: status `ACTIVE`, `EXPIRING_SOON`, `MISSING_DATA`.
+- Apply filter bar sau khi tab filter hoặc theo thứ tự hợp lý, nhưng UX phải nhất quán.
+- Priority score:
+  - Base confidence.
+  - Expiring soon bonus.
+  - Missing data bonus vừa phải.
+  - Direct > indirect > outside.
+  - SELL/high risk ưu tiên cao.
+
+Acceptance criteria:
+
+- Có filter bar hoạt động.
+- URL phản ánh filter hiện tại.
+- Browser back/forward hoạt động với filter.
+- Reset filters hoạt động và giữ tab hiện tại.
+- Có đủ 5 tabs.
+- Không có tab `Đang theo dõi`.
+- `Đã theo dõi` chỉ là badge.
+- Expired card muted, không có trade/execute CTA.
+- Missing data card có warning.
+- Card có `Điểm tín hiệu` nếu proposal có quant data.
+- Không dùng chữ `Proposal`, `Quant`, `Cross-impact` trong UI thường.
+```ed: IGNORED_WEAKER_SAME_BATCH"]
+    sources["Load source content from n## Prompt 3: Complete `/recommendations` Recommendation Center Filters
+
+```txt
+Hãy audit và hoàn thiện `/recommendations` trong:
+
+- `apps/web/app/recommendations/page.tsx`
+- `apps/web/app/recommendations/components/RecommendationCard.tsx`
+
+Quan trọng:
+
+- Recommendation Center có thể đã có header, tabs, card hierarchy.
+- Trước khi sửa, liệt kê phần đã đạt và phần còn thiếu.
+- Trọng tâm prompt này là filter bar thật, URL search params, và các gap còn thiếu trên card.
+- Không gọi API riêng cho từng tab/filter.
+
+Mục tiêu UX:
+
+Recommendation Center gom toàn bộ recommendations và opportunities thành một workflow chuẩn hóa. User phải phân biệt được:
+
+- Cái gì cần xử lý ngay.
+- Cái gì liên quan danh mục.
+- Cái gì ngoài danh mục.
+- Cái gì đã kiểm chứng.
+- Cái gì hết hiệu lực.
+
+Yêu cầu layout:
+
+1. Header
+   - Eyebrow: `Trung tâm khuyến nghị`.
+   - Title: `Chọn việc cần quyết định tiếp theo`.
+   - Description: Ưu tiên danh mục trước, sau đó mới đến cơ hội ngoài ví.
+
+2. Filter bar
+   Thêm filter controls thật, ưu tiên search params để hỗ trợ back/forward:
+   - Token: tất cả / token symbols.
+   - Hành động: tất cả / BUY / SELL / HOLD / WAIT...
+   - Rủi ro: tất cả / low / medium / high / critical.
+   - Độ tin cậy: tất cả / >50 / >60 / >75.
+   - Thời hạn: tất cả / còn hiệu lực / sắp hết hạn / hết hiệu lực.
+   - Dữ liệu: tất cả / đủ dữ liệu / thiếu dữ liệu.
+   - Có `Reset filters`.
+
+Search params:
+
+- `tab=urgent|portfolio|outside-portfolio|verified|expired`
+- `token=SOL`
+- `action=BUY|SELL|HOLD|WAIT`
+- `risk=LOW|MEDIUM|HIGH|CRITICAL`
+- `confidence=50|60|75`
+- `expiry=active|expiring|expired|all`
+- `data=complete|missing|all`
+
+Implementation requirements:
+
+- Updating filters phải preserve `tab`.
+- Derive token options từ `proposals.data`.
+- Filters phải accessible và responsive.
+- Empty state phải phản ánh filtered result.
+
+3. Tabs
+   Giữ đúng 5 tabs:
+   - `Cần xử lý ngay` -> `?tab=urgent`.
+   - `Liên quan danh mục` -> `?tab=portfolio`.
+   - `Ngoài danh mục` -> `?tab=outside-portfolio`.
+   - `Đã kiểm chứng` -> `?tab=verified`.
+   - `Hết hiệu lực` -> `?tab=expired`.
+
+4. Recommendation list
+   - Urgent và portfolio tabs nên dùng list một cột để giữ priority order.
+   - Outside portfolio có thể dùng grid nếu hợp responsive.
+
+5. RecommendationCard
+   Card phải render theo hierarchy:
+   - Token.
+   - Action badge.
+   - Portfolio impact badge.
+   - Risk badge.
+   - Expiry/status badge.
+   - Watched badge.
+   - Confidence: `Tin cậy`.
+   - Quant score: `Điểm tín hiệu` nếu data có `quantScore` hoặc `scoreComponents.finalScore`.
+   - Short reason.
+   - Missing data warning nếu status `MISSING_DATA`.
+   - Expired note nếu status `EXPIRED`.
+   - CTA chính: `Xem chi tiết`.
+   - CTA phụ: `Theo dõi`, nếu chưa watched và không expired/executed.
+
+Logic bắt buộc:
+
+- Dùng `derivePortfolioImpact`, `deriveRecommendationStatus`, `deriveIsWatched`.
+- Không gọi API riêng cho từng tab; dùng data từ `useNdlData()` rồi filter frontend.
+- First derive all items.
+- Apply tab filter.
+- Apply filter bar.
+- Sort by priority.
+- Tab filter:
+  - `verified`: status `VERIFIED`.
+  - `expired`: status `EXPIRED`.
+  - `outside-portfolio`: impact `OUTSIDE`, bỏ `EXPIRED`, `VERIFIED`, `EXECUTED`.
+  - `portfolio`: impact `DIRECT` hoặc `INDIRECT`, bỏ `EXPIRED`, `VERIFIED`, `EXECUTED`.
+  - `urgent`: status `ACTIVE`, `EXPIRING_SOON`, `MISSING_DATA`.
+- Apply filter bar sau khi tab filter hoặc theo thứ tự hợp lý, nhưng UX phải nhất quán.
+- Priority score:
+  - Base confidence.
+  - Expiring soon bonus.
+  - Missing data bonus vừa phải.
+  - Direct > indirect > outside.
+  - SELL/high risk ưu tiên cao.
+
+Acceptance criteria:
+
+- Có filter bar hoạt động.
+- URL phản ánh filter hiện tại.
+- Browser back/forward hoạt động với filter.
+- Reset filters hoạt động và giữ tab hiện tại.
+- Có đủ 5 tabs.
+- Không có tab `Đang theo dõi`.
+- `Đã theo dõi` chỉ là badge.
+- Expired card muted, không có trade/execute CTA.
+- Missing data card có warning.
+- Card có `Điểm tín hiệu` nếu proposal có quant data.
+- Không dùng chữ `Proposal`, `Quant`, `Cross-impact` trong UI thường.
+```ews_articles and tweets"]
+    gemini["Invoke Gemini via LangGraph reasoning node"]
+    ownership{"Still owns processing lock?"}
+    stale["Return STALE_CLAIM"]
+    compare{"Cross-batch override?"}
+    override["Mark previous proposal OVERRIDDEN"]
+    upsert["Upsert proposal with rationale, scores and TTL"]
+    mark["Mark signal PROCESSED with layer3Decision"]
+    retry{"More batch capacity?"}
+
+    start --> claim --> found
+    found -- "no" --> stop
+    found -- "yes" --> validate
+    validate -- "no" --> fail --> retry
+    validate -- "yes" --> expire --> active
+    active -- "yes" --> older
+    active -- "no" --> sources
+    older -- "yes" --> ignoredOld --> retry
+    older -- "no" --> weaker
+    weaker -- "yes" --> ignoredWeak --> retry
+    weaker -- "no" --> sources
+    sources --> gemini --> ownership
+    ownership -- "no" --> stale --> retry
+    ownership -- "yes" --> compare
+    compare -- "yes" --> override --> upsert
+    compare -- "no" --> upsert
+    upsert --> mark --> retry
+    retry -- "yes" --> claim
+    retry -- "no" --> stop

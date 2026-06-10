@@ -3,6 +3,7 @@ import connectDB from '@/lib/mongodb';
 import mongoose from 'mongoose';
 import Proposal from '@/models/Proposal';
 import { SignalModel } from '@/models/Signal';
+import { PROPOSAL_TTL_MS } from '@/app/config/proposals';
 import {
   deriveBacktestSemantics,
   deriveLayerConflict,
@@ -110,7 +111,6 @@ type SignalFallbackRecord = {
 
 const ProposalModel = Proposal as unknown as mongoose.Model<ProposalDetailRecord>;
 const SIGNAL_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const PROPOSAL_TTL_MS = 24 * 60 * 60 * 1000;
 
 function resolveSignalDetectedAt(signal?: SignalFallbackRecord | null) {
   return signal?.detectedAt ?? signal?.createdAt ?? signal?.metadata?.processedAt ?? signal?.updatedAt ?? new Date();

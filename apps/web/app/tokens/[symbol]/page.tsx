@@ -38,11 +38,11 @@ export default function TokenHoldingDetailPage() {
             <>
               {bestProposal ? (
                 <Button asChild className="bg-gradient-to-r from-purple-600 to-cyan-600 text-white">
-                  <Link href={`/proposal/${bestProposal._id}`}>Mở đề xuất</Link>
+                  <Link href={`/proposal/${bestProposal._id}`}>Mở khuyến nghị</Link>
                 </Button>
               ) : null}
               <Button asChild variant="outline" className="border-cyan-500/30 text-cyan-300">
-                <Link href={`/recommendations?token=${symbol}`}>Xem đề xuất cho tài sản này</Link>
+                <Link href={`/recommendations?token=${symbol}`}>Xem khuyến nghị cho tài sản này</Link>
               </Button>
             </>
           }
@@ -57,19 +57,19 @@ export default function TokenHoldingDetailPage() {
             <section className="glass-card rounded-xl border border-white/5 bg-black/20 p-5">
               <HoldingRow holding={holding} totalValue={totalValue} />
               <div className="mt-4 grid gap-3 md:grid-cols-4">
-                <Mini label="Tỷ trọng Portfolio" value={allocation === null ? 'N/A' : `${allocation.toFixed(2)}%`} />
+                <Mini label="Tỷ trọng Portfolio" value={allocation === null ? 'Chưa rõ tỷ trọng' : `${allocation.toFixed(2)}%`} />
                 <Mini label="Giá hiện tại" value={formatCurrency(holding.price)} />
                 <Mini label="Giá trị USD" value={formatCurrency(holding.value)} />
-                <Mini label="ROI/PnL quá khứ" value={bestProposalPnl === null ? 'Chưa backtest' : formatPercent(bestProposalPnl)} />
+                <Mini label="ROI/PnL quá khứ" value={bestProposalPnl === null ? 'Chưa kiểm chứng' : formatPercent(bestProposalPnl)} />
               </div>
             </section>
 
             <section className="grid gap-4 lg:grid-cols-2">
               <div className="glass-card rounded-xl border border-white/5 bg-black/20 p-5">
-                <h2 className="text-lg font-bold text-white">Proposal liên quan</h2>
+                <h2 className="text-lg font-bold text-white">Khuyến nghị liên quan</h2>
                 <div className="mt-4 space-y-3">
                   {relatedProposals.map((proposal) => <ProposalCard key={proposal._id} proposal={proposal} href={`/proposal/${proposal._id}`} />)}
-                  {!relatedProposals.length ? <p className="text-sm text-slate-500">Chưa có proposal cho Token này.</p> : null}
+                  {!relatedProposals.length ? <p className="text-sm text-slate-500">Chưa có khuyến nghị cho token này.</p> : null}
                 </div>
               </div>
 

@@ -2,9 +2,14 @@
 
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { formatNumber } from '@/lib/utils/formatters';
-import type { MockPricePoint } from '@/services/mockApi';
 
-export default function PriceHistoryChart({ history }: { history: MockPricePoint[] }) {
+type PricePoint = {
+  timestamp: string;
+  price: number;
+  source?: string;
+};
+
+export default function PriceHistoryChart({ history }: { history: PricePoint[] }) {
   return (
     <ResponsiveContainer width="100%" height="100%">
       <LineChart data={history}>

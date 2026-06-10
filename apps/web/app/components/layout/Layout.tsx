@@ -1,4 +1,5 @@
 import { ReactNode } from 'react';
+import { MobileBottomNav } from './MobileBottomNav';
 import { Navbar } from './Navbar';
 
 interface LayoutProps {
@@ -17,9 +18,10 @@ export function Layout({ children }: LayoutProps) {
 
       <div className="relative z-10">
         <Navbar />
-        <main className="container mx-auto px-4 py-8">
+        <main className="container mx-auto px-4 pb-28 pt-8 lg:py-8">
           {children}
         </main>
+        <MobileBottomNav />
       </div>
     </div>
   );

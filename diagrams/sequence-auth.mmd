@@ -1,0 +1,30 @@
+sequenceDiagram
+    actor User
+    participant Web as Next.js UI
+    participant Wallet as Solana Wallet
+    participant Nonce as POST /api/auth/nonce
+    participant Verify as POST /api/auth/verify
+    participant Auth as walletAuth service
+    participant DB as MongoDB users
+
+    User->>Web: Open /
+    User->>Wallet: Connect wallet
+    Web->>Nonce: walletAddress
+    Nonce->>Auth: createWalletNonce(walletAddress, domain)
+    Auth-->>Nonce: nonce, message, expiresAt
+    Nonce-->>Web: Signable message
+    Web->>Wallet: signMessage(message)
+    Wallet-->>Web: signature
+    Web->>Verify: walletAddress, message, signature
+    Verify->>Auth: verifyWalletSignature(domain, message, signature)
+    Auth-->>Verify: walletAddress
+    Verify->>DB: findOne({ walletAddress })
+    DB-->>Verify: existing user or null
+    Verify->>Auth: createSession(walletAddress, userId)
+    Auth-->>Verify: session token and expiresAt
+    Verify-->>Web: user, requiresOnboarding, Set-Cookie
+    alt Existing completed profile
+        Web->>Web: route to /overview
+    else Missing profile data
+        Web->>Web: route to /onboarding
+    end

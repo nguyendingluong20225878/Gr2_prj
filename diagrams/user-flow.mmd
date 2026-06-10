@@ -1,0 +1,39 @@
+flowchart TD
+    start["Entry: /"]
+    connect["Connect Solana wallet"]
+    nonce["Request nonce"]
+    sign["Sign login message"]
+    verify["Verify signature"]
+    session["Set session cookie"]
+    hasProfile{"User has name and riskTolerance?"}
+    onboarding["/onboarding: create profile"]
+    overview["/overview"]
+    explore["Browse overview, signals, recommendations, opportunities"]
+    detail["Open proposal or signal detail"]
+    watch{"Add to watchlist?"}
+    watchlist["/watchlist"]
+    trade{"Open trade flow?"}
+    preview["Preview trade risk and fees"]
+    execute{"Confirm execution?"}
+    position["Create demo execution and open position"]
+    portfolio["/portfolio and /positions"]
+    alerts["/alerts"]
+    profile["/profile"]
+    logout["Logout"]
+
+    start --> connect --> nonce --> sign --> verify --> session --> hasProfile
+    hasProfile -- "yes" --> overview
+    hasProfile -- "no" --> onboarding --> overview
+    overview --> explore --> detail
+    detail --> watch
+    watch -- "yes" --> watchlist
+    watch -- "no" --> trade
+    watchlist --> detail
+    detail --> trade
+    trade -- "yes" --> preview --> execute
+    trade -- "no" --> explore
+    execute -- "yes" --> position --> portfolio
+    execute -- "no" --> detail
+    portfolio --> alerts
+    overview --> profile
+    profile --> logout --> start

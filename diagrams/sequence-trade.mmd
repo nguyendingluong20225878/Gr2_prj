@@ -1,0 +1,35 @@
+sequenceDiagram
+    actor User
+    participant UI as Proposal trade UI
+    participant Preview as POST /api/trade/preview
+    participant Execute as POST /api/trade/execute
+    participant Auth as requireSessionUser
+    participant DB as MongoDB
+
+    User->>UI: Open /proposal/:id/trade
+    UI->>Preview: proposalId, amountUsd, leverage, direction
+    Preview->>DB: find proposal by id
+    DB-->>Preview: proposal trade fields
+    Preview->>Preview: validate leverage, entry price, stop loss, fee, slippage
+    Preview-->>UI: risk preview, warnings, assumptions
+    User->>UI: Confirm trade
+    UI->>Execute: proposalId, amount, entryPrice, leverage, direction, riskPlan
+    Execute->>Auth: requireSessionUser(request)
+    Auth-->>Execute: walletAddress, userId
+    Execute->>DB: find user by walletAddress
+    Execute->>DB: find executable proposal
+    Execute->>DB: start transaction
+    Execute->>DB: check open perp_position for same proposal
+    alt Existing open position
+        DB-->>Execute: duplicate found
+        Execute-->>UI: 409 already open
+    else Executable
+        Execute->>DB: insert trade_executions
+        Execute->>DB: insert perp_positions
+        Execute->>DB: update proposal status EXECUTED
+        Execute->>DB: insert proposal_decisions
+        Execute->>DB: commit transaction
+        Execute-->>UI: execution and positionId
+        UI->>UI: navigate to positions or show fill state
+    end
+    %% thiếu dữ liệu: execute route tao demo txHash, khong thay tich hop on-chain settlement thuc
