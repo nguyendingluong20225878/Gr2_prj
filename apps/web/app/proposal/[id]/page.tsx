@@ -320,13 +320,11 @@ function DecisionHeader({
       </div>
       <ConfidenceExplanationDrawer
         data={data}
-        dataStatus={dataStatus}
         explanation={explanation}
         hasError={Boolean(explanationError)}
         loading={explanationLoading}
         onOpenChange={setConfidenceDrawerOpen}
         open={confidenceDrawerOpen}
-        portfolioImpact={portfolioImpact}
       />
       <SignalScoreExplanationDrawer
         data={data}
@@ -402,7 +400,7 @@ function getConfidenceTone(value: number | null) {
   };
 }
 
-function ConfidenceMeter({ value }: { value?: number | null }) {
+function ConfidenceMeter({ description, value }: { description?: string; value?: number | null }) {
   const percent = normalizeConfidencePercent(value);
   const tone = getConfidenceTone(percent);
 
@@ -410,21 +408,16 @@ function ConfidenceMeter({ value }: { value?: number | null }) {
     <div className={`rounded-lg border ${tone.border} bg-black/30 p-4`}>
       <div className="flex items-end justify-between gap-3">
         <div>
-          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Confidence</p>
-          <p className={`mt-1 text-3xl font-black ${tone.text}`}>{percent === null ? 'N/A' : `${formatNumber(percent, 0)}%`}</p>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Độ tin cậy</p>
+          <p className={`mt-1 text-3xl font-black ${tone.text}`}>{percent === null ? 'Chưa có dữ liệu' : `${formatNumber(percent, 0)}%`}</p>
         </div>
         <span className={`rounded-full px-2 py-1 text-xs font-semibold ${tone.track} ${tone.text}`}>{tone.label}</span>
       </div>
       <div className={`mt-4 h-2 rounded-full ${tone.track}`}>
         <div className={`h-full rounded-full ${tone.bar}`} style={{ width: `${percent ?? 0}%` }} />
       </div>
-      <div className="mt-2 flex justify-between text-[10px] font-semibold uppercase tracking-widest text-slate-500">
-        <span>&lt;50</span>
-        <span>50-75</span>
-        <span>&gt;75</span>
-      </div>
       <p className="mt-3 text-sm leading-6 text-slate-400">
-        Chỉ số này đo mức đáng tin của luận điểm sau khi xét độ mạnh tín hiệu, cỡ mẫu, nguồn và dữ liệu thiếu. Đây không phải xác suất chắc chắn có lời.
+        {description ?? 'Đây là mức hệ thống tin vào luận điểm hiện tại, không phải xác suất chắc chắn có lời.'}
       </p>
     </div>
   );
@@ -473,43 +466,37 @@ function QuantGauge({ value }: { value?: number | null }) {
 
 function ConfidenceExplanationDrawer({
   data,
-  dataStatus,
   explanation,
   hasError,
   loading,
   onOpenChange,
   open,
-  portfolioImpact,
 }: {
   data: ProposalData;
-  dataStatus: string[];
   explanation?: ScoreExplanationData;
   hasError: boolean;
   loading: boolean;
   onOpenChange: (open: boolean) => void;
   open: boolean;
-  portfolioImpact: PortfolioImpact;
 }) {
-  const confidence = explanation?.confidence ?? data.confidence;
-  const missingItems = getConfidenceMissingItems(data, dataStatus, explanation);
+  const confidence = explanation?.displayConfidence ?? explanation?.confidence ?? data.confidence;
+  const reasonCards = explanation?.reasonCards?.filter((card) => card.visible) ?? [];
+  const primaryExplanation = explanation?.primaryExplanation
+    ?? 'Đây là mức hệ thống tin vào luận điểm hiện tại, không phải xác suất chắc chắn có lời.';
 
   return (
     <ExplanationDrawer
       open={open}
       onOpenChange={onOpenChange}
-      title="Cách tính độ tin cậy"
-      value={formatConfidence(confidence)}
-      description="Đây là độ tin cậy của luận điểm, không phải xác suất có lời."
-      footer={
-        <div className="space-y-3">
-          <p className="text-sm leading-6 text-slate-400">
-            Công thức dễ đọc: độ mạnh tín hiệu, chất lượng nguồn, độ mới dữ liệu, mức liên quan danh mục và dữ liệu còn thiếu được cân nhắc cùng nhau.
-          </p>
+      title="Độ tin cậy của khuyến nghị"
+      description="Đây là mức hệ thống tin vào luận điểm hiện tại, không phải xác suất chắc chắn có lời."
+      footer={explanation?.auditAvailable ? (
+        <div>
           <Button asChild variant="outline" className="w-full border-cyan-500/30 text-cyan-300">
             <Link href={`/proposal/${data._id}/explanation/confidence`}>Xem audit chi tiết</Link>
           </Button>
         </div>
-      }
+      ) : null}
     >
       {loading ? (
         <DataSkeleton rows={3} />
@@ -517,49 +504,38 @@ function ConfidenceExplanationDrawer({
         <div className="space-y-4">
           {hasError && !explanation ? (
             <p className="rounded-lg border border-amber-500/25 bg-amber-500/10 p-3 text-sm text-amber-100">
-              Chưa đủ dữ liệu để giải thích độ tin cậy. NDL vẫn dùng dữ liệu khuyến nghị hiện có để hiển thị phần tóm tắt.
+              Chưa đủ dữ liệu giải thích chi tiết cho mức tin cậy này.
             </p>
           ) : null}
-          <ConfidenceMeter value={confidence} />
-          {missingItems.length ? (
-            <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 p-3 text-sm text-amber-100">
-              <p className="font-semibold">Có dữ liệu cần kiểm tra thêm</p>
-              <ul className="mt-2 list-disc space-y-1 pl-5">
-                {missingItems.slice(0, 4).map((item) => <li key={item}>{item}</li>)}
-              </ul>
-            </div>
-          ) : null}
-          <DrawerSection
-            title="Độ mạnh tín hiệu"
-            items={getSignalStrengthItems(data, explanation)}
-            empty="Chưa có đủ yếu tố để diễn giải độ mạnh tín hiệu."
-          />
-          <DrawerSection
-            title="Chất lượng nguồn"
-            items={getSourceQualityItems(data, explanation)}
-            empty="Chưa có nguồn dữ liệu rõ ràng cho khuyến nghị này."
-          />
-          <DrawerSection
-            title="Độ mới dữ liệu"
-            items={getFreshnessItems(data, dataStatus, explanation)}
-            empty="Chưa có đủ dữ liệu về thời điểm cập nhật."
-          />
-          <DrawerSection
-            title="Mức liên quan danh mục"
-            items={[getPortfolioImpactLabel(portfolioImpact)]}
-          />
-          <DrawerSection
-            title="Điểm trừ dữ liệu thiếu"
-            items={getMissingPenaltyItems(data, dataStatus, explanation)}
-            empty="Chưa ghi nhận điểm trừ dữ liệu thiếu."
-          />
-          <DrawerSection
-            title="Điều chỉnh kiểm chứng"
-            items={getVerificationItems(data)}
-          />
+          <ConfidenceMeter value={confidence} description={primaryExplanation} />
+          <section className="rounded-lg border border-white/5 bg-black/20 p-4">
+            <h3 className="font-semibold text-white">Vì sao có mức tin cậy này?</h3>
+            {reasonCards.length ? (
+              <div className="mt-3 space-y-3">
+                {reasonCards.map((card) => <ConfidenceReasonCard key={card.id} card={card} />)}
+              </div>
+            ) : (
+              <p className="mt-3 text-sm leading-6 text-slate-500">Chưa đủ dữ liệu giải thích chi tiết cho mức tin cậy này.</p>
+            )}
+          </section>
         </div>
       )}
     </ExplanationDrawer>
+  );
+}
+
+function ConfidenceReasonCard({ card }: { card: NonNullable<ScoreExplanationData['reasonCards']>[number] }) {
+  const tone = card.tone === 'positive'
+    ? 'border-green-500/20 bg-green-500/10 text-green-100'
+    : card.tone === 'caution'
+      ? 'border-amber-500/20 bg-amber-500/10 text-amber-100'
+      : 'border-cyan-500/20 bg-cyan-500/10 text-cyan-100';
+
+  return (
+    <article className={`rounded-lg border p-3 ${tone}`}>
+      <p className="font-semibold text-white">{card.title}</p>
+      <p className="mt-2 text-sm leading-6">{card.body}</p>
+    </article>
   );
 }
 
@@ -577,69 +553,6 @@ function DrawerSection({ empty, items, title }: { title: string; items: string[]
       )}
     </section>
   );
-}
-
-function getSignalStrengthItems(data: ProposalData, explanation?: ScoreExplanationData) {
-  const factors = [...(explanation?.positiveFactors ?? []), ...(explanation?.negativeFactors ?? [])]
-    .filter((item) => !isTechnicalText(item));
-  if (factors.length) return factors.slice(0, 4);
-
-  const score = explanation?.finalScore ?? data.quantScore ?? data.scoreComponents?.finalScore;
-  if (score === null || score === undefined) return [];
-  return [`Điểm tín hiệu ${formatNumber(score, 2)} ${Math.abs(score) > 1 ? 'đủ nổi bật để hỗ trợ luận điểm.' : 'còn gần vùng trung lập nên cần đọc thận trọng.'}`];
-}
-
-function getSourceQualityItems(data: ProposalData, explanation?: ScoreExplanationData) {
-  const checklist = explanation?.trustChecklist
-    ?.filter((item) => !isTechnicalText(`${item.label} ${item.detail}`))
-    .map((item) => `${item.label}: ${item.detail}`) ?? [];
-  if (checklist.length) return checklist.slice(0, 3);
-
-  const sourceCount = (data.sources?.length ?? 0) + (data.signalContext?.sources?.length ?? 0);
-  if (!sourceCount) return [];
-  return [`Có ${sourceCount} nguồn dữ liệu hỗ trợ luận điểm.`];
-}
-
-function getFreshnessItems(data: ProposalData, dataStatus: string[], explanation?: ScoreExplanationData) {
-  const items = [`Ghi nhận tín hiệu: ${formatVietnameseDateTime(getProposalObservedAt(data))}.`];
-  if (data.expiresAt) items.push(`Thời hạn: ${formatExpiry(data.expiresAt)}.`);
-  if (explanation?.missingData?.length || dataStatus.some((item) => item.includes('Thiếu') || item.includes('Chưa'))) {
-    items.push('Một phần dữ liệu còn thiếu hoặc cần kiểm tra lại trước khi giao dịch.');
-  }
-  return items;
-}
-
-function getMissingPenaltyItems(data: ProposalData, dataStatus: string[], explanation?: ScoreExplanationData) {
-  const items = getConfidenceMissingItems(data, dataStatus, explanation);
-  if (explanation?.sampleSizePenalty !== null && explanation?.sampleSizePenalty !== undefined && explanation.sampleSizePenalty < 1) {
-    items.push('Cỡ mẫu còn mỏng nên độ tin cậy bị giảm thận trọng.');
-  }
-  return items;
-}
-
-function getConfidenceMissingItems(data: ProposalData, dataStatus: string[], explanation?: ScoreExplanationData) {
-  const items = new Set<string>();
-  if (!data.sources?.length && !data.signalContext?.sources?.length) items.add('Thiếu nguồn dữ liệu liên kết.');
-  if (data.confidence === null || data.confidence === undefined) items.add('Thiếu độ tin cậy đầu vào.');
-  if (data.financialImpact?.currentPrice === null || data.financialImpact?.currentPrice === undefined) items.add('Thiếu giá hiện tại.');
-  dataStatus
-    .filter((item) => item.includes('Thiếu') || item.includes('Chưa'))
-    .forEach((item) => items.add(item));
-  (explanation?.missingData ?? [])
-    .map(readableMissingData)
-    .filter((item) => !isTechnicalText(item))
-    .forEach((item) => items.add(item));
-  return Array.from(items);
-}
-
-function getVerificationItems(data: ProposalData) {
-  const roi = normalizePercentValue(data.pnlPercentage);
-  if (!hasVerificationResult(data)) return ['Chưa có kết quả kiểm chứng, nên không dùng mục này như bằng chứng lợi nhuận.'];
-  const items = ['Khuyến nghị đã có kết quả kiểm chứng, nên nên đọc như dữ liệu tham khảo.'];
-  if (data.winLossStatus) items.push(`Kết quả: ${data.winLossStatus}.`);
-  if (roi !== null) items.push(`PnL/ROI kiểm chứng: ${formatPercent(roi)}.`);
-  if (data.backtestedAt) items.push(`Kiểm chứng lúc: ${formatVietnameseDateTime(data.backtestedAt)}.`);
-  return items;
 }
 
 function readableMissingData(value: string) {

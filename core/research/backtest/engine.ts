@@ -86,7 +86,7 @@ function toNumber(value: unknown): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-async function resolveDetectedAt(proposal: any): Promise<Date> {
+async function resolveSignalDetectedAt(proposal: any): Promise<Date | null> {
   if (proposal.detectedAt) return new Date(proposal.detectedAt);
 
   if (proposal.signalId) {
@@ -97,13 +97,20 @@ async function resolveDetectedAt(proposal: any): Promise<Date> {
     if (signalSource) return new Date(signalSource);
   }
 
+  return null;
+}
+
+async function resolveEntryAt(proposal: any): Promise<Date> {
+  const signalDetectedAt = await resolveSignalDetectedAt(proposal);
+  if (signalDetectedAt) return signalDetectedAt;
+
   const source = proposal.createdAt ?? proposal.updatedAt;
   return source ? new Date(source) : new Date();
 }
 
-function resolveExpiresAt(proposal: any, detectedAt: Date, horizonHours: number): Date {
+function resolveExpiresAt(proposal: any, entryAt: Date, horizonHours: number): Date {
   if (proposal.expiresAt) return new Date(proposal.expiresAt);
-  return new Date(detectedAt.getTime() + horizonHours * 60 * 60 * 1000);
+  return new Date(entryAt.getTime() + horizonHours * 60 * 60 * 1000);
 }
 
 function nearestPrice(points: PricePoint[], at: Date) {
@@ -249,9 +256,26 @@ export async function runProposalBacktest(
     options.allowCurrentPriceFallback ?? persist;
 
   const now = new Date();
+  const fallbackMaturedBefore = new Date(
+    now.getTime() - horizonHours * 60 * 60 * 1000
+  );
   const query: Record<string, any> = {
     suggestionType: { $in: ["buy", "sell", "hold", "close_position", "stake"] },
     createdAt: { $lte: now },
+    $or: [
+      { expiresAt: { $lte: now } },
+      {
+        $and: [
+          {
+            $or: [
+              { expiresAt: { $exists: false } },
+              { expiresAt: null },
+            ],
+          },
+          { createdAt: { $lte: fallbackMaturedBefore } },
+        ],
+      },
+    ],
   };
 
   if (options.from || options.to) {
@@ -286,10 +310,13 @@ export async function runProposalBacktest(
 
     for (const proposal of batch as any[]) {
       const direction = resolveBacktestDirection(String(proposal.suggestionType));
-      const detectedAt = await resolveDetectedAt(proposal);
-      const expiresAt = resolveExpiresAt(proposal, detectedAt, horizonHours);
+      const [entryAt, signalDetectedAt] = await Promise.all([
+        resolveEntryAt(proposal),
+        resolveSignalDetectedAt(proposal),
+      ]);
+      const expiresAt = resolveExpiresAt(proposal, entryAt, horizonHours);
 
-      if (!direction || expiresAt > now) {
+      if (!direction) {
         summary.skipped += 1;
         if (persist) {
           await proposalsTable.updateOne(
@@ -299,7 +326,7 @@ export async function runProposalBacktest(
                 winLossStatus: "SKIPPED",
                 backtestedAt: now,
                 backtestMeta: {
-                  reason: !direction ? "unsupported_suggestion_type" : "not_expired",
+                  reason: "unsupported_suggestion_type",
                   horizonHours,
                 },
               },
@@ -309,9 +336,14 @@ export async function runProposalBacktest(
         continue;
       }
 
+      if (expiresAt > now) {
+        summary.skipped += 1;
+        continue;
+      }
+
       const tokenKeys = await resolveTokenKeys(proposal);
       const priceWindowStart = new Date(
-        detectedAt.getTime() - sparseMaxDistanceMs
+        entryAt.getTime() - sparseMaxDistanceMs
       );
       const priceWindowEnd = new Date(expiresAt.getTime() + sparseMaxDistanceMs);
       const prices = await loadHistoricalPrices(
@@ -320,7 +352,7 @@ export async function runProposalBacktest(
         priceWindowEnd
       );
 
-      const entry = nearestPrice(prices, detectedAt);
+      const entry = nearestPrice(prices, entryAt);
       let exit = nearestPrice(prices, expiresAt);
       let dataQuality: DataQuality =
         prices.length < 2 ||
@@ -355,7 +387,8 @@ export async function runProposalBacktest(
                 backtestMeta: {
                   reason: "missing_or_sparse_price_history",
                   tokenKeys,
-                  detectedAt,
+                  entryAt,
+                  signalDetectedAt,
                   expiresAt,
                   pricePoints: prices.length,
                 },
@@ -420,7 +453,8 @@ export async function runProposalBacktest(
                 slippageRate,
                 notionalUsd,
                 holdMoveThreshold,
-                detectedAt,
+                entryAt,
+                signalDetectedAt,
                 expiresAt,
                 entryTimestamp: entry.timestamp,
                 exitTimestamp: exit.timestamp,
@@ -439,7 +473,7 @@ export async function runProposalBacktest(
               tokenSymbol: proposal.tokenSymbol,
               tokenAddress: proposal.tokenAddress,
               suggestionType: proposal.suggestionType,
-              detectedAt,
+              detectedAt: entryAt,
               expiresAt,
               entryPrice: entry.priceUsd,
               exitPrice: exit.priceUsd,

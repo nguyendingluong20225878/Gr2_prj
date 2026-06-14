@@ -39,7 +39,7 @@ type RecommendationFilters = {
 };
 
 const tabs: Array<{ id: RecommendationTab; label: string; description: string }> = [
-  { id: 'urgent', label: 'Xem xét ngay', description: 'Danh sách ưu tiên tổng hợp các khuyến nghị còn cần xem xét.' },
+  { id: 'urgent', label: 'Tất cả', description: 'Tất cả proposal còn hiệu lực, không phân biệt có ảnh hưởng danh mục hay không.' },
   { id: 'portfolio', label: 'Liên quan danh mục', description: 'Khuyến nghị ảnh hưởng trực tiếp hoặc gián tiếp tới token bạn đang giữ.' },
   { id: 'outside-portfolio', label: 'Ngoài danh mục', description: 'Cơ hội nằm ngoài ví hiện tại, chỉ nên xem sau danh mục.' },
   { id: 'verified', label: 'Đã kiểm chứng', description: 'Đã có kết quả quá khứ, dùng để tham khảo độ tin cậy.' },
@@ -192,13 +192,15 @@ function RecommendationsContent() {
                   isWatched={item.isWatched}
                   summary={item.proposal.rationaleSummary}
                   entryPrice={item.proposal.entryPrice}
-                  currentPrice={item.proposal.livePerformance?.markPrice ?? item.proposal.financialImpact?.currentPrice ?? item.proposal.financialImpact?.currentValue}
+                  currentPrice={item.status === 'VERIFIED'
+                    ? item.proposal.exitPrice
+                    : item.proposal.livePerformance?.markPrice ?? item.proposal.financialImpact?.currentPrice ?? item.proposal.financialImpact?.currentValue}
                   projectedPnL={item.proposal.financialImpact?.projectedPnL ?? item.proposal.actualPnL}
                   quantScore={item.proposal.quantScore ?? item.proposal.scoreComponents?.finalScore}
                   roi={item.proposal.pnlPercentage ?? item.proposal.financialImpact?.roi}
                   livePerformance={item.proposal.livePerformance}
                   score={item.priorityScore}
-                  showImpactBadge={activeTab !== 'urgent'}
+                  showImpactBadge
                   href={`/proposal/${item.proposal._id}`}
                   onWatch={() => watchRecommendation(item.proposal)}
                 />
@@ -351,12 +353,16 @@ function FilterSelect({
 function getItemsForTab(items: RecommendationItem[], tab: RecommendationTab) {
   if (tab === 'verified') return items.filter((item) => item.status === 'VERIFIED');
   if (tab === 'outside-portfolio') {
-    return items.filter((item) => item.impact === 'OUTSIDE' && ['ACTIVE', 'EXPIRING_SOON', 'MISSING_DATA'].includes(item.status));
+    return items.filter((item) => item.impact === 'OUTSIDE' && isStillActionable(item.status));
   }
   if (tab === 'portfolio') {
-    return items.filter((item) => ['DIRECT', 'INDIRECT'].includes(item.impact) && ['ACTIVE', 'EXPIRING_SOON', 'MISSING_DATA'].includes(item.status));
+    return items.filter((item) => ['DIRECT', 'INDIRECT'].includes(item.impact) && isStillActionable(item.status));
   }
-  return items.filter((item) => ['ACTIVE', 'EXPIRING_SOON', 'MISSING_DATA'].includes(item.status));
+  return items.filter((item) => isStillActionable(item.status));
+}
+
+function isStillActionable(status: RecommendationStatus) {
+  return status === 'ACTIVE' || status === 'EXPIRING_SOON' || status === 'MISSING_DATA';
 }
 
 function getFilters(searchParams: URLSearchParams): RecommendationFilters {

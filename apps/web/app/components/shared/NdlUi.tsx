@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useState } from 'react';
 import type React from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { ArrowRight, Clock, ExternalLink, X } from 'lucide-react';
 import { Badge } from '@/app/components/ui/badge';
@@ -109,6 +110,11 @@ export function ExplanationDrawer({
   value,
 }: ExplanationDrawerProps) {
   const titleId = useId();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -121,21 +127,21 @@ export function ExplanationDrawer({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [onOpenChange, open]);
 
-  if (!open) return null;
+  if (!open || !mounted) return null;
 
-  return (
-    <div className="fixed inset-0 z-50" role="presentation">
+  return createPortal(
+    <div className="fixed inset-0 z-[100]" role="presentation">
       <button
         type="button"
         aria-label="Đóng phần giải thích"
-        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+        className="absolute inset-0 z-0 bg-black/70 backdrop-blur-sm"
         onClick={() => onOpenChange(false)}
       />
       <aside
         aria-labelledby={titleId}
         aria-modal="true"
         role="dialog"
-        className="fixed inset-x-0 bottom-0 flex max-h-[85dvh] flex-col rounded-t-xl border border-white/10 bg-slate-950 shadow-2xl outline-none md:inset-y-0 md:left-auto md:right-0 md:h-dvh md:max-h-none md:w-[min(460px,calc(100vw-2rem))] md:rounded-none md:border-y-0 md:border-r-0"
+        className="fixed inset-x-0 bottom-0 z-10 flex max-h-[85dvh] flex-col rounded-t-xl border border-white/10 bg-slate-950 shadow-2xl outline-none md:inset-x-auto md:bottom-auto md:left-1/2 md:top-1/2 md:max-h-[82dvh] md:w-[min(540px,calc(100vw-2rem))] md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-xl"
       >
         <div className="flex items-start justify-between gap-4 border-b border-white/10 p-5">
           <div className="min-w-0">
@@ -161,7 +167,8 @@ export function ExplanationDrawer({
           </div>
         ) : null}
       </aside>
-    </div>
+    </div>,
+    document.body
   );
 }
 

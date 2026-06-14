@@ -20,6 +20,7 @@ export interface Proposal {
     confidence: number;
     batchId?: string | null;
     batchStartedAt?: Date | null;
+    detectedAt?: Date | null;
     lifecycleStatus?: ProposalLifecycleStatus;
     overriddenAt?: Date | null;
     overriddenByProposalId?: Types.ObjectId | null;
@@ -108,6 +109,7 @@ const proposalSchema = new Schema<Proposal>({
     confidence: { type: Number, required: true },
     batchId: { type: String, default: null, index: true },
     batchStartedAt: { type: Date, default: null, index: true },
+    detectedAt: { type: Date, default: null, index: true },
     lifecycleStatus: {
         type: String,
         enum: ["ACTIVE", "EXPIRED", "OVERRIDDEN"],

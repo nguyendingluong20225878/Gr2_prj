@@ -102,8 +102,8 @@ export default function WatchlistPage() {
         ) : (
           <div className="space-y-6">
             <WatchGroup title="Đang chờ kiểm chứng" description="Khuyến nghị chưa đủ thời gian hoặc chưa có kết quả để kết luận." items={pendingItems} onRemove={handleRemove} removingIds={removingIds} />
-            <WatchGroup title="Đã có kết quả" description="Khuyến nghị đã có kết quả thắng/thua/hòa hoặc PnL sau kiểm chứng." items={verifiedItems} onRemove={handleRemove} removingIds={removingIds} />
-            <WatchGroup title="Đã hết hạn" description="Khuyến nghị đã hết hiệu lực, không nên hành động nếu chưa có bản cập nhật mới." items={expiredItems} onRemove={handleRemove} removingIds={removingIds} />
+            <WatchGroup title="Đã có kết quả" description="Khuyến nghị đã có backtest hoặc PnL thực sau kiểm chứng." items={verifiedItems} onRemove={handleRemove} removingIds={removingIds} />
+            <WatchGroup title="Đã hết hạn" description="Khuyến nghị đã hết hiệu lực theo thời gian; ROI tạm tính không được xem là kết quả kiểm chứng." items={expiredItems} onRemove={handleRemove} removingIds={removingIds} />
             {!watchItems.length ? <EmptyState title="Chưa có cơ hội đang theo dõi" description="Các khuyến nghị còn hiệu lực được đưa vào theo dõi sẽ xuất hiện tại đây." /> : null}
           </div>
         )}
@@ -151,7 +151,7 @@ function WatchGroup({
         <h2 className="text-lg font-bold text-white">{title}</h2>
         <p className="mt-1 text-sm text-slate-500">{description}</p>
       </div>
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <div className="flex flex-wrap gap-4">
         {items.map((item) => <WatchCard key={item.id} item={item} onRemove={onRemove} removing={Boolean(item.proposalId && removingIds.has(item.proposalId))} />)}
       </div>
     </section>
@@ -168,7 +168,7 @@ function WatchCard({
   removing: boolean;
 }) {
   return (
-    <article className="glass-card rounded-xl border border-white/5 bg-black/20 p-5">
+    <article className="glass-card w-full rounded-xl border border-white/5 bg-black/20 p-5 md:w-[calc(50%-0.5rem)] xl:w-[calc(33.333%-0.667rem)]">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate text-lg font-bold text-white">{item.tokenSymbol ?? 'Token chưa định danh'}</p>
@@ -185,7 +185,7 @@ function WatchCard({
       </div>
       <div className="mt-4 grid grid-cols-2 gap-3">
         <Mini label="Tin cậy" value={formatConfidence(item.confidence)} />
-        <Mini label="ROI" value={item.roi === null || item.roi === undefined ? 'Chưa kiểm chứng' : formatPercent(normalizePercentValue(item.roi))} />
+        <Mini label="ROI tạm tính" value={item.roi === null || item.roi === undefined ? 'Chưa có dữ liệu' : formatPercent(normalizePercentValue(item.roi))} />
         <Mini label="Cập nhật" value={formatRelativeVietnamese(item.createdAt)} />
         <Mini label="Nguồn theo dõi" value={getWatchReason(item)} />
       </div>
@@ -216,6 +216,7 @@ function getWatchStates(item: WatchItem, heldSymbols: Set<string>) {
   const confidence = normalizeConfidenceValue(item.confidence);
   const symbol = String(item.tokenSymbol ?? '').toUpperCase();
 
+  if (hasBacktestResult(item)) states.push('Có backtest/PNL');
   if (confidence !== null && confidence >= 70) states.push('Độ tin cậy cao');
   if (symbol && !heldSymbols.has(symbol)) states.push('Chưa có trong danh mục');
   return states.slice(0, 3);
@@ -223,7 +224,11 @@ function getWatchStates(item: WatchItem, heldSymbols: Set<string>) {
 
 function hasBacktestResult(item: WatchItem) {
   if (item.status === 'RESOLVED') return true;
-  return Boolean(item.proposal?.backtestedAt || item.proposal?.winLossStatus || item.proposal?.pnlPercentage !== null && item.proposal?.pnlPercentage !== undefined || item.roi !== null && item.roi !== undefined);
+  return Boolean(
+    item.proposal?.backtestedAt ||
+    item.proposal?.winLossStatus ||
+    item.proposal?.pnlPercentage !== null && item.proposal?.pnlPercentage !== undefined
+  );
 }
 
 function isWatchExpired(item: WatchItem) {

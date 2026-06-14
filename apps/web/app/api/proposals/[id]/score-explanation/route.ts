@@ -9,6 +9,16 @@ export const dynamic = 'force-dynamic';
 
 type AnyRecord = Record<string, any>;
 type ExplanationStatus = 'OK' | 'MISSING' | 'LIMITED';
+type ConfidenceLevel = 'LOW' | 'MEDIUM' | 'STRONG' | 'VERY_STRONG' | 'UNKNOWN';
+type ReasonCard = {
+  id: 'input_signal' | 'source_quality' | 'thin_data' | 'cold_start';
+  title: string;
+  body: string;
+  status: 'SUPPORTED' | 'LIMITED' | 'MISSING' | 'INFO';
+  tone: 'positive' | 'caution' | 'neutral';
+  visible: boolean;
+  sourceFields?: string[];
+};
 
 const ProposalModel = Proposal as unknown as mongoose.Model<AnyRecord>;
 const DEFAULTS = {
@@ -46,6 +56,14 @@ function hasItems(value: unknown) {
 
 function hasValue(value: unknown) {
   return value !== null && value !== undefined;
+}
+
+function confidenceLevel(value: number | null): ConfidenceLevel {
+  if (value === null) return 'UNKNOWN';
+  if (value < 50) return 'LOW';
+  if (value < 75) return 'MEDIUM';
+  if (value < 90) return 'STRONG';
+  return 'VERY_STRONG';
 }
 
 async function loadProposalAndSignal(id: string) {
@@ -93,7 +111,8 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     const sampleSize = numeric(metadata.sampleSize ?? scoreComponents.sampleSize);
     const finalScore = numeric(proposal?.quantScore ?? signal?.quantScore ?? scoreComponents.finalScore);
     const action = normalizeAction(proposal?.action ?? proposal?.suggestionType ?? signal?.suggestionType);
-    const confidence = normalizeConfidence(proposal?.confidence ?? signal?.confidence);
+    const rawConfidenceInput = numeric(proposal?.confidence ?? signal?.confidence);
+    const confidence = rawConfidenceInput === null ? null : normalizeConfidence(rawConfidenceInput);
     const thresholds = {
       actionThreshold: numeric(hyperParams.actionThreshold) ?? DEFAULTS.actionThreshold,
       alphaBlend: alphaBlendFromModel,
@@ -115,6 +134,21 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     const hasPrice = hasValue(proposal?.financialImpact?.currentPrice) || hasValue(proposal?.financialImpact?.currentValue);
     const scoreComponentKeys = Object.keys(scoreComponents).filter((key) => key !== 'hyperParams');
     const hasScoreComponents = scoreComponentKeys.length > 0;
+    const displayConfidence = confidence;
+    const inputSignalStatus = finalScore === null
+      ? 'MISSING'
+      : absScore !== null && absScore > thresholds.signalThreshold
+        ? 'SUPPORTED'
+        : hasScoreComponents
+          ? 'LIMITED'
+          : 'MISSING';
+    const sourceStatus = hasSources ? 'OK' : 'MISSING';
+    const hasThinData = penalty !== null && penalty < 1;
+    const isColdStart = signalMode === 'COLD_START';
+    const auditAvailable = Boolean(hasScoreComponents || finalScore !== null || displayConfidence !== null);
+    const primaryExplanation = displayConfidence === null
+      ? 'Chưa đủ dữ liệu để giải thích độ tin cậy của khuyến nghị này.'
+      : 'Tín hiệu hiện tại đủ rõ để hỗ trợ luận điểm, nhưng vẫn cần đọc cùng nguồn dữ liệu và bối cảnh thị trường hiện tại.';
 
     const positiveFactors: string[] = [];
     const negativeFactors: string[] = [];
@@ -285,7 +319,59 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       });
     }
 
+    const reasonCards: ReasonCard[] = [
+      {
+        id: 'input_signal',
+        title: inputSignalStatus === 'MISSING' ? 'Chưa đủ dữ liệu signal' : 'Dữ liệu signal đang ủng hộ luận điểm',
+        body: inputSignalStatus === 'MISSING'
+          ? 'Chưa đủ dữ liệu signal để giải thích đầy đủ mức tin cậy.'
+          : 'Các tín hiệu đầu vào đủ rõ để hệ thống giữ mức tin cậy này, nhưng không tạo thành cam kết kết quả.',
+        status: inputSignalStatus,
+        tone: inputSignalStatus === 'SUPPORTED' ? 'positive' : inputSignalStatus === 'LIMITED' ? 'neutral' : 'caution',
+        visible: true,
+        sourceFields: ['finalScore', 'scoreComponents', 'thresholds.signalThreshold'],
+      },
+      {
+        id: 'source_quality',
+        title: sourceStatus === 'OK' ? 'Có nguồn để kiểm tra bối cảnh' : 'Nguồn dữ liệu còn hạn chế',
+        body: sourceStatus === 'OK'
+          ? 'Khuyến nghị được gắn với nguồn signal/news/social để người dùng đọc lại bối cảnh.'
+          : 'Khuyến nghị chưa có đủ nguồn liên kết, nên cần đọc thận trọng hơn.',
+        status: sourceStatus === 'OK' ? 'SUPPORTED' : 'MISSING',
+        tone: sourceStatus === 'OK' ? 'positive' : 'caution',
+        visible: true,
+        sourceFields: ['proposal.sources', 'signal.sources', 'dataSources'],
+      },
+      {
+        id: 'thin_data',
+        title: 'Dữ liệu quan sát còn hạn chế',
+        body: 'Khi dữ liệu chưa đủ dày, hệ thống đọc tín hiệu thận trọng hơn trước khi hiển thị confidence.',
+        status: 'LIMITED',
+        tone: 'caution',
+        visible: hasThinData,
+        sourceFields: ['sampleSize', 'sampleSizePenalty'],
+      },
+      {
+        id: 'cold_start',
+        title: 'Token còn ít lịch sử so sánh',
+        body: 'Với token mới hoặc ít lịch sử, hệ thống giới hạn mức tin cậy để tránh phản ứng quá mạnh.',
+        status: 'LIMITED',
+        tone: 'caution',
+        visible: isColdStart,
+        sourceFields: ['signalMode', 'confidenceCap'],
+      },
+    ];
+
     return NextResponse.json({
+      displayConfidence,
+      confidenceLevel: confidenceLevel(displayConfidence),
+      primaryExplanation,
+      reasonCards,
+      hasThinData,
+      isColdStart,
+      sourceStatus,
+      inputSignalStatus,
+      auditAvailable,
       confidenceFormula: signalMode === 'COLD_START'
         ? 'confidence = min(abs(finalScore) / coldStartConfidenceDivisor, 0.4)'
         : 'confidence = min(abs(finalScore) / confidenceDivisor, 0.95) * sampleSizePenalty',

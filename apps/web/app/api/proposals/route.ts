@@ -50,6 +50,7 @@ type ProposalListRecord = {
 };
 
 type PriceHistoryRecord = {
+  token?: mongoose.Types.ObjectId | string;
   tokenAddress?: string;
   priceUsd?: string | number;
   timestamp?: Date;
@@ -73,6 +74,7 @@ type LivePerformance = {
 const ProposalModel = Proposal as unknown as mongoose.Model<ProposalListRecord>;
 const PriceHistoryModel = tokenPriceHistory as unknown as mongoose.Model<PriceHistoryRecord>;
 const EXPIRED_AUDIT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const LIVE_ENTRY_MAX_DISTANCE_MS = 6 * 60 * 60 * 1000;
 
 function normalizeAction(value?: string): 'BUY' | 'SELL' | 'HOLD' | 'UNKNOWN' {
   const upper = String(value ?? '').toUpperCase();
@@ -113,7 +115,18 @@ function normalizeLiveAction(value?: string) {
   const upper = String(value ?? '').toUpperCase();
   if (upper === 'BUY' || upper === 'LONG') return 'LONG';
   if (upper === 'SELL' || upper === 'SHORT') return 'SHORT';
+  if (upper === 'HOLD' || upper === 'WAIT') return 'FLAT';
   return null;
+}
+
+function getBacktestMetaDate(proposal: ProposalListRecord, key: string) {
+  const value = proposal.backtestMeta?.[key];
+  const date = value ? new Date(value as string | number | Date) : null;
+  return date && Number.isFinite(date.getTime()) ? date : null;
+}
+
+function getLiveEntryTime(proposal: ProposalListRecord) {
+  return getBacktestMetaDate(proposal, 'detectedAt') ?? (proposal.createdAt ?? null);
 }
 
 function nearestPricePoint(time: number, pricePoints: PricePoint[]) {
@@ -127,19 +140,27 @@ async function getProposalPriceKeys(proposal: ProposalListRecord) {
   const resolvedToken = await resolveToken({
     chain: 'solana',
     addressOrMint: proposal.tokenAddress,
+    coingeckoId: proposal.tokenAddress,
     symbol: proposal.tokenSymbol,
+    tokenKey: proposal.tokenAddress,
   }).catch(() => null);
+  const resolvedTokenId = resolvedToken?._id && mongoose.Types.ObjectId.isValid(String(resolvedToken._id))
+    ? new mongoose.Types.ObjectId(String(resolvedToken._id))
+    : null;
 
-  return uniqueStrings([
-    proposal.tokenAddress,
-    proposal.tokenSymbol,
-    proposal.tokenName,
-    resolvedToken?.address,
-    resolvedToken?.primaryAddress,
-    resolvedToken?.canonicalKey,
-    resolvedToken?.coingeckoId,
-    ...(resolvedToken?.aliases ?? []).map((alias: { value?: string }) => alias.value),
-  ]);
+  return {
+    addressKeys: uniqueStrings([
+      proposal.tokenAddress,
+      proposal.tokenSymbol,
+      proposal.tokenName,
+      resolvedToken?.address,
+      resolvedToken?.primaryAddress,
+      resolvedToken?.canonicalKey,
+      resolvedToken?.coingeckoId,
+      ...(resolvedToken?.aliases ?? []).map((alias: { value?: string }) => alias.value),
+    ]),
+    tokenIds: resolvedTokenId ? [resolvedTokenId] : [],
+  };
 }
 
 function computeLivePerformance(proposal: ProposalListRecord, pricePoints: PricePoint[]): LivePerformance {
@@ -169,9 +190,21 @@ function computeLivePerformance(proposal: ProposalListRecord, pricePoints: Price
     };
   }
 
-  const createdAt = proposal.createdAt ? new Date(proposal.createdAt).getTime() : NaN;
-  const entry = Number.isFinite(createdAt) ? nearestPricePoint(createdAt, pricePoints) : null;
-  if (!entry || entry.price <= 0) {
+  const entryReference = getLiveEntryTime(proposal);
+  const entryReferenceTime = entryReference ? new Date(entryReference).getTime() : NaN;
+  const entry = Number.isFinite(entryReferenceTime) ? nearestPricePoint(entryReferenceTime, pricePoints) : null;
+  const entryDistanceMs = entry && Number.isFinite(entryReferenceTime)
+    ? Math.abs(entry.timestamp.getTime() - entryReferenceTime)
+    : Number.POSITIVE_INFINITY;
+  const entryNearSignal = entry && entryDistanceMs <= LIVE_ENTRY_MAX_DISTANCE_MS ? entry : null;
+  const fallbackEntryPrice = nullableNumber(
+    proposal.entryPrice ??
+    proposal.financialImpact?.currentPrice ??
+    proposal.financialImpact?.currentValue
+  );
+  const entryPrice = entryNearSignal?.price && entryNearSignal.price > 0 ? entryNearSignal.price : fallbackEntryPrice;
+
+  if (entryPrice === null || entryPrice <= 0) {
     return {
       entryPrice: null,
       entryMatchedAt: null,
@@ -184,12 +217,12 @@ function computeLivePerformance(proposal: ProposalListRecord, pricePoints: Price
   }
 
   const roiPct = action === 'SHORT'
-    ? ((entry.price - mark.price) / entry.price) * 100
-    : ((mark.price - entry.price) / entry.price) * 100;
+    ? ((entryPrice - mark.price) / entryPrice) * 100
+    : ((mark.price - entryPrice) / entryPrice) * 100;
 
   return {
-    entryPrice: entry.price,
-    entryMatchedAt: entry.timestamp.toISOString(),
+    entryPrice,
+    entryMatchedAt: entryNearSignal?.timestamp.toISOString() ?? null,
     markPrice: mark.price,
     markMatchedAt: mark.timestamp.toISOString(),
     roiPct,
@@ -205,19 +238,30 @@ async function buildLivePerformanceByProposalId(proposals: ProposalListRecord[])
   const keyEntries = await Promise.all(activeProposals.map(async (proposal) => ({
     id: proposal._id.toString(),
     proposal,
-    keys: await getProposalPriceKeys(proposal),
+    priceKeys: await getProposalPriceKeys(proposal),
   })));
-  const allKeys = uniqueStrings(keyEntries.flatMap((entry) => entry.keys));
-  if (!allKeys.length) return new Map<string, LivePerformance>();
+  const allAddressKeys = uniqueStrings(keyEntries.flatMap((entry) => entry.priceKeys.addressKeys));
+  const tokenIdMap = new Map<string, mongoose.Types.ObjectId>();
+  keyEntries
+    .flatMap((entry) => entry.priceKeys.tokenIds)
+    .forEach((id) => tokenIdMap.set(id.toString(), id));
+  const allTokenIds = Array.from(tokenIdMap.values());
+  if (!allAddressKeys.length && !allTokenIds.length) return new Map<string, LivePerformance>();
 
   const earliestCreatedAt = keyEntries
-    .map((entry) => entry.proposal.createdAt?.getTime())
+    .map((entry) => getLiveEntryTime(entry.proposal)?.getTime())
     .filter((time): time is number => Number.isFinite(time))
     .sort((a, b) => a - b)[0];
+  const now = new Date();
   const from = earliestCreatedAt ? new Date(earliestCreatedAt - 6 * 60 * 60 * 1000) : undefined;
-  const priceQuery = from
-    ? { tokenAddress: { $in: allKeys }, timestamp: { $gte: from } }
-    : { tokenAddress: { $in: allKeys } };
+  const priceOrFilters: Record<string, unknown>[] = [];
+  if (allAddressKeys.length) priceOrFilters.push({ tokenAddress: { $in: allAddressKeys } });
+  if (allTokenIds.length) priceOrFilters.push({ token: { $in: allTokenIds } });
+  const priceQuery: Record<string, unknown> = priceOrFilters.length === 1 ? priceOrFilters[0] : { $or: priceOrFilters };
+  priceQuery.timestamp = {
+    ...(from ? { $gte: from } : {}),
+    $lte: now,
+  };
 
   const rows = await PriceHistoryModel.find(priceQuery)
     .sort({ timestamp: 1 })
@@ -225,17 +269,20 @@ async function buildLivePerformanceByProposalId(proposals: ProposalListRecord[])
     .lean<PriceHistoryRecord[]>();
   const rowsByKey = new Map<string, PricePoint[]>();
   rows.forEach((row) => {
-    const key = row.tokenAddress;
+    const rowKeys = uniqueStrings([row.tokenAddress, row.token ? String(row.token) : null]);
     const price = nullableNumber(row.priceUsd);
     const timestamp = row.timestamp ? new Date(row.timestamp) : null;
-    if (!key || price === null || !timestamp || !Number.isFinite(timestamp.getTime())) return;
-    const points = rowsByKey.get(key) ?? [];
-    points.push({ price, timestamp });
-    rowsByKey.set(key, points);
+    if (!rowKeys.length || price === null || !timestamp || !Number.isFinite(timestamp.getTime())) return;
+    rowKeys.forEach((key) => {
+      const points = rowsByKey.get(key) ?? [];
+      points.push({ price, timestamp });
+      rowsByKey.set(key, points);
+    });
   });
 
   const livePerformanceById = new Map<string, LivePerformance>();
-  keyEntries.forEach(({ id, proposal, keys }) => {
+  keyEntries.forEach(({ id, proposal, priceKeys }) => {
+    const keys = [...priceKeys.addressKeys, ...priceKeys.tokenIds.map((tokenId) => tokenId.toString())];
     const points = keys
       .flatMap((key) => rowsByKey.get(key) ?? [])
       .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());

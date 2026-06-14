@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import connectDB from '@/lib/mongodb';
 import Proposal from '@/models/Proposal';
-import { backtestResultsTable, resolveToken, tokenPriceHistory } from '@gr2/shared';
+import { backtestResultsTable, resolveToken, signalsTable, tokenPriceHistory } from '@gr2/shared';
 import { normalizeAction, normalizeConfidence, normalizePercent } from '@/lib/utils/semantics';
 
 export const dynamic = 'force-dynamic';
@@ -13,6 +13,7 @@ type MarkerDateSource = 'SIGNAL_DETECTED_AT' | 'BACKTEST_DETECTED_AT' | 'PROPOSA
 const ProposalModel = Proposal as unknown as mongoose.Model<AnyRecord>;
 const PriceHistoryModel = tokenPriceHistory as unknown as mongoose.Model<AnyRecord>;
 const BacktestModel = backtestResultsTable as unknown as mongoose.Model<AnyRecord>;
+const SignalModel = signalsTable as unknown as mongoose.Model<AnyRecord>;
 
 function numeric(value: unknown) {
   const n = Number(value);
@@ -27,9 +28,19 @@ function markerResult(proposal: AnyRecord, backtest?: AnyRecord | null) {
   return 'Pending';
 }
 
-function resolveMarkerDateValue(proposal: AnyRecord, backtest?: AnyRecord | null): { value: unknown; source: MarkerDateSource } {
-  if (proposal.backtestMeta?.detectedAt) {
-    return { value: proposal.backtestMeta.detectedAt, source: 'SIGNAL_DETECTED_AT' };
+function resolveMarkerDateValue(
+  proposal: AnyRecord,
+  backtest?: AnyRecord | null,
+  signal?: AnyRecord | null
+): { value: unknown; source: MarkerDateSource } {
+  if (proposal.detectedAt) {
+    return { value: proposal.detectedAt, source: 'SIGNAL_DETECTED_AT' };
+  }
+  if (signal?.detectedAt) {
+    return { value: signal.detectedAt, source: 'SIGNAL_DETECTED_AT' };
+  }
+  if (proposal.backtestMeta?.signalDetectedAt) {
+    return { value: proposal.backtestMeta.signalDetectedAt, source: 'SIGNAL_DETECTED_AT' };
   }
   if (backtest?.detectedAt) {
     return { value: backtest.detectedAt, source: 'BACKTEST_DETECTED_AT' };
@@ -154,9 +165,16 @@ function resolveMarkerPrice(markerDate: Date | null, pricePoints: PricePoint[], 
   };
 }
 
-function markerFromProposal(proposal: AnyRecord, currentId: string, backtest: AnyRecord | null | undefined, pricePoints: PricePoint[], coverage: PriceCoverage) {
+function markerFromProposal(
+  proposal: AnyRecord,
+  currentId: string,
+  backtest: AnyRecord | null | undefined,
+  signal: AnyRecord | null | undefined,
+  pricePoints: PricePoint[],
+  coverage: PriceCoverage
+) {
   const result = markerResult(proposal, backtest);
-  const markerDateValue = resolveMarkerDateValue(proposal, backtest);
+  const markerDateValue = resolveMarkerDateValue(proposal, backtest, signal);
   const markerDateRaw = markerDateValue.value;
   const markerDate = markerDateRaw ? new Date(markerDateRaw as string | number | Date) : null;
   const markerPrice = resolveMarkerPrice(markerDate && Number.isFinite(markerDate.getTime()) ? markerDate : null, pricePoints, coverage);
@@ -193,15 +211,24 @@ function buildPriceQuery(tokenIds: mongoose.Types.ObjectId[], tokenAddressKeys: 
   return query;
 }
 
-function markerDateFromProposal(proposal: AnyRecord, backtest?: AnyRecord | null) {
-  const value = resolveMarkerDateValue(proposal, backtest).value;
+function markerDateFromProposal(proposal: AnyRecord, backtest?: AnyRecord | null, signal?: AnyRecord | null) {
+  const value = resolveMarkerDateValue(proposal, backtest, signal).value;
   const date = value ? new Date(value as string | number | Date) : null;
   return date && Number.isFinite(date.getTime()) ? date : null;
 }
 
-function buildTimelineWindow(currentCreatedAt: Date, proposals: AnyRecord[], backtestByProposalId: Map<string, AnyRecord>) {
+function buildTimelineWindow(
+  currentCreatedAt: Date,
+  proposals: AnyRecord[],
+  backtestByProposalId: Map<string, AnyRecord>,
+  signalForProposal: (proposal: AnyRecord) => AnyRecord | null
+) {
   const markerTimes = proposals
-    .map((item) => markerDateFromProposal(item, backtestByProposalId.get(item._id.toString()))?.getTime())
+    .map((item) => markerDateFromProposal(
+      item,
+      backtestByProposalId.get(item._id.toString()),
+      signalForProposal(item)
+    )?.getTime())
     .filter((time): time is number => Number.isFinite(time));
   const oneDay = 24 * 60 * 60 * 1000;
   const baseStart = currentCreatedAt.getTime() - 180 * oneDay;
@@ -279,7 +306,24 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
         .lean<AnyRecord[]>(),
     ]);
     const backtestByProposalId = new Map(backtests.map((row) => [String(row.proposalId), row]));
-    const timelineWindow = buildTimelineWindow(createdAt, historicalProposals.length ? historicalProposals : [proposal], backtestByProposalId);
+    const markerProposalRows = historicalProposals.length ? historicalProposals : [proposal];
+    const signalIds = uniqueStrings(markerProposalRows.map((item) => item.signalId?.toString?.() ?? item.signalId))
+      .filter((id) => mongoose.Types.ObjectId.isValid(id))
+      .map((id) => new mongoose.Types.ObjectId(id));
+    const signals = signalIds.length
+      ? await SignalModel.find({ _id: { $in: signalIds } }, { detectedAt: 1, createdAt: 1 }).lean<AnyRecord[]>()
+      : [];
+    const signalById = new Map(signals.map((signal) => [signal._id.toString(), signal]));
+    const signalForProposal = (item: AnyRecord) => {
+      const id = item.signalId?.toString?.() ?? item.signalId;
+      return id ? signalById.get(String(id)) ?? null : null;
+    };
+    const timelineWindow = buildTimelineWindow(
+      createdAt,
+      markerProposalRows,
+      backtestByProposalId,
+      signalForProposal
+    );
     const priceRows = tokenAddressKeys.length || tokenIds.length
       ? await PriceHistoryModel.find(buildPriceQuery(tokenIds, tokenAddressKeys, timelineWindow.start, timelineWindow.end))
         .sort({ timestamp: 1 })
@@ -303,7 +347,14 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     if (!backtests.length && (proposal.pnlPercentage === null || proposal.pnlPercentage === undefined)) missingData.push('backtestResults');
 
     const currentBacktest = backtestByProposalId.get(params.id) ?? null;
-    const markers = historicalProposals.map((item) => markerFromProposal(item, params.id, backtestByProposalId.get(item._id.toString()), pricePoints, priceCoverage));
+    const markers = historicalProposals.map((item) => markerFromProposal(
+      item,
+      params.id,
+      backtestByProposalId.get(item._id.toString()),
+      signalForProposal(item),
+      pricePoints,
+      priceCoverage
+    ));
     const chartPricePoints = samplePriceHistory(pricePoints);
 
     return NextResponse.json({
@@ -317,7 +368,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
         price: row.price,
         source: row.source,
       })),
-      currentProposal: markerFromProposal(proposal, params.id, currentBacktest, pricePoints, priceCoverage),
+      currentProposal: markerFromProposal(proposal, params.id, currentBacktest, signalForProposal(proposal), pricePoints, priceCoverage),
       historicalProposals: markers.filter((marker) => !marker.isCurrent),
       backtestResults: markers.map((marker) => ({
         proposalId: marker.id,

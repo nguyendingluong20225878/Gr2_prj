@@ -1,28 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import type React from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, ShieldCheck, TriangleAlert } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { Layout } from '@/app/components/layout/Layout';
 import { Button } from '@/app/components/ui/button';
-import { Badge } from '@/app/components/ui/badge';
 import { DataSkeleton, EmptyState, PageHeader } from '@/app/components/shared/NdlUi';
 import { useProposalDetail, useProposalScoreExplanation } from '@/lib/hooks/useNdlData';
-import { formatConfidence, formatNumber } from '@/lib/utils/formatters';
-
-const MISSING_DATA_LABELS: Record<string, string> = {
-  'proposal.sources': 'Thiếu nguồn dữ liệu của khuyến nghị',
-  'signal.sources': 'Thiếu nguồn dữ liệu định lượng',
-  'signalContext.sources': 'Thiếu nguồn dữ liệu định lượng',
-  'metadata.sampleSize': 'Thiếu cỡ mẫu',
-  'scoreComponents.sampleSize': 'Thiếu cỡ mẫu',
-  sampleSize: 'Thiếu cỡ mẫu',
-  backtest: 'Chưa có kết quả kiểm chứng',
-  price: 'Thiếu dữ liệu giá',
-  currentPrice: 'Thiếu giá hiện tại',
-  currentValue: 'Thiếu giá trị hiện tại',
-};
+import { formatConfidence } from '@/lib/utils/formatters';
 
 export default function ConfidenceExplanationPage() {
   const router = useRouter();
@@ -33,6 +18,8 @@ export default function ConfidenceExplanationPage() {
   const data = explanation.data;
   const proposalData = proposal.data;
   const equation = data ? buildConfidenceEquation(data, proposalData?.confidence) : null;
+  const confidence = data?.displayConfidence ?? data?.confidence ?? proposalData?.confidence;
+  const reasonCards = data?.reasonCards?.filter((card) => card.visible) ?? [];
 
   return (
     <Layout>
@@ -48,9 +35,9 @@ export default function ConfidenceExplanationPage() {
         ) : (
           <>
             <PageHeader
-              eyebrow="Cách tính độ tin cậy"
-              title={`${proposalData?.tokenSymbol ?? 'Token chưa định danh'} · Vì sao có mức tin cậy này?`}
-              description="Màn này hiển thị công thức, giá trị đầu vào, bước thay số và kết quả cuối. Độ tin cậy không phải xác suất chắc chắn có lời."
+              eyebrow="Độ tin cậy"
+              title={`${proposalData?.tokenSymbol ?? 'Token chưa định danh'} · Có nên tin luận điểm này?`}
+              description="Trang này chỉ giữ lại phần giúp người dùng hiểu mức tin cậy. Công thức chi tiết được thu gọn để không làm nhiễu quyết định."
               actions={
                 <Button asChild variant="outline" className="border-cyan-500/30 text-cyan-300">
                   <Link href={`/proposal/${id}/explanation/quant`}>Xem breakdown điểm tín hiệu</Link>
@@ -59,63 +46,60 @@ export default function ConfidenceExplanationPage() {
             />
 
             <section className="glass-card rounded-xl border border-white/5 bg-black/20 p-5">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <div>
-                  <h2 className="text-lg font-bold text-white">Công thức độ tin cậy</h2>
-                  <p className="mt-1 text-sm text-slate-500">Tính từ điểm tín hiệu, hệ số quy đổi, giới hạn trần và mức giảm khi dữ liệu còn mỏng.</p>
+              <div className="grid gap-5 lg:grid-cols-[0.75fr_1.25fr] lg:items-center">
+                <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/10 p-5 text-center">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-cyan-200">Độ tin cậy cuối cùng</p>
+                  <p className="mt-2 text-5xl font-black text-white">{formatConfidence(confidence, 1)}</p>
+                  <p className="mt-2 text-sm font-semibold text-cyan-100">{confidenceLabel(confidence)}</p>
                 </div>
-                <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/10 px-4 py-3 text-right">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-cyan-200">Kết quả cuối</p>
-                  <p className="mt-1 text-3xl font-black text-white">{formatConfidence(data.confidence ?? proposalData?.confidence, 1)}</p>
+                <div>
+                  <h2 className="text-lg font-bold text-white">Ý nghĩa</h2>
+                  <p className="mt-2 text-sm leading-6 text-slate-300">
+                    {data.primaryExplanation ?? 'Độ tin cậy cho biết hệ thống tin vào luận điểm hiện tại đến mức nào. Đây không phải xác suất chắc chắn có lời.'}
+                  </p>
+                  <p className="mt-3 text-sm leading-6 text-slate-500">
+                    Người dùng chỉ cần theo dõi con số cuối cùng này; các biến trung gian chỉ phục vụ audit.
+                  </p>
                 </div>
               </div>
+            </section>
 
-              {equation?.complete ? (
-                <div className="mt-5 space-y-4">
-                  <VariableGrid variables={equation.variables} />
-                  <div className="grid gap-3 lg:grid-cols-3">
+            <section className="glass-card rounded-xl border border-white/5 bg-black/20 p-5">
+              <h2 className="text-lg font-bold text-white">Vì sao có mức tin cậy này?</h2>
+              <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                {reasonCards.length ? reasonCards.map((card) => (
+                  <ReasonCard key={card.id} title={card.title} body={card.body} tone={card.tone} />
+                )) : (
+                  <p className="text-sm text-slate-500">Chưa đủ dữ liệu giải thích chi tiết cho mức tin cậy này.</p>
+                )}
+              </div>
+            </section>
+
+            <section className="glass-card rounded-xl border border-white/5 bg-black/20 p-5">
+              <h2 className="text-lg font-bold text-white">Cách hệ thống đi tới con số cuối</h2>
+              <p className="mt-1 text-sm text-slate-500">Biểu diễn theo luồng để dễ đọc hơn công thức thô.</p>
+              <FormulaFlow
+                steps={[
+                  'Đọc tín hiệu đầu vào',
+                  'Quy đổi thành độ tin cậy',
+                  'Giới hạn để tránh quá tự tin',
+                  'Điều chỉnh nếu dữ liệu còn mỏng',
+                  'Hiển thị độ tin cậy cuối cùng',
+                ]}
+              />
+
+              <details className="mt-5 rounded-xl border border-white/5 bg-black/30 p-4">
+                <summary className="cursor-pointer text-sm font-bold text-cyan-200">Xem audit công thức</summary>
+                {equation?.complete ? (
+                  <div className="mt-4 grid gap-3 lg:grid-cols-3">
                     <EquationStep index="1" title="Công thức" value={equation.formula} />
                     <EquationStep index="2" title="Thay số" value={equation.substitution} />
                     <EquationStep index="3" title="Kết quả" value={equation.result} highlight />
                   </div>
-                </div>
-              ) : (
-                <EmptyState title="Chưa đủ dữ liệu để hiển thị phép tính chi tiết." description="UI chỉ hiển thị phần có dữ liệu và không tự bịa field còn thiếu." />
-              )}
-            </section>
-
-            <section className="grid gap-4 lg:grid-cols-2">
-              <ExplanationCard
-                title="Cách đọc nhanh"
-                body={data.signalMode === 'COLD_START'
-                  ? 'Token còn ít lịch sử nên độ tin cậy được giới hạn tối đa 40%.'
-                  : 'Khi dữ liệu lịch sử đầy đủ hơn, độ tin cậy vẫn có giới hạn trần và mức giảm để tránh đọc tín hiệu quá chắc khi mẫu còn mỏng.'}
-              />
-              <ExplanationCard
-                title="Dữ liệu còn thiếu"
-                body={(data.missingData ?? []).length
-                  ? `Còn thiếu: ${data.missingData.map(readableMissingData).join(', ')}.`
-                  : 'Chưa ghi nhận dữ liệu thiếu rõ ràng cho phép tính này.'}
-              />
-            </section>
-
-            <section className="grid gap-4 lg:grid-cols-2">
-              <ListPanel title="Yếu tố làm tăng niềm tin" items={data.positiveFactors} tone="green" empty="Chưa đủ dữ liệu để xác định yếu tố làm tăng độ tin cậy." />
-              <ListPanel title="Yếu tố làm giảm hoặc cần thận trọng" items={data.negativeFactors} tone="amber" empty="Chưa đủ dữ liệu để xác định yếu tố làm giảm độ tin cậy." />
-            </section>
-
-            <section className="grid gap-4 lg:grid-cols-2">
-              <Checklist title="Vì sao có thể tin" items={data.trustChecklist ?? []} empty="Chưa có trust checklist." />
-              <Checklist title="Không nên tin quá mức" items={data.cautionChecklist?.map((item) => ({ ...item, status: 'LIMITED' as const })) ?? []} empty="Chưa có caution checklist." />
-            </section>
-
-            <section className="glass-card rounded-xl border border-white/5 bg-black/20 p-5">
-              <h2 className="text-lg font-bold text-white">Dữ liệu còn thiếu</h2>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {(data.missingData ?? []).length ? data.missingData.map((item) => (
-                  <Badge key={item} variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-300">{readableMissingData(item)}</Badge>
-                )) : <p className="text-sm text-slate-500">Chưa ghi nhận dữ liệu thiếu rõ ràng.</p>}
-              </div>
+                ) : (
+                  <p className="mt-3 text-sm text-slate-500">Chưa đủ dữ liệu để hiển thị phép tính chi tiết.</p>
+                )}
+              </details>
             </section>
           </>
         )}
@@ -124,24 +108,38 @@ export default function ConfidenceExplanationPage() {
   );
 }
 
-function readableMissingData(value: string) {
-  return MISSING_DATA_LABELS[value] ?? 'Dữ liệu chưa đủ rõ để giải thích';
+function confidenceLabel(value?: number | null) {
+  if (value === null || value === undefined) return 'Chưa có dữ liệu';
+  const normalized = Number(value) <= 1 ? Number(value) * 100 : Number(value);
+  if (normalized >= 75) return 'Mạnh';
+  if (normalized >= 55) return 'Khá mạnh';
+  if (normalized >= 35) return 'Cần đọc thận trọng';
+  return 'Thấp';
 }
 
-type FormulaVariable = {
-  label: string;
-  value: React.ReactNode;
-  detail: string;
-};
+function ReasonCard({ body, title, tone }: { title: string; body: string; tone: 'positive' | 'caution' | 'neutral' }) {
+  const className = tone === 'positive'
+    ? 'border-green-500/20 bg-green-500/10 text-green-100'
+    : tone === 'caution'
+      ? 'border-amber-500/20 bg-amber-500/10 text-amber-100'
+      : 'border-cyan-500/20 bg-cyan-500/10 text-cyan-100';
 
-function VariableGrid({ variables }: { variables: FormulaVariable[] }) {
   return (
-    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-      {variables.map((variable) => (
-        <div key={variable.label} className="rounded-xl border border-white/5 bg-black/40 p-4">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{variable.label}</p>
-          <p className="mt-2 text-xl font-black text-white">{variable.value}</p>
-          <p className="mt-1 text-xs leading-5 text-slate-500">{variable.detail}</p>
+    <article className={`rounded-lg border p-4 ${className}`}>
+      <p className="font-semibold text-white">{title}</p>
+      <p className="mt-2 text-sm leading-6">{body}</p>
+    </article>
+  );
+}
+
+function FormulaFlow({ steps }: { steps: string[] }) {
+  return (
+    <div className="mt-4 grid gap-3 md:grid-cols-5">
+      {steps.map((step, index) => (
+        <div key={step} className="relative rounded-xl border border-white/5 bg-black/30 p-4 text-center">
+          <span className="mx-auto flex h-8 w-8 items-center justify-center rounded-full border border-cyan-500/30 bg-cyan-500/10 text-sm font-black text-cyan-200">{index + 1}</span>
+          <p className="mt-3 text-sm font-semibold leading-5 text-slate-200">{step}</p>
+          {index < steps.length - 1 ? <span className="pointer-events-none absolute -right-2 top-1/2 hidden h-px w-4 bg-cyan-500/30 md:block" /> : null}
         </div>
       ))}
     </div>
@@ -157,49 +155,6 @@ function EquationStep({ index, title, value, highlight }: { index: string; title
       </div>
       <code className="mt-3 block whitespace-pre-wrap break-words rounded-lg bg-black/40 px-3 py-2 text-sm leading-6 text-cyan-100">{value}</code>
     </div>
-  );
-}
-
-function ExplanationCard({ title, body }: { title: string; body: string }) {
-  return (
-    <section className="glass-card rounded-xl border border-white/5 bg-black/20 p-5">
-      <h2 className="text-lg font-bold text-white">{title}</h2>
-      <p className="mt-3 text-sm leading-6 text-slate-300">{body}</p>
-    </section>
-  );
-}
-
-function ListPanel({ title, items, tone, empty }: { title: string; items: string[]; tone: 'green' | 'amber'; empty: string }) {
-  return (
-    <section className="glass-card rounded-xl border border-white/5 bg-black/20 p-5">
-      <h2 className="text-lg font-bold text-white">{title}</h2>
-      <div className="mt-4 space-y-2">
-        {items.length ? items.map((item) => (
-          <div key={item} className={`rounded-lg border px-3 py-2 text-sm ${tone === 'green' ? 'border-green-500/20 bg-green-500/10 text-green-100' : 'border-amber-500/20 bg-amber-500/10 text-amber-100'}`}>
-            {item}
-          </div>
-        )) : <p className="text-sm text-slate-500">{empty}</p>}
-      </div>
-    </section>
-  );
-}
-
-function Checklist({ title, items, empty }: { title: string; items: Array<{ label: string; status?: string; detail: string }>; empty: string }) {
-  return (
-    <section className="glass-card rounded-xl border border-white/5 bg-black/20 p-5">
-      <h2 className="text-lg font-bold text-white">{title}</h2>
-      <div className="mt-4 space-y-2">
-        {items.length ? items.map((item) => (
-          <div key={`${item.label}-${item.detail}`} className="rounded-lg border border-white/5 bg-black/30 p-3">
-            <div className="flex items-center gap-2">
-              {item.status === 'OK' ? <ShieldCheck className="h-4 w-4 text-green-300" /> : <TriangleAlert className="h-4 w-4 text-amber-300" />}
-              <p className="font-semibold text-white">{item.label}</p>
-            </div>
-            <p className="mt-2 text-sm text-slate-300">{item.detail}</p>
-          </div>
-        )) : <p className="text-sm text-slate-500">{empty}</p>}
-      </div>
-    </section>
   );
 }
 

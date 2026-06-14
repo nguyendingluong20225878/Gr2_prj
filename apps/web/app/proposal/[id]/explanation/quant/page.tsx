@@ -1,7 +1,6 @@
 'use client';
 
 import Link from 'next/link';
-import type React from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import { Layout } from '@/app/components/layout/Layout';
@@ -17,25 +16,6 @@ const COMPONENT_COPY: Record<string, string> = {
   timeZ: 'Mức bất thường theo thời gian, giúp tránh đọc một điểm dữ liệu rời rạc quá mạnh.',
   unifiedRaw: 'Điểm thô trước khi chuẩn hóa thành điểm tín hiệu.',
 };
-
-const REASONING_STEPS = [
-  {
-    title: '1. Nhận tín hiệu',
-    body: 'Hệ thống đọc tin tức/tweet và dữ liệu thị trường để nhận ra token, hướng tác động và độ mạnh ban đầu.',
-  },
-  {
-    title: '2. Chuyển thành khuyến nghị',
-    body: 'Điểm tín hiệu được chuyển thành khuyến nghị có hành động, luận điểm và token liên quan để user đọc được nhanh.',
-  },
-  {
-    title: '3. Cân nhắc tăng/giảm điểm',
-    body: 'Điểm tăng khi token nổi bật so với lịch sử hoặc thị trường; điểm giảm khi dữ liệu ít, thiếu nguồn hoặc tín hiệu chưa đủ khác biệt.',
-  },
-  {
-    title: '4. Kết luận cuối',
-    body: 'Điểm cuối chỉ là dữ liệu hỗ trợ khuyến nghị. User vẫn cần đọc độ tin cậy, rủi ro và trạng thái kiểm chứng trước khi hành động.',
-  },
-];
 
 export default function QuantExplanationPage() {
   const router = useRouter();
@@ -63,9 +43,9 @@ export default function QuantExplanationPage() {
         ) : (
           <>
             <PageHeader
-              eyebrow="Breakdown điểm tín hiệu"
-              title={`${proposalData?.tokenSymbol ?? 'Token chưa định danh'} · Điểm tín hiệu đến từ đâu?`}
-              description="Breakdown hiển thị công thức, biến đầu vào, bước thay số và điểm tín hiệu cuối. Số chỉ là dữ liệu hỗ trợ khuyến nghị."
+              eyebrow="Điểm tín hiệu"
+              title={`${proposalData?.tokenSymbol ?? 'Token chưa định danh'} · Tín hiệu đang nghiêng về đâu?`}
+              description="Trang này tập trung vào kết luận và cách đọc điểm. Công thức và thành phần kỹ thuật được thu gọn trong phần audit."
               actions={
                 <Button asChild variant="outline" className="border-cyan-500/30 text-cyan-300">
                   <Link href={`/proposal/${id}/explanation/confidence`}>Xem độ tin cậy</Link>
@@ -74,64 +54,74 @@ export default function QuantExplanationPage() {
             />
 
             <section className="glass-card rounded-xl border border-white/5 bg-black/20 p-5">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <div>
-                  <h2 className="text-lg font-bold text-white">Công thức điểm tín hiệu</h2>
-                  <p className="mt-1 text-sm text-slate-500">Trộn tín hiệu riêng của token với mức nổi bật so với thị trường để ra điểm cuối.</p>
-                </div>
-                <div className="rounded-xl border border-green-500/20 bg-green-500/10 px-4 py-3 text-right">
+              <div className="grid gap-5 lg:grid-cols-[0.75fr_1.25fr] lg:items-center">
+                <div className={`rounded-xl border p-5 text-center ${quantTone(finalScore).box}`}>
                   <p className="text-[10px] font-bold uppercase tracking-widest text-green-200">Điểm tín hiệu</p>
-                  <p className="mt-1 text-3xl font-black text-white">{formatNumber(finalScore, 3)}</p>
+                  <p className="mt-2 text-5xl font-black text-white">{formatNumber(finalScore, 2)}</p>
+                  <p className={`mt-2 text-sm font-semibold ${quantTone(finalScore).text}`}>{quantDirection(finalScore)}</p>
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-white">Cách đọc nhanh</h2>
+                  <p className="mt-2 text-sm leading-6 text-slate-300">{quantSummary(finalScore)}</p>
+                  <p className="mt-3 text-sm leading-6 text-slate-500">
+                    Điểm này hỗ trợ đọc hướng tín hiệu, không thay thế độ tin cậy, rủi ro và bối cảnh thị trường.
+                  </p>
                 </div>
               </div>
+            </section>
 
-              {equation?.complete ? (
-                <div className="mt-5 space-y-4">
-                  <VariableGrid variables={equation.variables} />
-                  <div className="grid gap-3 lg:grid-cols-3">
+            <section className="grid gap-3 lg:grid-cols-3">
+              <Note title="Tín hiệu riêng của token" body="Hệ thống xem token này có bất thường so với lịch sử của chính nó không." />
+              <Note title="Bối cảnh thị trường" body="Tín hiệu được đặt cạnh nhóm thị trường để tránh đọc một điểm dữ liệu rời rạc." />
+              <Note title="Kết luận cuối" body="Điểm cuối cho biết tín hiệu nghiêng mua, bán hay trung lập; càng xa 0 thì càng nổi bật." />
+            </section>
+
+            <section className="glass-card rounded-xl border border-white/5 bg-black/20 p-5">
+              <h2 className="text-lg font-bold text-white">Cách hệ thống gom điểm</h2>
+              <p className="mt-1 text-sm text-slate-500">Biểu diễn bằng luồng để dễ đọc hơn công thức thô.</p>
+              <FormulaFlow
+                steps={data?.quantFormulaMode === 'PURE_ALPHA_FALLBACK'
+                  ? ['Đọc tín hiệu token', 'So với lịch sử token', 'Dùng trực tiếp khi thiếu dữ liệu so sánh', 'Ra điểm tín hiệu']
+                  : ['Đọc tín hiệu token', 'So với lịch sử token', 'So với thị trường', 'Trộn trọng số', 'Ra điểm tín hiệu']}
+              />
+            </section>
+
+            <section className="glass-card rounded-xl border border-white/5 bg-black/20 p-5">
+              <h2 className="text-lg font-bold text-white">Audit kỹ thuật</h2>
+              <p className="mt-1 text-sm text-slate-500">Mở khi cần kiểm tra công thức, biến đầu vào và từng thành phần điểm.</p>
+
+              <details className="mt-4 rounded-xl border border-white/5 bg-black/30 p-4">
+                <summary className="cursor-pointer text-sm font-bold text-cyan-200">Xem công thức và thay số</summary>
+                {equation?.complete ? (
+                  <div className="mt-4 grid gap-3 lg:grid-cols-3">
                     <EquationStep index="1" title="Công thức" value={equation.formula} />
                     <EquationStep index="2" title="Thay số" value={equation.substitution} />
                     <EquationStep index="3" title="Kết quả" value={equation.result} highlight />
                   </div>
-                </div>
-              ) : (
-                <EmptyState title="Chưa đủ dữ liệu để hiển thị phép tính chi tiết." description="Thiếu dữ liệu trộn điểm hoặc dữ liệu bất thường của token nên chưa thể thay số đầy đủ." />
-              )}
-            </section>
+                ) : (
+                  <p className="mt-3 text-sm text-slate-500">Chưa đủ dữ liệu để hiển thị phép tính chi tiết.</p>
+                )}
+              </details>
 
-            <section className="grid gap-3 lg:grid-cols-2">
-              {REASONING_STEPS.slice(0, 4).map((step) => (
-                <Note key={step.title} title={step.title} body={step.body} />
-              ))}
-            </section>
-
-            <section className="glass-card rounded-xl border border-white/5 bg-black/20 p-5">
-              <h2 className="text-lg font-bold text-white">Thành phần điểm</h2>
-              <div className="mt-4 grid gap-3 lg:grid-cols-2">
-                {componentKeys(components).map((key) => (
-                  <div key={key} className="rounded-lg border border-white/5 bg-black/30 p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <p className="font-semibold text-white">{componentTitle(key)}</p>
-                      <span className="text-sm font-bold text-cyan-300">{formatNumber(componentValue(components[key]), 4)}</span>
+              <details className="mt-3 rounded-xl border border-white/5 bg-black/30 p-4">
+                <summary className="cursor-pointer text-sm font-bold text-cyan-200">Xem thành phần điểm</summary>
+                <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                  {componentKeys(components).map((key) => (
+                    <div key={key} className="rounded-lg border border-white/5 bg-black/30 p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <p className="font-semibold text-white">{componentTitle(key)}</p>
+                        <span className="text-sm font-bold text-cyan-300">{formatNumber(componentValue(components[key]), 4)}</span>
+                      </div>
+                      <p className="mt-2 text-sm leading-6 text-slate-300">
+                        {data?.componentDescriptions?.[key] ?? COMPONENT_COPY[key] ?? 'Thành phần bổ sung từ dữ liệu hiện có.'}
+                      </p>
                     </div>
-                    <p className="mt-2 text-sm leading-6 text-slate-300">
-                      {data?.componentDescriptions?.[key] ?? COMPONENT_COPY[key] ?? 'Thành phần bổ sung từ dữ liệu hiện có.'}
-                    </p>
-                  </div>
-                ))}
-                {!componentKeys(components).length ? (
-                  <EmptyState title="Chưa có thành phần điểm" description="Chưa đủ dữ liệu để tách điểm thành các yếu tố nhỏ hơn cho khuyến nghị này." />
-                ) : null}
-              </div>
-            </section>
-
-            <section className="glass-card rounded-xl border border-white/5 bg-black/20 p-5">
-              <h2 className="text-lg font-bold text-white">Cách đọc điểm</h2>
-              <div className="mt-4 grid gap-3 lg:grid-cols-3">
-                <Note title="Dương" body="Điểm dương thường nghiêng về mua, nhưng vẫn cần đọc hành động và rủi ro trong khuyến nghị." />
-                <Note title="Âm" body="Điểm âm thường nghiêng về bán, nhất là khi khuyến nghị liên quan token bạn đang giữ." />
-                <Note title="Gần 0" body="Tín hiệu chưa nổi bật; UI nên đưa vào theo dõi thêm nếu dữ liệu khác chưa đủ mạnh." />
-              </div>
+                  ))}
+                  {!componentKeys(components).length ? (
+                    <p className="text-sm text-slate-500">Chưa đủ dữ liệu để tách điểm thành các yếu tố nhỏ hơn.</p>
+                  ) : null}
+                </div>
+              </details>
             </section>
           </>
         )}
@@ -159,32 +149,47 @@ function componentTitle(key: string) {
   return key;
 }
 
-function readableQuantFormula(value?: string | null) {
-  if (!value) return 'Gom độ bất thường theo token, thị trường và thời gian.';
-  return 'Gom độ bất thường theo token, thị trường và thời gian; sau đó chuẩn hóa thành điểm tín hiệu.';
+function quantDirection(value?: number | null) {
+  if (value === null || value === undefined) return 'Chưa có dữ liệu';
+  if (value > 1) return 'Nghiêng mua';
+  if (value < -1) return 'Nghiêng bán';
+  return 'Gần trung lập';
 }
 
-function readableSignalMode(value?: string | null) {
-  const mode = String(value ?? '').toUpperCase();
-  if (mode === 'COLD_START') return 'Token còn ít lịch sử, nên cần đọc điểm thận trọng hơn.';
-  if (mode === 'NORMALIZED_ALPHA') return 'Có đủ lịch sử hơn để so sánh tín hiệu với bối cảnh trước đó.';
-  return 'Chưa đủ dữ liệu để xác định bối cảnh tính điểm.';
+function quantSummary(value?: number | null) {
+  if (value === null || value === undefined) return 'Chưa có đủ dữ liệu để kết luận hướng tín hiệu.';
+  if (value > 1) return 'Tín hiệu hiện tại nghiêng về hướng mua. Hãy đọc cùng độ tin cậy và rủi ro trước khi hành động.';
+  if (value < -1) return 'Tín hiệu hiện tại nghiêng về hướng bán hoặc giảm rủi ro. Hãy đọc cùng vị thế danh mục trước khi hành động.';
+  return 'Tín hiệu chưa đủ nổi bật, phù hợp để theo dõi thêm thay vì ra quyết định vội.';
 }
 
-type FormulaVariable = {
-  label: string;
-  value: React.ReactNode;
-  detail: string;
-};
+function quantTone(value?: number | null) {
+  if (value === null || value === undefined) return {
+    box: 'border-slate-500/20 bg-slate-500/10',
+    text: 'text-slate-300',
+  };
+  if (value > 1) return {
+    box: 'border-green-500/20 bg-green-500/10',
+    text: 'text-green-100',
+  };
+  if (value < -1) return {
+    box: 'border-red-500/20 bg-red-500/10',
+    text: 'text-red-100',
+  };
+  return {
+    box: 'border-slate-500/20 bg-slate-500/10',
+    text: 'text-slate-300',
+  };
+}
 
-function VariableGrid({ variables }: { variables: FormulaVariable[] }) {
+function FormulaFlow({ steps }: { steps: string[] }) {
   return (
-    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-      {variables.map((variable) => (
-        <div key={variable.label} className="rounded-xl border border-white/5 bg-black/40 p-4">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{variable.label}</p>
-          <p className="mt-2 text-xl font-black text-white">{variable.value}</p>
-          <p className="mt-1 text-xs leading-5 text-slate-500">{variable.detail}</p>
+    <div className="mt-4 grid gap-3 md:grid-cols-5">
+      {steps.map((step, index) => (
+        <div key={step} className="relative rounded-xl border border-white/5 bg-black/30 p-4 text-center">
+          <span className="mx-auto flex h-8 w-8 items-center justify-center rounded-full border border-cyan-500/30 bg-cyan-500/10 text-sm font-black text-cyan-200">{index + 1}</span>
+          <p className="mt-3 text-sm font-semibold leading-5 text-slate-200">{step}</p>
+          {index < steps.length - 1 ? <span className="pointer-events-none absolute -right-2 top-1/2 hidden h-px w-4 bg-cyan-500/30 md:block" /> : null}
         </div>
       ))}
     </div>

@@ -83,12 +83,12 @@ function resolveSignalBatchId(signal: RawSignal) {
   return signal.batchId ?? signal.metadata?.batchId ?? resolveSignalBatchStartedAt(signal).toISOString();
 }
 
-function resolveRecommendationExpiresAt(batchStartedAt: Date) {
+function resolveRecommendationExpiresAt(startsAt: Date) {
   const ttlHours = positiveNumberOrDefault(
     process.env.LAYER3_RECOMMENDATION_TTL_HOURS,
     DEFAULT_RECOMMENDATION_TTL_HOURS
   );
-  return new Date(batchStartedAt.getTime() + ttlHours * 60 * 60 * 1000);
+  return new Date(startsAt.getTime() + ttlHours * 60 * 60 * 1000);
 }
 
 function getBatchTime(value: unknown) {
@@ -284,7 +284,8 @@ export async function processSignal(signal: RawSignal, options: Layer3WorkflowOp
 
   const batchStartedAt = resolveSignalBatchStartedAt(signal);
   const batchId = resolveSignalBatchId(signal);
-  const expiresAt = resolveRecommendationExpiresAt(batchStartedAt);
+  const proposalWrittenAt = new Date();
+  const expiresAt = resolveRecommendationExpiresAt(proposalWrittenAt);
   const replacesSameBatch = activeProposal
     ? compareSignalToProposalBatch(signal, activeProposal) === 0
     : false;
@@ -343,9 +344,9 @@ export async function processSignal(signal: RawSignal, options: Layer3WorkflowOp
         pnlPercentage: null,
         backtestedAt: null,
         backtestMeta: {},
-        updatedAt: new Date(),
+        updatedAt: proposalWrittenAt,
       },
-      $setOnInsert: { createdAt: new Date() },
+      $setOnInsert: { createdAt: proposalWrittenAt },
     },
     { upsert: true }
   );

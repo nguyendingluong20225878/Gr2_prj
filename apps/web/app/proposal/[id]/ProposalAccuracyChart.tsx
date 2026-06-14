@@ -95,7 +95,7 @@ function formatTokenUsd(value?: number | null) {
 }
 
 function getDateSourceLabel(source?: ProposalTimelineMarker['dateSource']) {
-  if (source === 'SIGNAL_DETECTED_AT') return 'Thời điểm tín hiệu';
+  if (source === 'SIGNAL_DETECTED_AT') return 'Thời điểm phát hiện tín hiệu';
   if (source === 'BACKTEST_DETECTED_AT') return 'Thời điểm backtest';
   if (source === 'PROPOSAL_CREATED_AT') return 'Thời điểm tạo proposal';
   return 'Không rõ nguồn thời điểm';
@@ -140,23 +140,15 @@ function buildMarkerPoints(timeline: ProposalTimelineData, prices: ChartPoint[])
     .filter((point): point is MarkerPoint => Boolean(point));
 }
 
-function buildVerificationRows(timeline: ProposalTimelineData, markerPoints: MarkerPoint[]): VerificationRow[] {
-  const plottedById = new Map(markerPoints.map((point) => [point.marker.id, point]));
-
-  return getTimelineMarkers(timeline)
-    .map((marker) => {
-      const time = marker.date ? new Date(marker.date).getTime() : NaN;
-      const plotted = plottedById.get(marker.id);
-      return {
-        marker,
-        time,
-        price: plotted?.price ?? marker.markerPrice ?? null,
-        matchedTime: plotted?.matchedTime ?? (marker.matchedPriceAt ? new Date(marker.matchedPriceAt).getTime() : undefined),
-        priceGapMs: plotted?.priceGapMs ?? marker.priceGapMs ?? null,
-        plotted: Boolean(plotted),
-      };
-    })
-    .filter((row) => Number.isFinite(row.time));
+function buildVerificationRows(markerPoints: MarkerPoint[]): VerificationRow[] {
+  return markerPoints.map((point) => ({
+    marker: point.marker,
+    time: point.time,
+    price: point.price,
+    matchedTime: point.matchedTime,
+    priceGapMs: point.priceGapMs,
+    plotted: true,
+  }));
 }
 
 function buildZoomedDomain(points: ChartPoint[]): [number, number] {
@@ -268,10 +260,10 @@ export default function ProposalAccuracyChart({ timeline }: { timeline: Proposal
     .map((point) => ({ time: new Date(point.timestamp).getTime(), price: Number(point.price) }))
     .filter((point) => Number.isFinite(point.time) && Number.isFinite(point.price));
   const markerPoints = buildMarkerPoints(timeline, pricePoints);
-  const verificationRows = buildVerificationRows(timeline, markerPoints);
+  const verificationRows = buildVerificationRows(markerPoints);
   const yDomain = buildZoomedDomain(pricePoints);
   const xDomain = buildTimeDomain(pricePoints);
-  const unplottedCount = verificationRows.filter((row) => !row.plotted).length;
+  const unplottedCount = Math.max(0, getTimelineMarkers(timeline).length - markerPoints.length);
   const overlapCount = buildMarkerOverlapCount(markerPoints);
   const canDrawLine = pricePoints.length >= 2;
   const summary = buildBacktestSummary(timeline);
@@ -287,7 +279,8 @@ export default function ProposalAccuracyChart({ timeline }: { timeline: Proposal
       </div>
       <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/10 p-3 text-sm text-cyan-100">
         Kết quả kiểm chứng là dữ liệu tham khảo, không đảm bảo kết quả tương lai.
-        Win-rate và ROI trung bình được tính trên toàn bộ lịch sử tương tự, không chỉ 8 dòng gần nhất trong bảng.
+        Win-rate và ROI trung bình được tính trên toàn bộ lịch sử tương tự.
+        Marker trên đồ thị dùng thời điểm phát hiện tín hiệu nếu có, sau đó mới fallback sang thời điểm backtest hoặc thời điểm tạo proposal.
       </div>
       {dataWarnings.length ? (
         <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-100">
@@ -342,7 +335,7 @@ export default function ProposalAccuracyChart({ timeline }: { timeline: Proposal
       </div>
       {unplottedCount > 0 ? (
         <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-100">
-          Có {unplottedCount} khuyến nghị chỉ hiển thị trong bảng vì không tìm được giá đủ gần với thời điểm ghi nhận tín hiệu. Các dòng này vẫn được giữ để bạn kiểm tra lịch sử, nhưng không đặt marker lên đường giá.
+          Có {unplottedCount} khuyến nghị không được vẽ vì không tìm được giá đủ gần với thời điểm ghi nhận tín hiệu. Các khuyến nghị này cũng không xuất hiện trong bảng giải thích bên dưới để số dòng luôn khớp với số marker trên đồ thị.
         </div>
       ) : null}
       {overlapCount > 0 ? (
@@ -401,13 +394,11 @@ function readableMissingTimelineData(value: string) {
 
 function VerificationTable({ rows: inputRows }: { rows: VerificationRow[] }) {
   const sortedRows = [...inputRows].sort((a, b) => b.time - a.time);
-  const rows = sortedRows.slice(0, 8);
-  const hiddenCount = Math.max(0, sortedRows.length - rows.length);
 
-  if (!rows.length) {
+  if (!sortedRows.length) {
     return (
       <div className="rounded-lg border border-dashed border-white/10 bg-black/20 p-4 text-sm text-slate-400">
-        Chưa có khuyến nghị lịch sử để lập bảng kiểm chứng.
+        Chưa có khuyến nghị nào khớp được giá để vẽ lên đồ thị.
       </div>
     );
   }
@@ -415,7 +406,7 @@ function VerificationTable({ rows: inputRows }: { rows: VerificationRow[] }) {
   return (
     <div className="rounded-lg border border-white/5 bg-black/30">
       <div className="border-b border-white/5 px-4 py-3 text-xs text-slate-400">
-        Hiển thị {rows.length} khuyến nghị gần nhất trong tổng số {sortedRows.length}. {hiddenCount > 0 ? `${hiddenCount} khuyến nghị cũ hơn đang được tính trong thống kê nhưng không hiển thị trong bảng này.` : 'Toàn bộ khuyến nghị đang được hiển thị trong bảng này.'}
+        Hiển thị {sortedRows.length} khuyến nghị khớp giá. Số dòng trong bảng này luôn bằng số marker đang được vẽ trên đồ thị.
       </div>
       <div className="overflow-x-auto">
         <div className="min-w-[800px]">
@@ -427,7 +418,7 @@ function VerificationTable({ rows: inputRows }: { rows: VerificationRow[] }) {
             <span>Tin cậy</span>
             <span>Giá khớp / trạng thái</span>
           </div>
-          {rows.map(({ marker, price, matchedTime, priceGapMs, plotted }) => (
+          {sortedRows.map(({ marker, price, matchedTime, priceGapMs, plotted }) => (
             <div key={marker.id} className="grid grid-cols-[1.1fr_0.7fr_0.8fr_0.8fr_0.8fr_0.9fr] gap-3 border-b border-white/5 px-4 py-3 text-sm text-slate-300 last:border-b-0">
               <span className="text-slate-400">
                 <span className="block">{formatVietnameseDateTime(marker.date)}</span>

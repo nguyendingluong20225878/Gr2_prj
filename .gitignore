@@ -56,3 +56,6 @@ core/x-scaper/cookies/*.json
 # Ignore các file zip pack trong Next.js cache (đã thấy trong list file của bạn)
 *.pack
 *.pack.gz
+
+# Ignore thesis/report overview folder containing local deliverables
+baocao_overview/

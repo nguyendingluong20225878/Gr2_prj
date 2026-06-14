@@ -126,6 +126,23 @@ export type ProposalData = {
 };
 
 export type ScoreExplanationData = {
+  displayConfidence?: number | null;
+  confidenceLevel?: 'LOW' | 'MEDIUM' | 'STRONG' | 'VERY_STRONG' | 'UNKNOWN';
+  primaryExplanation?: string;
+  reasonCards?: Array<{
+    id: 'input_signal' | 'source_quality' | 'thin_data' | 'cold_start';
+    title: string;
+    body: string;
+    status: 'SUPPORTED' | 'LIMITED' | 'MISSING' | 'INFO';
+    tone: 'positive' | 'caution' | 'neutral';
+    visible: boolean;
+    sourceFields?: string[];
+  }>;
+  hasThinData?: boolean;
+  isColdStart?: boolean;
+  sourceStatus?: 'OK' | 'LIMITED' | 'MISSING';
+  inputSignalStatus?: 'SUPPORTED' | 'LIMITED' | 'MISSING';
+  auditAvailable?: boolean;
   confidenceFormula: string;
   quantFormula: string;
   quantFormulaMode?: 'ALPHA_BLEND' | 'PURE_ALPHA_FALLBACK' | 'MISSING_INPUTS' | string;

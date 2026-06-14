@@ -92,12 +92,20 @@ export function RecommendationCard({
 }: RecommendationCardProps) {
   const archived = status === 'EXPIRED' || status === 'VERIFIED' || status === 'EXECUTED';
   const pnl = normalizePercentValue(roi);
-  const showLivePerformance = !archived && livePerformance?.pnlStatus === 'AVAILABLE';
-  const displayEntryPrice = showLivePerformance ? livePerformance?.entryPrice : entryPrice;
-  const displayCurrentPrice = showLivePerformance ? livePerformance?.markPrice : currentPrice;
-  const displayRoi = showLivePerformance ? livePerformance?.roiPct : pnl;
-  const pnlLabel = showLivePerformance
-    ? 'ROI tạm tính'
+  const canUseLivePerformance = !archived && Boolean(livePerformance);
+  const hasLiveRoi = canUseLivePerformance && livePerformance?.pnlStatus === 'AVAILABLE';
+  const normalizedAction = String(action ?? '').toUpperCase();
+  const isHoldLike = normalizedAction === 'HOLD' || normalizedAction === 'WAIT';
+  const displayEntryPrice = canUseLivePerformance
+    ? livePerformance?.entryPrice ?? entryPrice
+    : entryPrice;
+  const displayCurrentPrice = canUseLivePerformance
+    ? livePerformance?.markPrice ?? currentPrice
+    : currentPrice;
+  const displayRoi = hasLiveRoi ? livePerformance?.roiPct : pnl;
+  const pnlFallback = getPnlFallbackLabel(livePerformance?.pnlStatus, projectedPnL);
+  const pnlLabel = hasLiveRoi
+    ? isHoldLike ? 'Biến động tạm tính' : 'ROI tạm tính'
     : archived
       ? 'PnL/ROI'
       : 'PnL/ROI';
@@ -131,8 +139,8 @@ export function RecommendationCard({
           {status === 'EXPIRED' ? (
             <p className="mt-2 text-xs text-slate-400">Khuyến nghị đã hết hiệu lực và chỉ còn giá trị tham khảo.</p>
           ) : null}
-          {showLivePerformance && livePerformance?.markMatchedAt ? (
-            <p className="mt-2 text-xs text-slate-500">Giá tạm tính cập nhật {formatRelativeVietnamese(livePerformance.markMatchedAt)}.</p>
+          {canUseLivePerformance && livePerformance?.markMatchedAt ? (
+            <p className="mt-2 text-xs text-slate-500">Giá hiện tại cập nhật {formatRelativeVietnamese(livePerformance.markMatchedAt)}.</p>
           ) : null}
         </div>
         <div className="flex shrink-0 flex-col gap-2 sm:flex-row lg:flex-col">
@@ -152,10 +160,18 @@ export function RecommendationCard({
         {quantScore !== null && quantScore !== undefined ? (
           <MiniStat label="Điểm tín hiệu" value={formatNumber(quantScore, 2)} />
         ) : null}
-        <MiniStat label={showLivePerformance ? 'Giá vào tạm tính' : 'Giá vào'} value={formatDollarAmount(displayEntryPrice)} />
+        <MiniStat label={canUseLivePerformance ? 'Giá vào tạm tính' : 'Giá vào'} value={formatDollarAmount(displayEntryPrice)} />
         <MiniStat label={currentPriceLabel} value={formatDollarAmount(displayCurrentPrice)} />
-        <MiniStat label={pnlLabel} value={displayRoi === null || displayRoi === undefined ? formatDollarAmount(projectedPnL) : formatPercent(displayRoi)} />
+        <MiniStat label={pnlLabel} value={displayRoi === null || displayRoi === undefined ? pnlFallback : formatPercent(displayRoi)} />
       </div>
     </article>
   );
+}
+
+function getPnlFallbackLabel(status: NonNullable<RecommendationCardProps['livePerformance']>['pnlStatus'] | undefined, projectedPnL?: number | null) {
+  if (projectedPnL !== null && projectedPnL !== undefined) return formatDollarAmount(projectedPnL);
+  if (status === 'NO_ENTRY_PRICE') return 'Chờ giá vào';
+  if (status === 'NO_MARK_PRICE') return 'Chờ giá hiện tại';
+  if (status === 'UNSUPPORTED_ACTION') return 'Không áp dụng';
+  return 'Chưa có dữ liệu';
 }
