@@ -52,7 +52,7 @@ export async function GET() {
   } catch (error) {
     console.error('Model health API Error:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch model health', details: String(error) },
+      { error: 'Failed to fetch model health' },
       { status: 500 }
     );
   }

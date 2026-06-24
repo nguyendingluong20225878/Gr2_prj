@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import { detectSignalWithFinBertQuant } from '../src/quant-engine.js';
+import { resolveProposalTokenIdentity } from '../src/proposal-token-identity.js';
 
 dotenv.config();
 
@@ -26,6 +27,23 @@ async function loadLatestDynamicBetaFromDb(db: any, options: {
   }
 
   return { betaBySymbol, regime };
+}
+
+async function loadPersistedRegimeFromDb(db: any, options: {
+  maxAgeHours: number;
+}): Promise<{ regime: string; updatedAt: Date } | null> {
+  const row = await db.collection("job_state").findOne({ _id: "current-market-regime" });
+  if (!row?.regime || !row.updatedAt) return null;
+
+  const updatedAt = new Date(row.updatedAt);
+  if (
+    !Number.isFinite(updatedAt.getTime()) ||
+    updatedAt.getTime() < Date.now() - options.maxAgeHours * 60 * 60 * 1000
+  ) {
+    return null;
+  }
+
+  return { regime: String(row.regime), updatedAt };
 }
 
 async function loadQuantWatermark(db: any, fallbackFrom: Date): Promise<Date> {
@@ -64,6 +82,14 @@ function signalBucketKey(date: Date): string {
 
   const suffix = date.getUTCHours() < 12 ? "AM" : "PM";
   return `${day}-${suffix}`;
+}
+
+function envFlag(name: string): boolean {
+  return ["1", "true", "yes", "on"].includes(String(process.env[name] ?? "").toLowerCase());
+}
+
+function literal<T>(value: T): { $literal: T } {
+  return { $literal: value };
 }
 
 async function main(): Promise<number> {
@@ -164,11 +190,17 @@ async function main(): Promise<number> {
     console.log(`📚 Đã nạp lịch sử cho ${Object.keys(historicalData).length} tokens từ bảng [${targetCollection}].`);
 
     // 4. CHẠY ENGINE
-    const { betaBySymbol, regime } = await loadLatestDynamicBetaFromDb(db, {
+    const regimeMaxAgeHours = Number(process.env.ROLLING_METRICS_MAX_AGE_HOURS ?? 48);
+    const { betaBySymbol, regime: rollingMetricsRegime } = await loadLatestDynamicBetaFromDb(db, {
       windowHours: Number(process.env.ROLLING_METRICS_WINDOW_HOURS ?? 24),
-      maxAgeHours: Number(process.env.ROLLING_METRICS_MAX_AGE_HOURS ?? 48),
+      maxAgeHours: regimeMaxAgeHours,
     });
-    console.log(`📈 Dynamic beta loaded for ${Object.keys(betaBySymbol).length} tokens, regime=${regime}.`);
+    const persistedRegime = await loadPersistedRegimeFromDb(db, {
+      maxAgeHours: regimeMaxAgeHours,
+    });
+    const regime = persistedRegime?.regime ?? rollingMetricsRegime;
+    const regimeSource = persistedRegime ? "job_state" : "rolling_metrics";
+    console.log(`📈 Dynamic beta loaded for ${Object.keys(betaBySymbol).length} tokens, regime=${regime}, regimeSource=${regimeSource}.`);
 
     const results = await detectSignalWithFinBertQuant({
       formattedNews,
@@ -181,56 +213,90 @@ async function main(): Promise<number> {
 
     // 5. LƯU KẾT QUẢ VÀO BẢNG SIGNALS
     if (results.length > 0) {
+      console.log("Chi tiết tín hiệu đã qua ngưỡng:");
+      for (const result of results as any[]) {
+        const score = Number(result.quantScore);
+        const thresholdDecision = result.metadata?.thresholdDecision ?? {};
+        const sourceKeys = Array.from(new Set(
+          (result.metadata?.sourceKeys ?? result.sources ?? [])
+            .map((source: any) => typeof source === "string" ? source : source.sourceKey ?? source.label)
+            .filter(Boolean)
+        ));
+        const requiredThreshold = Number(thresholdDecision.requiredSignalThreshold);
+        const actionThreshold = Number(thresholdDecision.actionThreshold);
+
+        console.log([
+          "   - ",
+          result.tokenSymbol ?? "UNKNOWN",
+          " | score=", Number.isFinite(score) ? score.toFixed(3) : "n/a",
+          " | type=", String(result.suggestionType ?? "hold").toUpperCase(),
+          " | emitThreshold=", Number.isFinite(requiredThreshold) ? requiredThreshold.toFixed(3) : "n/a",
+          " | actionThreshold=", Number.isFinite(actionThreshold) ? actionThreshold.toFixed(3) : "n/a",
+          " | regime=", result.metadata?.marketRegime ?? regime,
+          " | mode=", result.signalMode ?? result.metadata?.signalMode ?? "UNKNOWN",
+          " | samples=", result.metadata?.sampleSize ?? 0,
+          " | sources=", sourceKeys.length,
+          sourceKeys.length ? " (" + sourceKeys.join(", ") + ")" : "",
+        ].join(""));
+      }
+
       const startOfDay = new Date();
       startOfDay.setHours(0, 0, 0, 0);
 
       const detectedAt = inputTo;
       const bucketKey = signalBucketKey(detectedAt);
+      const reopenProcessedSignals = envFlag("SIGNAL_REOPEN_PROCESSED");
       const bulkOps = results.map((res: any) => {
         const symbol = res.tokenSymbol as string || "UNKNOWN";
         const tokenInfo = knownTokens.find((t: any) => t.symbol === symbol);
-        const finalAddress = tokenInfo?.address || tokenInfo?._id?.toString() || "unknown";
+        const finalAddress = resolveProposalTokenIdentity(tokenInfo, symbol);
         const signalMode = res.signalMode ?? res.metadata?.signalMode ?? "UNKNOWN_MODE";
         const signalKey = `${symbol}:${bucketKey}:${signalMode}`;
+        const keepIfProcessed = (fieldName: string, resetValue: unknown) => (
+          reopenProcessedSignals
+            ? literal(resetValue)
+            : { $cond: [{ $eq: ["$status", "PROCESSED"] }, `$${fieldName}`, resetValue] }
+        );
+        const metadata = {
+          sampleSize: historicalData[symbol]?.length || 0,
+          isNewToken: (historicalData[symbol]?.length || 0) < 3,
+          volatilityFlag: res.volatilityFlag || 0, 
+          uncertaintyEntropy: res.uncertaintyEntropy ?? res.volatilityFlag ?? 0,
+          signalMode: res.signalMode,
+          processedAt: new Date(),
+          ...(res.metadata || {})
+        };
 
         return {
           updateOne: {
             filter: { signalKey },
-            update: {
-              $set: {
-                signalKey,
-                tokenSymbol: symbol,
-                tokenAddress: finalAddress,
-                quantScore: res.quantScore || 0,
-                confidence: res.confidence || 0,
-                suggestionType: res.suggestionType || 'hold',
-                sentimentType: res.sentimentType || 'neutral',
-                sources: res.sources || [],
-                metadata: {
-                  sampleSize: historicalData[symbol]?.length || 0,
-                  isNewToken: (historicalData[symbol]?.length || 0) < 3,
-                  volatilityFlag: res.volatilityFlag || 0, 
-                  uncertaintyEntropy: res.uncertaintyEntropy ?? res.volatilityFlag ?? 0,
-                  signalMode: res.signalMode,
-                  processedAt: new Date(),
-                  ...(res.metadata || {})
-                },
-                uncertaintyEntropy: res.uncertaintyEntropy ?? res.volatilityFlag ?? 0,
-                realizedVolatility: res.realizedVolatility ?? null,
-                signalMode: res.signalMode ?? res.metadata?.signalMode ?? null,
-                status: "RAW",
-                layer3LockedAt: null,
-                layer3LockedBy: null,
-                layer3RetryCount: 0,
-                lastLayer3Error: null,
-                errorType: null,
-                updatedAt: new Date()
-              },
-              $setOnInsert: {
-                createdAt: new Date(),
-                detectedAt
+            update: [
+              {
+                $set: {
+                  signalKey: literal(signalKey),
+                  tokenSymbol: literal(symbol),
+                  tokenAddress: literal(finalAddress),
+                  quantScore: literal(res.quantScore || 0),
+                  confidence: literal(res.confidence || 0),
+                  suggestionType: literal(res.suggestionType || "hold"),
+                  sentimentType: literal(res.sentimentType || "neutral"),
+                  sources: literal(res.sources || []),
+                  metadata: literal(metadata),
+                  uncertaintyEntropy: literal(res.uncertaintyEntropy ?? res.volatilityFlag ?? 0),
+                  realizedVolatility: literal(res.realizedVolatility ?? null),
+                  signalMode: literal(res.signalMode ?? res.metadata?.signalMode ?? null),
+                  status: keepIfProcessed("status", "RAW"),
+                  layer3LockedAt: keepIfProcessed("layer3LockedAt", null),
+                  layer3LockedBy: keepIfProcessed("layer3LockedBy", null),
+                  layer3RetryCount: keepIfProcessed("layer3RetryCount", 0),
+                  lastLayer3Error: keepIfProcessed("lastLayer3Error", null),
+                  errorType: keepIfProcessed("errorType", null),
+                  createdAt: { $ifNull: ["$createdAt", new Date()] },
+                  detectedAt: { $ifNull: ["$detectedAt", detectedAt] },
+                  updatedAt: literal(new Date())
+                }
               }
-            },
+            ],
             upsert: true
           }
         };

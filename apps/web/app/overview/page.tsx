@@ -1,7 +1,6 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
 import type React from 'react';
 import { AlertTriangle, ArrowRight, BarChart3, ShieldCheck, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
@@ -35,14 +34,7 @@ type TodayActionItem = {
   isWatched: boolean;
 };
 
-type ReviewScope = 'portfolio' | 'outside';
-
-type TokenImpactItem = PortfolioCrossImpact & {
-  impactedToken: string;
-};
-
 export default function OverviewPage() {
-  const [reviewScope, setReviewScope] = useState<ReviewScope>('portfolio');
   const { walletAddress, portfolio, proposals, modelHealth, crossImpacts, watchlist, lastSyncedAt } = useNdlData();
   const portfolioData = portfolio.data;
   const proposalList = proposals.data ?? [];
@@ -74,18 +66,13 @@ export default function OverviewPage() {
     .filter((item) => ['ACTIVE', 'EXPIRING_SOON', 'MISSING_DATA'].includes(item.status))
     .sort(sortTodayActions);
   const portfolioReviewItems = reviewItems.filter((item) => item.impact === 'DIRECT' || item.impact === 'INDIRECT');
-  const outsideReviewItems = reviewItems.filter((item) => item.impact === 'OUTSIDE');
-  const selectedReviewItems = reviewScope === 'portfolio' ? portfolioReviewItems : outsideReviewItems;
-  const todayQueue = selectedReviewItems.slice(0, 5);
+  const todayQueue = portfolioReviewItems.slice(0, 5);
   const expiringSoonCount = recommendationItems.filter((item) => item.status === 'EXPIRING_SOON').length;
   const staleDataAgeMs = getLatestDataAgeMs(proposalList, modelHealth.data);
   const hasStaleData = staleDataAgeMs !== null && staleDataAgeMs > 60 * 60 * 1000;
   const riskIssueCount = missingPriceCount + (hasStaleData ? 1 : 0);
   const crossPortfolioImpacts = [...(crossImpacts.data ?? [])].sort(sortCrossImpact);
-  const tokenImpactItems: TokenImpactItem[] = crossPortfolioImpacts
-    .flatMap((impact) => impact.impactedTokens.map((token) => ({ ...impact, impactedToken: token })))
-    .sort(sortTokenImpactByNewest)
-    .slice(0, 6);
+  const crossImpactItems = getUniqueCrossImpactItems(crossPortfolioImpacts).slice(0, 6);
   const systemBadge = getSystemBadge(modelHealth.data);
   const freshnessLabel = getFreshnessLabel(lastSyncedAt, portfolioData?.holdings ?? []);
   const dataWarnings = buildDataWarnings({
@@ -121,7 +108,7 @@ export default function OverviewPage() {
         <PageHeader
           eyebrow="Tổng quan"
           title="Hôm nay danh mục của tôi cần xử lý gì?"
-          description="NDL ưu tiên token bạn đang nắm giữ, sau đó mới đến tín hiệu ngoài danh mục."
+          description="NDL ưu tiên token bạn đang nắm giữ và những nguồn tin có thể ảnh hưởng gián tiếp tới danh mục."
           actions={
             <>
               <TrustBadge label={systemBadge.label} className={systemBadge.className} />
@@ -143,7 +130,7 @@ export default function OverviewPage() {
           <>
             <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               <MetricCard label="Tổng giá trị danh mục" value={totalValueLabel} hint={totalValueHint} />
-              <MetricCard label="Khuyến nghị cần xem xét" value={reviewItems.length} hint="Ưu tiên token trong danh mục" />
+              <MetricCard label="Khuyến nghị cần xem xét" value={portfolioReviewItems.length} hint="Chỉ tính token trong danh mục hoặc liên quan gián tiếp" />
               <MetricCard label="Rủi ro cần chú ý" value={riskIssueCount} hint="Token thiếu giá hoặc dữ liệu danh mục cần kiểm tra" />
               <MetricCard label="Tín hiệu sắp hết hạn" value={expiringSoonCount} hint="Cần đọc trước khi quá hạn" />
             </section>
@@ -163,31 +150,15 @@ export default function OverviewPage() {
                   <h2 className="text-xl font-bold text-white">Xem xét ngay</h2>
                   <p className="mt-1 text-sm text-slate-500">Tối đa 5 khuyến nghị quan trọng nhất cho hôm nay.</p>
                 </div>
-                {selectedReviewItems.length > 5 ? (
+                {portfolioReviewItems.length > 5 ? (
                   <Button asChild variant="outline" size="sm" className="border-cyan-500/30 text-cyan-300">
-                    <Link href="/recommendations?tab=urgent"><BarChart3 className="h-4 w-4" /> Xem tất cả khuyến nghị</Link>
+                    <Link href="/recommendations?tab=portfolio"><BarChart3 className="h-4 w-4" /> Xem tất cả trong danh mục</Link>
                   </Button>
                 ) : (
                   <Button asChild variant="outline" size="sm" className="border-cyan-500/30 text-cyan-300">
-                    <Link href="/recommendations"><BarChart3 className="h-4 w-4" /> Xem khuyến nghị</Link>
+                    <Link href="/recommendations?tab=portfolio"><BarChart3 className="h-4 w-4" /> Xem khuyến nghị</Link>
                   </Button>
                 )}
-              </div>
-              <div className="mb-4 inline-flex rounded-lg border border-white/10 bg-black/30 p-1">
-                <button
-                  type="button"
-                  onClick={() => setReviewScope('portfolio')}
-                  className={`rounded-md px-3 py-2 text-sm font-semibold transition-colors ${reviewScope === 'portfolio' ? 'bg-cyan-500/15 text-cyan-200' : 'text-slate-400 hover:text-white'}`}
-                >
-                  Ảnh hưởng danh mục
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setReviewScope('outside')}
-                  className={`rounded-md px-3 py-2 text-sm font-semibold transition-colors ${reviewScope === 'outside' ? 'bg-cyan-500/15 text-cyan-200' : 'text-slate-400 hover:text-white'}`}
-                >
-                  Ngoài danh mục
-                </button>
               </div>
               <div className="space-y-3">
                 {todayQueue.map((item) => (
@@ -198,14 +169,24 @@ export default function OverviewPage() {
                   />
                 ))}
                 {!todayQueue.length ? (
-                  <EmptyState
-                    title="Không có khuyến nghị cần xem xét"
-                    description={reviewScope === 'portfolio' ? 'Không có khuyến nghị còn hiệu lực nào liên quan đến danh mục lúc này.' : 'Không có cơ hội ngoài danh mục nào cần ưu tiên lúc này.'}
-                  />
+                  <div className="space-y-3">
+                    <EmptyState
+                      title="Không có khuyến nghị cần xem xét"
+                      description="Không có khuyến nghị còn hiệu lực nào liên quan trực tiếp hoặc gián tiếp tới danh mục lúc này."
+                    />
+                    <div className="flex flex-wrap justify-center gap-2">
+                      <Button asChild variant="outline" className="border-cyan-500/30 text-cyan-300">
+                        <Link href="/portfolio">Xem danh mục</Link>
+                      </Button>
+                      <Button asChild className="bg-gradient-to-r from-purple-600 to-cyan-600 text-white">
+                        <Link href="/recommendations?tab=outside-portfolio">Xem riêng cơ hội ngoài danh mục</Link>
+                      </Button>
+                    </div>
+                  </div>
                 ) : null}
-                {selectedReviewItems.length > 5 ? (
+                {portfolioReviewItems.length > 5 ? (
                   <Button asChild className="bg-gradient-to-r from-purple-600 to-cyan-600 text-white">
-                    <Link href="/recommendations?tab=urgent">Xem tất cả khuyến nghị</Link>
+                    <Link href="/recommendations?tab=portfolio">Xem tất cả trong danh mục</Link>
                   </Button>
                 ) : null}
               </div>
@@ -239,8 +220,8 @@ export default function OverviewPage() {
               <div className="glass-card rounded-xl border border-white/5 bg-black/20 p-5">
                 <div className="mb-4 flex items-center justify-between">
                   <div>
-                    <h2 className="text-lg font-bold text-white">Vị thế trade đang mở</h2>
-                    <p className="text-sm text-slate-500">Các lệnh đã thực hiện và chưa đóng.</p>
+                    <h2 className="text-lg font-bold text-white">Vị thế demo đang mở</h2>
+                    <p className="text-sm text-slate-500">Các lệnh demo đã xác nhận và chưa đóng.</p>
                   </div>
                   <Badge variant="outline" className="border-cyan-500/30 bg-cyan-500/10 text-cyan-300">
                     {activeOpenInvestments.length} vị thế
@@ -251,7 +232,7 @@ export default function OverviewPage() {
                     <MiniPosition key={investment._id} investment={investment} />
                   ))}
                   {!activeOpenInvestments.length ? (
-                    <EmptyState title="Chưa có vị thế đang mở" description="Các giao dịch đã xác nhận sẽ xuất hiện tại đây." />
+                    <EmptyState title="Chưa có vị thế demo đang mở" description="Các lệnh demo đã xác nhận sẽ xuất hiện tại đây." />
                   ) : null}
                   {activeOpenInvestments.length > 4 ? (
                     <Button asChild variant="outline" size="sm" className="border-cyan-500/30 text-cyan-300">
@@ -273,10 +254,10 @@ export default function OverviewPage() {
                 </Button>
               </div>
               <div className="grid gap-3 lg:grid-cols-3">
-                {tokenImpactItems.map((impact) => (
-                  <TokenImpactCard key={`${impact.sourceLabel}-${impact.impactedToken}-${impact.createdAt ?? impact.reason}`} impact={impact} />
+                {crossImpactItems.map((impact) => (
+                  <CrossImpactCard key={getCrossImpactKey(impact)} impact={impact} />
                 ))}
-                {!tokenImpactItems.length ? (
+                {!crossImpactItems.length ? (
                   <EmptyState
                     title="Chưa có ảnh hưởng gián tiếp đáng chú ý"
                     description="Hiện chưa có tín hiệu liên quan chéo tới tài sản đang theo dõi."
@@ -326,11 +307,51 @@ function sortCrossImpact(a: PortfolioCrossImpact, b: PortfolioCrossImpact) {
   return new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime();
 }
 
-function sortTokenImpactByNewest(a: TokenImpactItem, b: TokenImpactItem) {
-  const timeA = new Date(a.createdAt ?? 0).getTime();
-  const timeB = new Date(b.createdAt ?? 0).getTime();
-  if (timeA !== timeB) return timeB - timeA;
-  return a.impactedToken.localeCompare(b.impactedToken);
+function getUniqueCrossImpactItems(items: PortfolioCrossImpact[]) {
+  const grouped = new Map<string, PortfolioCrossImpact>();
+
+  items.forEach((item) => {
+    const key = getCrossImpactKey(item);
+    const existing = grouped.get(key);
+    if (!existing) {
+      grouped.set(key, item);
+      return;
+    }
+
+    grouped.set(key, {
+      ...existing,
+      holdingTokens: uniqueStrings([...existing.holdingTokens, ...item.holdingTokens]),
+      impactedTokens: uniqueStrings([...existing.impactedTokens, ...item.impactedTokens]),
+      proposalIds: uniqueStrings([...existing.proposalIds, ...item.proposalIds]),
+      confidence: maxNullable(existing.confidence, item.confidence),
+      weight: maxNullable(existing.weight, item.weight),
+    });
+  });
+
+  return Array.from(grouped.values()).sort(sortCrossImpact);
+}
+
+function maxNullable(a?: number | null, b?: number | null) {
+  const values = [a, b].filter((value): value is number => value !== null && value !== undefined && Number.isFinite(Number(value)));
+  return values.length ? Math.max(...values.map(Number)) : null;
+}
+
+function getCrossImpactKey(item: PortfolioCrossImpact) {
+  return [
+    item.sourceId,
+    item.sourceUrl,
+    item.sourceLabel,
+    item.createdAt,
+    normalizeReasonKey(item.reason),
+  ].filter(Boolean).join('|');
+}
+
+function normalizeReasonKey(value?: string | null) {
+  return String(value ?? '').trim().replace(/\s+/g, ' ').slice(0, 120);
+}
+
+function uniqueStrings(values: string[]) {
+  return Array.from(new Set(values.filter(Boolean)));
 }
 
 function getSystemBadge(data?: ModelHealthData) {
@@ -408,14 +429,16 @@ function buildDataWarnings({
   return warnings;
 }
 
-// Tạm ẩn lý do ngắn trong card "Xem xét ngay" cho tới khi thống nhất đúng field hiển thị.
-// function getShortReason(proposal: ProposalData) {
-//   if (proposal.rationaleSummary) return proposal.rationaleSummary;
-//   if (proposal.summary) return proposal.summary;
-//   if (proposal.reason?.length) return proposal.reason.slice(0, 2).join(' ');
-//   if (proposal.title) return proposal.title;
-//   return 'Chưa có lý do ngắn cho khuyến nghị này.';
-// }
+function getDecisionReason(proposal: ProposalData) {
+  const candidate = proposal.rationaleSummary ?? proposal.summary ?? proposal.title;
+  if (candidate) return clampDecisionReason(candidate);
+  return `Cần xem xét ${toDisplayAction(proposal.action ?? proposal.suggestionType).toLowerCase()} trước khi tín hiệu thay đổi.`;
+}
+
+function clampDecisionReason(value: string) {
+  const firstSentence = value.trim().replace(/\s+/g, ' ').split(/(?<=[.!?。])\s+/)[0] ?? value;
+  return firstSentence.length <= 140 ? firstSentence : `${firstSentence.slice(0, 139).trimEnd()}…`;
+}
 
 function TrustBadge({ label, className }: { label: string; className: string }) {
   return (
@@ -468,7 +491,7 @@ function TodayActionCard({ item, onWatch }: { item: TodayActionItem; onWatch?: (
   const { proposal, impact, status, isWatched } = item;
   const action = proposal.action ?? proposal.suggestionType;
   const risk = proposal.financialImpact?.riskLevel;
-  // const shortReason = getShortReason(proposal);
+  const shortReason = getDecisionReason(proposal);
   const sourceCount = (proposal.sources?.length ?? 0) + (proposal.signalContext?.sources?.length ?? 0);
   const canWatch = !isWatched && status !== 'EXPIRED' && status !== 'VERIFIED' && status !== 'EXECUTED';
 
@@ -483,8 +506,7 @@ function TodayActionCard({ item, onWatch }: { item: TodayActionItem; onWatch?: (
             {status !== 'MISSING_DATA' ? <StatusBadge status={status} /> : null}
             {isWatched ? <Badge variant="outline" className="border-cyan-500/30 bg-cyan-500/10 text-cyan-300">Đã theo dõi</Badge> : null}
           </div>
-          {/* Tạm ẩn lý do ngắn trong card "Xem xét ngay". */}
-          {/* <p className="mt-3 line-clamp-2 text-sm leading-6 text-slate-300">{shortReason}</p> */}
+          <p className="mt-3 line-clamp-2 text-sm leading-6 text-slate-300">{shortReason}</p>
         </div>
         <div className="flex shrink-0 flex-col gap-2 sm:flex-row lg:flex-col">
           <Button asChild className="bg-gradient-to-r from-purple-600 to-cyan-600 text-white">
@@ -529,28 +551,35 @@ function StatusBadge({ status }: { status: RecommendationStatus }) {
   return <Badge className={className} variant="outline">{getRecommendationStatusLabel(status)}</Badge>;
 }
 
-function TokenImpactCard({ impact }: { impact: TokenImpactItem }) {
+function CrossImpactCard({ impact }: { impact: PortfolioCrossImpact }) {
   const sourceTime = impact.createdAt ? formatRelativeVietnamese(impact.createdAt) : 'Chưa có thời điểm nguồn';
+  const visibleTokens = impact.impactedTokens.slice(0, 3).join(', ');
+  const extraCount = Math.max(0, impact.impactedTokens.length - 3);
+  const tokenTitle = extraCount ? `${visibleTokens} +${extraCount} token khác` : visibleTokens || 'Token liên quan';
 
   return (
     <div className="rounded-xl border border-white/5 bg-black/40 p-4 text-sm text-slate-300 transition-colors hover:border-purple-500/30">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="line-clamp-2 font-semibold text-white">{impact.impactedToken}</p>
-          <p className="mt-1 text-xs text-slate-500">Nguồn cập nhật {sourceTime}</p>
+          <p className="line-clamp-2 font-semibold text-white">{tokenTitle}</p>
         </div>
         <span className="shrink-0 rounded border border-purple-500/30 bg-purple-500/10 px-2 py-1 text-xs font-bold text-purple-200">
           Ảnh hưởng gián tiếp
         </span>
       </div>
 
-      <div className="mt-4 grid gap-2 rounded-lg border border-white/5 bg-black/30 p-3">
+      <div className="mt-4 grid gap-3 rounded-lg border border-white/5 bg-black/30 p-3">
         <MiniImpact label="Liên quan tới tài sản" value={impact.holdingTokens.join(', ')} />
-        <MiniImpact label="Nguồn" value={impact.sourceLabel} />
         <MiniImpact label="Thời điểm" value={sourceTime} />
+        <MiniImpact label="Nguồn" value={impact.sourceLabel} />
       </div>
 
-      <p className="mt-3 leading-6">{impact.reason}</p>
+      <div className="mt-3">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Tóm tắt</p>
+        <p className="mt-1 line-clamp-3 leading-6">
+          {impact.sourceSummary || 'Nguồn này chưa có tóm tắt nội dung. Đây là tín hiệu bối cảnh, không phải khuyến nghị mua/bán trực tiếp.'}
+        </p>
+      </div>
       {impact.sourceUrl ? (
         <Link href={impact.sourceUrl} target="_blank" className="mt-3 inline-flex text-xs font-semibold text-cyan-300 hover:text-cyan-200">
           Mở nguồn dữ liệu

@@ -41,8 +41,8 @@ export default function PositionsPage() {
         ) : (
           <>
             <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-              <MetricCard label="Vị thế trade đang mở" value={positions.length} hint="Lệnh đã xác nhận từ khuyến nghị" />
-              <MetricCard label="Tổng quy mô vị thế" value={formatCurrency(totalSize)} hint="Tổng giá trị từ vị thế mở" />
+              <MetricCard label="Vị thế demo đang mở" value={positions.length} hint="Lệnh demo đã xác nhận từ khuyến nghị" />
+              <MetricCard label="Tổng quy mô demo" value={formatCurrency(totalSize)} hint="Tổng giá trị từ vị thế demo mở" />
               <MetricCard label="Long/Short" value={`${longCount}/${shortCount}`} />
               <MetricCard label="ROI trung bình" value={averageRoi === null ? 'Chưa có dữ liệu' : formatPercent(normalizePercentValue(averageRoi))} />
             </section>
@@ -61,18 +61,18 @@ export default function PositionsPage() {
                           ))}
                         </div>
                       </div>
-                      <Mini label="Direction" value={position.direction ?? 'LONG'} />
-                      <Mini label="Size" value={formatCurrency(position.size)} />
-                      <Mini label="Entry price" value={position.entryPrice === null || position.entryPrice === undefined ? 'Chưa có giá entry' : formatCurrency(position.entryPrice)} />
+                      <Mini label="Hướng" value={position.direction ?? 'LONG'} />
+                      <Mini label="Quy mô demo" value={formatCurrency(position.size)} />
+                      <Mini label="Giá vào" value={position.entryPrice === null || position.entryPrice === undefined ? 'Chưa có giá entry' : formatCurrency(position.entryPrice)} />
                       <div className="text-right">
                         <p className="text-sm font-bold text-cyan-300">{position.roi === null || position.roi === undefined ? 'Chưa có dữ liệu' : formatPercent(normalizePercentValue(position.roi))}</p>
                         <p className="text-xs text-slate-500">ROI</p>
                       </div>
                     </div>
                     <div className="mt-4 grid gap-3 md:grid-cols-3">
-                      <Mini label="Leverage" value={`${position.leverage ?? 1}x`} />
+                      <Mini label="Đòn bẩy" value={`${position.leverage ?? 1}x`} />
                       <Mini label="PnL" value={position.pnl === null || position.pnl === undefined ? 'Chưa tính PnL realtime' : formatCurrency(position.pnl)} />
-                      <Mini label="Slippage" value={position.slippagePct === null || position.slippagePct === undefined ? 'Chưa có dữ liệu khớp lệnh' : formatPercent(normalizePercentValue(position.slippagePct))} />
+                      <Mini label="Trượt giá demo" value={position.slippagePct === null || position.slippagePct === undefined ? 'Chưa có dữ liệu khớp lệnh demo' : formatPercent(normalizePercentValue(position.slippagePct))} />
                     </div>
                   </Link>
                   <div className="mt-4 flex flex-wrap gap-2 border-t border-white/5 pt-4">

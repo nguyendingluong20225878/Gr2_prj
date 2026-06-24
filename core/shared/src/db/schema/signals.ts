@@ -3,7 +3,7 @@ import mongoose, { Schema, model } from "mongoose";
 
 const SENTIMENT_TYPES = ["positive", "negative", "neutral", "mixed"]; 
 const SUGGESTION_TYPES = ["buy", "sell", "hold", "stake", "close_position"];
-const STATUS_TYPES = ["RAW", "PROCESSING", "PROCESSED", "FAILED"]; 
+const STATUS_TYPES = ["RAW", "PROCESSING", "PROCESSED", "FAILED", "SKIPPED"]; 
 
 const signalSchema = new Schema({
     tokenSymbol: { type: String, required: true, index: true }, 
@@ -45,6 +45,11 @@ const signalSchema = new Schema({
     status: { type: String, enum: STATUS_TYPES, default: "RAW", required: true }, 
     layer3LockedAt: { type: Date, required: false, default: null, index: true },
     layer3LockedBy: { type: String, required: false, default: null },
+    nextLayer3RetryAt: { type: Date, required: false, default: null, index: true },
+    layer3RetryCount: { type: Number, required: false, default: 0 },
+    lastLayer3Error: { type: String, required: false, default: null },
+    lastLayer3ErrorCode: { type: Schema.Types.Mixed, required: false, default: null },
+    errorType: { type: String, required: false, default: null },
     signalMode: {
         type: String,
         enum: ["COLD_START", "NORMALIZED_ALPHA"],

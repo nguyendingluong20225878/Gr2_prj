@@ -144,7 +144,7 @@ function RecommendationsContent() {
                 key={tab.id}
                 href={hrefFor({ tab: tab.id })}
                 aria-current={active ? 'page' : undefined}
-                className={`min-w-fit rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
+                className={`min-w-fit rounded-lg border px-3 py-2 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black ${
                   active
                     ? 'border-cyan-500/40 bg-cyan-500/10 text-cyan-200'
                     : 'border-white/10 bg-black/20 text-slate-400 hover:border-cyan-500/25 hover:text-slate-100'
@@ -206,12 +206,21 @@ function RecommendationsContent() {
                 />
               ))}
               {!visibleItems.length ? (
-                <EmptyState
-                  title={hasActiveFilters && tabItems.length ? 'Không có khuyến nghị khớp bộ lọc' : 'Chưa có khuyến nghị trong nhóm này'}
-                  description={hasActiveFilters && tabItems.length
-                    ? 'Thử đổi token, hành động, rủi ro, độ tin cậy, thời hạn hoặc trạng thái dữ liệu để mở rộng kết quả.'
-                    : 'Khi có dữ liệu phù hợp với danh mục hoặc cơ hội ngoài ví, danh sách sẽ tự cập nhật.'}
-                />
+                <div className="space-y-3">
+                  <EmptyState
+                    title={hasActiveFilters && tabItems.length ? 'Không có khuyến nghị khớp bộ lọc' : 'Chưa có khuyến nghị trong nhóm này'}
+                    description={hasActiveFilters && tabItems.length
+                      ? 'Thử đổi token, hành động, rủi ro, độ tin cậy, thời hạn hoặc trạng thái dữ liệu để mở rộng kết quả.'
+                      : 'Khi có dữ liệu phù hợp với danh mục hoặc cơ hội ngoài ví, danh sách sẽ tự cập nhật.'}
+                  />
+                  {hasActiveFilters ? (
+                    <div className="flex justify-center">
+                      <Button asChild variant="outline" className="border-cyan-500/30 text-cyan-300">
+                        <Link href={buildHref(pathname, new URLSearchParams(), { tab: activeTab })}>Xóa bộ lọc</Link>
+                      </Button>
+                    </div>
+                  ) : null}
+                </div>
               ) : null}
             </div>
           )}
@@ -308,11 +317,11 @@ function FilterBar({
       <div className="mt-3 flex justify-end">
         {hasActiveFilters ? (
           <Button asChild variant="outline" className="border-white/10 text-slate-200">
-            <Link href={resetHref}>Reset filters</Link>
+            <Link href={resetHref}>Xóa bộ lọc</Link>
           </Button>
         ) : (
           <Button type="button" variant="outline" disabled className="border-white/10 text-slate-500">
-            Reset filters
+            Xóa bộ lọc
           </Button>
         )}
       </div>
@@ -340,7 +349,7 @@ function FilterSelect({
         id={id}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-2 w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none transition-colors focus:border-cyan-500"
+        className="mt-2 w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none transition-colors focus:border-cyan-500 focus-visible:ring-2 focus-visible:ring-cyan-400"
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>{option.label}</option>

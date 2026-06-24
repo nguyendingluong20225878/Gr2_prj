@@ -6,12 +6,23 @@ import { connectToDatabase } from "../../shared/src/index.js";
 import { runLayer3Batch } from "../src/workflow.js";
 
 function readPositiveIntegerArg(name: string, fallback: number): number {
+  const safeFallback = Number.isFinite(fallback) && fallback > 0 ? Math.floor(fallback) : 10;
   const prefix = `--${name}=`;
   const raw = process.argv.find((arg) => arg.startsWith(prefix));
-  if (!raw) return fallback;
+  if (!raw) return safeFallback;
 
   const parsed = Math.floor(Number(raw.slice(prefix.length)));
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : safeFallback;
+}
+
+function readNonNegativeIntegerArg(name: string, fallback: number): number {
+  const safeFallback = Number.isFinite(fallback) && fallback >= 0 ? Math.floor(fallback) : 15000;
+  const prefix = `--${name}=`;
+  const raw = process.argv.find((arg) => arg.startsWith(prefix));
+  if (!raw) return safeFallback;
+
+  const parsed = Math.floor(Number(raw.slice(prefix.length)));
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : safeFallback;
 }
 
 async function main(): Promise<number> {
@@ -22,7 +33,8 @@ async function main(): Promise<number> {
     await connectToDatabase();
 
     const summary = await runLayer3Batch({
-      limit: readPositiveIntegerArg("limit", 10),
+      limit: readPositiveIntegerArg("limit", Number(process.env.LAYER3_BATCH_LIMIT ?? 10)),
+      delayMs: readNonNegativeIntegerArg("delay-ms", Number(process.env.LAYER3_DELAY_MS ?? 15000)),
     });
 
     console.log(JSON.stringify(summary, null, 2));

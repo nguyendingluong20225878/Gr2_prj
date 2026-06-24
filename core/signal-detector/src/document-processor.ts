@@ -115,7 +115,7 @@ export async function processDocuments(
   const startedAt = Date.now();
   const metrics = {
     docs: allDocs.length,
-    relevantDocs: 0,
+    relevantDocTokenPairs: 0,
     memoryCacheHits: 0,
     persistentCacheHits: 0,
     finbertCalls: 0,
@@ -176,7 +176,7 @@ export async function processDocuments(
       relevantDocs.push({ doc, token });
     }
   }
-  metrics.relevantDocs = relevantDocs.length;
+  metrics.relevantDocTokenPairs = relevantDocs.length;
 
   const chunks = chunkArray(relevantDocs, 10);
   const asOfMs = options.asOf.getTime();
@@ -280,7 +280,7 @@ export async function processDocuments(
   }
 
   console.log(
-    `[Quant V3] Document scoring latency=${Date.now() - startedAt}ms docs=${metrics.docs} relevant=${metrics.relevantDocs} scored=${scoredDocuments.length} memCache=${metrics.memoryCacheHits} persistentCache=${metrics.persistentCacheHits} finbertCalls=${metrics.finbertCalls}`
+    `[Quant V3] Document scoring latency=${Date.now() - startedAt}ms docs=${metrics.docs} docTokenPairs=${metrics.relevantDocTokenPairs} scored=${scoredDocuments.length} memCache=${metrics.memoryCacheHits} persistentCache=${metrics.persistentCacheHits} finbertCalls=${metrics.finbertCalls}`
   );
 
   return scoredDocuments;

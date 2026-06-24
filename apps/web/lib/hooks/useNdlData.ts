@@ -296,6 +296,7 @@ export type WatchlistData = Array<{
 export type PortfolioCrossImpact = {
   sourceId?: string;
   sourceLabel: string;
+  sourceSummary?: string;
   sourceUrl?: string;
   sourceType?: 'news' | 'tweet' | string;
   holdingTokens: string[];

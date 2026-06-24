@@ -1,0 +1,514 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Báo cáo audit Frontend GR2/NDL</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 18mm 16mm;
+    }
+
+    :root {
+      --ink: #111827;
+      --muted: #4b5563;
+      --subtle: #6b7280;
+      --line: #d9e0ea;
+      --panel: #f8fafc;
+      --accent: #0891b2;
+      --accent-dark: #155e75;
+      --danger: #b91c1c;
+      --warning: #b45309;
+      --ok: #047857;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: white;
+      font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+      font-size: 11.2pt;
+      line-height: 1.55;
+    }
+
+    h1, h2, h3 {
+      margin: 0;
+      line-height: 1.2;
+      page-break-after: avoid;
+    }
+
+    h1 {
+      font-size: 26pt;
+      letter-spacing: -0.02em;
+      color: #0f172a;
+    }
+
+    h2 {
+      margin-top: 26px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--line);
+      font-size: 17pt;
+      color: #0f172a;
+    }
+
+    h3 {
+      margin-top: 18px;
+      font-size: 13pt;
+      color: var(--accent-dark);
+    }
+
+    p {
+      margin: 8px 0;
+    }
+
+    ul {
+      margin: 8px 0 8px 20px;
+      padding: 0;
+    }
+
+    li {
+      margin: 4px 0;
+    }
+
+    code {
+      padding: 1px 4px;
+      border-radius: 4px;
+      background: #eef2f7;
+      color: #0f172a;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 9.4pt;
+    }
+
+    table {
+      width: 100%;
+      margin: 12px 0;
+      border-collapse: collapse;
+      page-break-inside: auto;
+      font-size: 9.2pt;
+    }
+
+    tr {
+      page-break-inside: avoid;
+      page-break-after: auto;
+    }
+
+    th, td {
+      vertical-align: top;
+      padding: 7px 8px;
+      border: 1px solid var(--line);
+    }
+
+    th {
+      background: #eaf7fb;
+      color: #0f172a;
+      font-weight: 700;
+      text-align: left;
+    }
+
+    .cover {
+      padding: 30px 0 22px;
+      border-bottom: 3px solid var(--accent);
+      margin-bottom: 18px;
+    }
+
+    .kicker {
+      margin-bottom: 8px;
+      color: var(--accent-dark);
+      font-size: 9.5pt;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .subtitle {
+      max-width: 680px;
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 12pt;
+    }
+
+    .meta {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .meta-card, .callout {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel);
+      padding: 10px 12px;
+    }
+
+    .meta-label {
+      color: var(--subtle);
+      font-size: 8.5pt;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .meta-value {
+      margin-top: 4px;
+      font-weight: 700;
+    }
+
+    .callout {
+      margin: 12px 0;
+      border-left: 4px solid var(--accent);
+    }
+
+    .risk {
+      border-left-color: var(--warning);
+      background: #fff7ed;
+    }
+
+    .p0 { color: var(--danger); font-weight: 700; }
+    .p1 { color: var(--warning); font-weight: 700; }
+    .p2 { color: var(--accent-dark); font-weight: 700; }
+    .p3 { color: var(--ok); font-weight: 700; }
+
+    .small {
+      color: var(--subtle);
+      font-size: 9.4pt;
+    }
+
+    .page-break {
+      page-break-before: always;
+    }
+  </style>
+</head>
+<body>
+  <section class="cover">
+    <div class="kicker">Frontend Audit Report</div>
+    <h1>Báo cáo trạng thái FE hiện tại của GR2/NDL</h1>
+    <p class="subtitle">
+      Báo cáo này dựa trên việc đọc trực tiếp code trong <code>apps/web</code>, tập trung vào cấu trúc frontend,
+      routing, layout, component, luồng người dùng, data fetching, UX/UI, maintainability và các hạng mục cần cải tiến.
+    </p>
+    <div class="meta">
+      <div class="meta-card">
+        <div class="meta-label">Ngày lập</div>
+        <div class="meta-value">2026-06-14</div>
+      </div>
+      <div class="meta-card">
+        <div class="meta-label">Phạm vi</div>
+        <div class="meta-value"><code>apps/web</code></div>
+      </div>
+      <div class="meta-card">
+        <div class="meta-label">Vai trò review</div>
+        <div class="meta-value">Senior FE / Product UI</div>
+      </div>
+    </div>
+  </section>
+
+  <h2>1. Tổng quan công nghệ</h2>
+  <p>
+    Frontend hiện là ứng dụng <strong>Next.js 14 App Router</strong>, dùng <strong>React 18</strong>,
+    <strong>TypeScript</strong>, <strong>Tailwind CSS</strong>, Radix/shadcn-like UI components, <strong>SWR</strong>,
+    <strong>Recharts</strong>, <strong>Sonner</strong> và Solana wallet adapter.
+  </p>
+  <ul>
+    <li>Package frontend: <code>apps/web/package.json</code>.</li>
+    <li>Root app layout: <code>apps/web/app/layout.tsx</code>.</li>
+    <li>Theme/design token chính: <code>apps/web/app/globals.css</code>, <code>apps/web/tailwind.config.ts</code>.</li>
+    <li>Shared UI: <code>apps/web/app/components/shared/NdlUi.tsx</code>, <code>apps/web/app/components/ui/*</code>.</li>
+    <li>Data hooks: <code>apps/web/lib/hooks/useNdlData.ts</code>, <code>useProposals.ts</code>, <code>useSignals.ts</code>, <code>usePortfolio.ts</code>.</li>
+    <li>API routes trong cùng Next app: <code>apps/web/app/api/*</code>.</li>
+  </ul>
+
+  <div class="callout">
+    <strong>Nhận định nhanh:</strong> FE đã vượt mức prototype đơn giản. Sản phẩm đã có luồng ví, onboarding,
+    dashboard, recommendation center, portfolio, watchlist, proposal detail, explanation, trade demo và trust/diagnostics.
+    Tuy nhiên code đang nặng theo hướng page-level implementation, nhiều logic domain/UI lặp giữa các page.
+  </div>
+
+  <h2>2. Routing và màn hình hiện có</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Route</th>
+        <th>File</th>
+        <th>Chức năng hiện có</th>
+        <th>Trạng thái</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>/</code></td>
+        <td><code>app/page.tsx</code></td>
+        <td>Trang connect ví Solana, tự verify signature, điều hướng sang onboarding hoặc overview.</td>
+        <td>Khá hoàn chỉnh.</td>
+      </tr>
+      <tr>
+        <td><code>/onboarding</code></td>
+        <td><code>app/onboarding/page.tsx</code></td>
+        <td>Wizard 3 bước: ví, hồ sơ, hoàn tất. Gọi <code>/api/user/create</code>.</td>
+        <td>Dùng được, validation còn cơ bản.</td>
+      </tr>
+      <tr>
+        <td><code>/overview</code></td>
+        <td><code>app/overview/page.tsx</code></td>
+        <td>Dashboard chính: tổng giá trị danh mục, khuyến nghị cần xử lý, rủi ro dữ liệu, tín hiệu sắp hết hạn, holding snapshot, open positions, cross-impact.</td>
+        <td>Giàu chức năng nhưng file quá lớn.</td>
+      </tr>
+      <tr>
+        <td><code>/recommendations</code></td>
+        <td><code>app/recommendations/page.tsx</code></td>
+        <td>Trung tâm khuyến nghị với tab, filter token/action/risk/confidence/expiry/data, watch proposal.</td>
+        <td>Tốt, logic priority/filter nên tách.</td>
+      </tr>
+      <tr>
+        <td><code>/portfolio</code></td>
+        <td><code>app/portfolio/page.tsx</code></td>
+        <td>Đồng bộ ví Solana, hiển thị holdings, thiếu giá, khuyến nghị trực tiếp/gián tiếp.</td>
+        <td>Tốt, có rủi ro UX nếu sync lỗi network/wallet.</td>
+      </tr>
+      <tr>
+        <td><code>/watchlist</code></td>
+        <td><code>app/watchlist/page.tsx</code></td>
+        <td>Danh sách proposal đang theo dõi, nhóm pending/verified/expired, xóa watchlist optimistic.</td>
+        <td>Khá tốt.</td>
+      </tr>
+      <tr>
+        <td><code>/positions</code></td>
+        <td><code>app/positions/page.tsx</code></td>
+        <td>Danh sách vị thế mô phỏng đang mở, metric quy mô, Long/Short, ROI.</td>
+        <td>Cần copy rõ paper trading hơn.</td>
+      </tr>
+      <tr>
+        <td><code>/proposal/[id]</code></td>
+        <td><code>app/proposal/[id]/page.tsx</code></td>
+        <td>Chi tiết khuyến nghị, confidence/quant drawer, timeline/backtest chart, quyết định wait/reject, trade prep.</td>
+        <td>Rất giàu, nhưng quá dài và khó maintain.</td>
+      </tr>
+      <tr>
+        <td><code>/proposal/[id]/trade</code></td>
+        <td><code>app/proposal/[id]/trade/page.tsx</code></td>
+        <td>Preview risk, amount/leverage, execute demo trade qua API.</td>
+        <td>Guard tốt, wording cần sửa.</td>
+      </tr>
+      <tr>
+        <td><code>/data-check</code>, <code>/diagnostics</code>, <code>/model-health</code></td>
+        <td><code>app/data-check/page.tsx</code>, <code>app/diagnostics/page.tsx</code></td>
+        <td>Trust center, kiểm tra freshness, dữ liệu thiếu, sức khỏe hệ thống/model.</td>
+        <td>Hữu ích cho power user.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>3. Luồng người dùng đã hỗ trợ</h2>
+  <ul>
+    <li><strong>Kết nối ví và đăng nhập:</strong> người dùng dùng WalletMultiButton, ký message, API verify session qua <code>/api/auth/nonce</code> và <code>/api/auth/verify</code>.</li>
+    <li><strong>Tạo hồ sơ:</strong> onboarding gửi name/email/age/riskTolerance/tradeStyle tới <code>/api/user/create</code>.</li>
+    <li><strong>Đọc danh mục:</strong> portfolio page lấy SOL/token accounts qua Solana connection rồi PATCH profile balances.</li>
+    <li><strong>Xem khuyến nghị:</strong> overview/recommendations lấy proposal, portfolio, watchlist, cross impacts qua SWR.</li>
+    <li><strong>Theo dõi khuyến nghị:</strong> user có thể thêm/xóa watchlist qua <code>/api/watchlist</code>.</li>
+    <li><strong>Đọc giải thích:</strong> proposal detail có confidence/quant explanation, timeline, backtest visualization.</li>
+    <li><strong>Paper trading:</strong> trade page preview risk rồi gọi <code>/api/trade/execute</code>, backend tạo execution/position trạng thái demo.</li>
+  </ul>
+
+  <h2>4. State management và data fetching</h2>
+  <h3>Điểm đang làm tốt</h3>
+  <ul>
+    <li><code>useNdlData.ts</code> gom nhiều SWR resource: portfolio, proposals, signals, modelHealth, watchlist, crossImpacts.</li>
+    <li>Refresh interval và deduping interval đã được đặt tương đối hợp lý cho dữ liệu động.</li>
+    <li>Auth/session tách riêng ở <code>AuthContext.tsx</code>.</li>
+    <li>Trading demo local state có provider riêng ở <code>TradingDemoContext.tsx</code>, lưu theo wallet scope trong localStorage.</li>
+  </ul>
+
+  <h3>Vấn đề</h3>
+  <ul>
+    <li><code>apiClient.ts</code> có Axios interceptor nhưng phần lớn app vẫn gọi <code>fetch('/api/...')</code> trực tiếp. Đây là abstraction chưa được dùng nhất quán.</li>
+    <li><code>useNdlData</code> luôn fetch <code>/api/portfolio</code> dù có thể chưa có wallet/session. Điều này dễ gây 401 noise và empty/error state không cần thiết.</li>
+    <li>Mutation logic rải trong page: watchlist ở overview/recommendations/proposal detail, trade decision ở proposal/trade, user profile sync ở portfolio.</li>
+    <li>Type API đang khai báo nhiều ngay trong hook. Khi API contract đổi, FE dễ lệch nếu không có schema chung.</li>
+  </ul>
+
+  <h2>5. UI/UX và design system</h2>
+  <h3>Điểm mạnh</h3>
+  <ul>
+    <li>Có shared UI khá hữu ích: <code>PageHeader</code>, <code>MetricCard</code>, <code>DataSkeleton</code>, <code>EmptyState</code>, <code>ProposalCard</code>, <code>SignalCard</code>.</li>
+    <li>Mobile navigation có <code>MobileBottomNav</code>, tablet/desktop nav có responsive fallback.</li>
+    <li>Copy tiếng Việt khá rõ về rủi ro dữ liệu, thiếu giá, tín hiệu hết hạn, disclaimer tài chính.</li>
+    <li>Các màn hình nghiệp vụ có nhiều empty/loading states, không chỉ render bảng trống.</li>
+  </ul>
+
+  <h3>Điểm cần cải thiện</h3>
+  <ul>
+    <li>Visual theme trong <code>globals.css</code> thiên mạnh về cyberpunk/glassmorphism, purple/cyan gradient, blur/glow. Với dashboard tài chính, phong cách này đẹp nhưng có thể giảm khả năng scan số liệu.</li>
+    <li>Nhiều card lồng nhau và border/glass lặp khiến information density chưa tối ưu.</li>
+    <li>Wording trade cần cực kỳ rõ: backend đang tạo <code>DEMO_FILLED</code>, nhưng CTA vẫn là “Xác nhận vào lệnh”.</li>
+    <li>Filter dùng native select ổn, nhưng thiếu summary chips để user nhìn nhanh filter đang bật.</li>
+    <li>User menu có button “Cài đặt” disabled vì route chưa có; nên hoặc tạo route settings, hoặc ẩn mục này.</li>
+  </ul>
+
+  <h2>6. Maintainability và duplication</h2>
+  <p>Các file sau đang ôm quá nhiều trách nhiệm:</p>
+  <ul>
+    <li><code>app/overview/page.tsx</code>: dashboard + sorting + priority score + nhiều component con + watch mutation.</li>
+    <li><code>app/proposal/[id]/page.tsx</code>: detail page + explanation drawer + chart section + advanced sections + helper formatting.</li>
+    <li><code>app/portfolio/page.tsx</code>: wallet sync + holding insights + recommendation cards + risk badges.</li>
+    <li><code>app/recommendations/page.tsx</code>: filter URL state + tab logic + priority score + mutation.</li>
+  </ul>
+  <p>Logic nên tách dùng chung:</p>
+  <ul>
+    <li><code>RiskBadge</code>, action badge class, status badge, mini stat/card.</li>
+    <li>Priority score cho recommendation.</li>
+    <li>Watchlist mutation helper.</li>
+    <li>Proposal/actionability guard.</li>
+    <li>Format/label cho paper trading/demo status.</li>
+  </ul>
+
+  <h2>7. Rủi ro kỹ thuật và UX</h2>
+  <div class="callout risk">
+    <strong>Rủi ro lớn nhất:</strong> UX giao dịch mô phỏng chưa được dán nhãn đủ mạnh ở mọi điểm hành động.
+    Vì đây là sản phẩm tài chính/crypto, cần tránh mọi hiểu nhầm rằng hệ thống đang đặt lệnh thật.
+  </div>
+  <ul>
+    <li>Không thấy test/spec riêng trong <code>apps/web</code>, trong khi app có nhiều logic tài chính và auth/session.</li>
+    <li>Private routes dựa nhiều vào API/context, chưa thấy middleware hoặc protected layout rõ ràng.</li>
+    <li>Portfolio API có nhiều I/O trong route handler và log wallet address; cần xem lại logging/privacy.</li>
+    <li>Domain status còn pha nhiều biến thể: <code>pending</code>, <code>active</code>, <code>ACTIVE</code>, <code>EXECUTED</code>, <code>PENDING</code>. FE đang phải normalize nhiều.</li>
+    <li>Data layer không thống nhất giữa SWR fetcher, raw fetch và Axios client.</li>
+  </ul>
+
+  <h2 class="page-break">8. Danh sách đề xuất ưu tiên</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Ưu tiên</th>
+        <th>Vấn đề hiện tại</th>
+        <th>Vì sao nên cải tiến</th>
+        <th>Nên sửa ở đâu</th>
+        <th>Cách triển khai</th>
+        <th>Effort</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="p0">P0</td>
+        <td>Copy “Xác nhận vào lệnh” dễ bị hiểu là giao dịch thật, trong khi backend tạo <code>DEMO_FILLED</code>.</td>
+        <td>Rủi ro UX cao trong sản phẩm tài chính.</td>
+        <td><code>proposal/[id]/trade/page.tsx</code>, <code>api/trade/execute/route.ts</code>, <code>positions/page.tsx</code>.</td>
+        <td>Đổi CTA thành “Xác nhận mô phỏng”, thêm banner paper trading cố định, đổi toast/status copy nhất quán.</td>
+        <td>S</td>
+      </tr>
+      <tr>
+        <td class="p0">P0</td>
+        <td>Chưa thấy test FE trong <code>apps/web</code>.</td>
+        <td>Luồng ví, watchlist, proposal, trade demo có rủi ro regression cao.</td>
+        <td><code>apps/web/package.json</code>, thư mục test mới.</td>
+        <td>Thêm Vitest cho utils/hooks và Playwright smoke cho login/onboarding/recommendation/trade demo.</td>
+        <td>M</td>
+      </tr>
+      <tr>
+        <td class="p1">P1</td>
+        <td>Data fetching/mutation không thống nhất.</td>
+        <td>Khó chuẩn hóa auth, error, retry, optimistic update.</td>
+        <td><code>useNdlData.ts</code>, <code>apiClient.ts</code>, các page gọi fetch trực tiếp.</td>
+        <td>Chọn một hướng: SWR fetcher chuẩn + mutation helpers, hoặc dùng Axios client thật sự. Xóa abstraction không dùng.</td>
+        <td>M</td>
+      </tr>
+      <tr>
+        <td class="p1">P1</td>
+        <td><code>useNdlData</code> fetch private data ngay cả khi chưa có ví/session.</td>
+        <td>Giảm 401 noise và tránh state lỗi không cần thiết.</td>
+        <td><code>apps/web/lib/hooks/useNdlData.ts</code>.</td>
+        <td>Dùng SWR key conditional: <code>walletAddress ? '/api/portfolio' : null</code>; tách public/private hooks.</td>
+        <td>S</td>
+      </tr>
+      <tr>
+        <td class="p1">P1</td>
+        <td>Page quá lớn, ôm nhiều component/helper/domain logic.</td>
+        <td>Khó review, khó test, dễ lặp bug.</td>
+        <td><code>overview/page.tsx</code>, <code>proposal/[id]/page.tsx</code>, <code>portfolio/page.tsx</code>.</td>
+        <td>Tách theo feature: <code>features/recommendations</code>, <code>features/portfolio</code>, <code>features/proposal-detail</code>.</td>
+        <td>M/L</td>
+      </tr>
+      <tr>
+        <td class="p1">P1</td>
+        <td>Priority score, risk badge, action badge, mini stat bị lặp.</td>
+        <td>Giữ consistency giữa overview, portfolio, recommendations, proposal detail.</td>
+        <td><code>NdlUi.tsx</code>, các page sản phẩm.</td>
+        <td>Tạo shared components/helper: <code>RecommendationBadge</code>, <code>RiskBadge</code>, <code>MiniStat</code>, <code>getRecommendationPriorityScore</code>.</td>
+        <td>M</td>
+      </tr>
+      <tr>
+        <td class="p2">P2</td>
+        <td>Theme cyberpunk/glass hơi nặng cho dashboard nghiệp vụ.</td>
+        <td>Dashboard tài chính cần scan nhanh, ít nhiễu thị giác.</td>
+        <td><code>globals.css</code>, <code>Layout.tsx</code>.</td>
+        <td>Giữ accent cyan/purple nhưng giảm blur/glow/nền động, tăng contrast số liệu, dùng layout dense hơn.</td>
+        <td>M</td>
+      </tr>
+      <tr>
+        <td class="p2">P2</td>
+        <td>Route protection chưa rõ ràng ở layout/middleware.</td>
+        <td>Private page nên có hành vi nhất quán khi chưa auth.</td>
+        <td><code>AuthContext.tsx</code>, các route private.</td>
+        <td>Thêm <code>ProtectedLayout</code> hoặc middleware mềm cho overview, portfolio, proposal, positions.</td>
+        <td>M</td>
+      </tr>
+      <tr>
+        <td class="p2">P2</td>
+        <td>Onboarding validation còn cơ bản.</td>
+        <td>Form lỗi cần feedback inline thay vì chỉ toast.</td>
+        <td><code>onboarding/page.tsx</code>, <code>userInput.ts</code>.</td>
+        <td>Dùng schema chung, inline errors, disable submit khi invalid.</td>
+        <td>S/M</td>
+      </tr>
+      <tr>
+        <td class="p3">P3</td>
+        <td><code>/signals</code> redirect sang recommendations.</td>
+        <td>Có thể lệch expectation nếu user nghĩ đây là màn signals riêng.</td>
+        <td><code>signals/page.tsx</code>, nav items.</td>
+        <td>Hoặc bỏ route khỏi nav/entry, hoặc làm trang signals đúng nghĩa.</td>
+        <td>S</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>9. Roadmap ngắn hạn</h2>
+  <h3>Việc nên làm ngay</h3>
+  <ul>
+    <li>Sửa wording toàn bộ paper trading/demo: CTA, toast, status badge, empty state, positions.</li>
+    <li>Chặn fetch private data khi chưa có wallet/session.</li>
+    <li>Chuẩn hóa watchlist/trade decision mutation helper.</li>
+    <li>Thêm smoke tests cho flow chính.</li>
+  </ul>
+
+  <h3>Việc nên làm tiếp theo</h3>
+  <ul>
+    <li>Tách component/domain logic khỏi các page lớn.</li>
+    <li>Hợp nhất badge/priority score/card UI.</li>
+    <li>Dọn <code>apiClient</code>: dùng thật sự hoặc loại bỏ để tránh hai data-client song song.</li>
+    <li>Thêm route guard/protected layout cho private app shell.</li>
+  </ul>
+
+  <h3>Việc có thể để sau</h3>
+  <ul>
+    <li>Polish visual system theo hướng dashboard tài chính ít nhiễu hơn.</li>
+    <li>Mở rộng accessibility audit bằng keyboard/focus/ARIA.</li>
+    <li>Chuẩn hóa domain status ở API để FE bớt normalize nhiều biến thể.</li>
+  </ul>
+
+  <h2>10. Kết luận</h2>
+  <p>
+    FE hiện đã có nền sản phẩm tương đối đầy đủ và có ý thức tốt về explainability, data quality, rủi ro và workflow ra quyết định.
+    Phần cần ưu tiên không phải thêm màn hình mới, mà là làm chắc: wording paper trading, data layer nhất quán, test coverage,
+    route protection và tách logic khỏi các page lớn. Sau khi xử lý nhóm P0/P1, app sẽ dễ mở rộng và đáng tin hơn nhiều.
+  </p>
+
+  <p class="small">
+    Ghi chú: Audit này dựa trên code đọc được trong repository hiện tại. Một số route như <code>model-health</code>,
+    <code>alerts</code>, <code>tokens/[symbol]</code>, <code>profile</code> có được nhận diện trong cấu trúc route nhưng không mở toàn bộ chi tiết
+    vì báo cáo tập trung vào các luồng FE trọng tâm.
+  </p>
+</body>
+</html>

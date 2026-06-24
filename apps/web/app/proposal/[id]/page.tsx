@@ -4,12 +4,13 @@ import Link from 'next/link';
 import type React from 'react';
 import { useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { AlertTriangle, ArrowLeft, CheckCircle2, HelpCircle, Loader2, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, BarChart3, CheckCircle2, HelpCircle, Loader2, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { Layout } from '@/app/components/layout/Layout';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
 import { CountdownBadge, DataSkeleton, EmptyState, ExplanationDrawer } from '@/app/components/shared/NdlUi';
+import { ProposalFlowNav } from '@/app/components/proposal/ProposalFlowNav';
 import ProposalAccuracyChart from './ProposalAccuracyChart';
 import {
   useProposalDetail,
@@ -113,6 +114,8 @@ export default function ProposalDetailPage() {
   return (
     <Layout>
       <div className="space-y-6">
+        <ProposalFlowNav proposalId={id} activeStep="recommendation" />
+
         {proposal.isLoading ? (
           <DataSkeleton rows={4} />
         ) : !data ? (
@@ -143,6 +146,8 @@ export default function ProposalDetailPage() {
             />
 
             <DecisionSupportSection data={data} />
+
+            <ScenarioCtaStrip proposalId={data._id} />
 
             <section className="glass-card rounded-xl border border-white/5 bg-black/20 p-5">
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -294,10 +299,16 @@ function DecisionHeader({
           ) : null}
         </div>
         <div className="flex flex-wrap gap-2 xl:max-w-xs xl:justify-end">
+          <Button asChild variant="outline" className="border-cyan-500/30 text-cyan-300">
+            <Link href={`/proposal/${data._id}/scenario`}>
+              <BarChart3 className="h-4 w-4" />
+              Thử kịch bản
+            </Link>
+          </Button>
           {canWatchData ? (
             canPrepareTrade ? (
               <Button asChild className="bg-gradient-to-r from-purple-600 to-cyan-600 text-white">
-                <Link href={`/proposal/${data._id}/trade`}>Chuẩn bị giao dịch</Link>
+                <Link href={`/proposal/${data._id}/scenario`}>Xác nhận lệnh demo</Link>
               </Button>
             ) : (
               <Button onClick={onWait} disabled={Boolean(submitting)} className="bg-gradient-to-r from-purple-600 to-cyan-600 text-white">
@@ -334,6 +345,25 @@ function DecisionHeader({
         onOpenChange={setSignalScoreDrawerOpen}
         open={signalScoreDrawerOpen}
       />
+    </section>
+  );
+}
+
+function ScenarioCtaStrip({ proposalId }: { proposalId: string }) {
+  return (
+    <section className="glass-card rounded-xl border border-cyan-500/20 bg-cyan-500/10 p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm font-semibold text-white">Muốn thử số tiền và đòn bẩy trước khi quyết định?</p>
+          <p className="mt-1 text-sm text-cyan-100/80">Gộp Kịch bản và Trade Demo thành một luồng trên cùng trang: nhập tiền/đòn bẩy, xem PnL mô phỏng và rủi ro, rồi xác nhận lệnh demo nếu ổn.</p>
+        </div>
+        <Button asChild className="shrink-0 bg-cyan-500 text-slate-950 hover:bg-cyan-400">
+          <Link href={`/proposal/${proposalId}/scenario`}>
+            <BarChart3 className="h-4 w-4" />
+            Mở Kịch bản & Trade Demo
+          </Link>
+        </Button>
+      </div>
     </section>
   );
 }

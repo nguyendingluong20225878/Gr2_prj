@@ -99,7 +99,7 @@ const proposalSchema = new Schema<Proposal>({
     // Lưu lại ID của signal gốc để dễ dàng truy xuất (Traceability)
     signalId: { type: Schema.Types.ObjectId, ref: "Signal", required: false, index: true },
     
-    tokenSymbol: { type: String, required: true, index: true }, 
+    tokenSymbol: { type: String, required: true }, 
     tokenAddress: { type: String, required: true },
     
     // Các quyết định cốt lõi
@@ -206,6 +206,13 @@ proposalSchema.index(
 );
 proposalSchema.index(
     { tokenSymbol: 1 },
+    {
+        unique: true,
+        partialFilterExpression: { lifecycleStatus: "ACTIVE" },
+    }
+);
+proposalSchema.index(
+    { tokenAddress: 1 },
     {
         unique: true,
         partialFilterExpression: { lifecycleStatus: "ACTIVE" },

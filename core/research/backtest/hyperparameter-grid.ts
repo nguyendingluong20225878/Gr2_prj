@@ -32,8 +32,9 @@ function uniq<T>(values: T[]): T[] {
 
 export function createDefaultHyperParamGrid(): HyperParamCandidate[] {
   const alphaBlend = [0.5, 0.6, 0.7, 0.8, 0.9];
-  const signalThreshold = [0.3, 0.5, 0.8, 1.0];
-  const actionThreshold = [1.0, 1.5, 2.0];
+  const signalThreshold = [0.8, 1.0, 1.2, 1.4];
+  const actionThreshold = [1.5, 1.8, 2.0];
+  const holdSignalThreshold = [1.8, 2.0, 2.2];
   const tweetHalfLifeHours = [2, 4, 8, 12];
   const newsHalfLifeHours = [12, 24, 48];
 
@@ -41,16 +42,20 @@ export function createDefaultHyperParamGrid(): HyperParamCandidate[] {
   for (const alpha of alphaBlend) {
     for (const signal of signalThreshold) {
       for (const action of actionThreshold) {
-        for (const tweetHalfLife of tweetHalfLifeHours) {
-          for (const newsHalfLife of newsHalfLifeHours) {
-            candidates.push({
-              ...DEFAULT_HYPER_PARAMS,
-              alphaBlend: alpha,
-              signalThreshold: signal,
-              actionThreshold: action,
-              tweetHalfLifeHours: tweetHalfLife,
-              newsHalfLifeHours: newsHalfLife,
-            });
+        for (const hold of holdSignalThreshold) {
+          if (hold < action) continue;
+          for (const tweetHalfLife of tweetHalfLifeHours) {
+            for (const newsHalfLife of newsHalfLifeHours) {
+              candidates.push({
+                ...DEFAULT_HYPER_PARAMS,
+                alphaBlend: alpha,
+                signalThreshold: signal,
+                actionThreshold: action,
+                holdSignalThreshold: hold,
+                tweetHalfLifeHours: tweetHalfLife,
+                newsHalfLifeHours: newsHalfLife,
+              });
+            }
           }
         }
       }

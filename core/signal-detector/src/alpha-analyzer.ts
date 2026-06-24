@@ -98,19 +98,26 @@ export function evaluateAlphaAndCross(
     //  Trích xuất các tín hiệu thực sự có giá trị giao dịch
     if (!Number.isFinite(state.finalScore)) continue;
 
-    if (Math.abs(state.finalScore!) > hyperParams.signalThreshold) {
-      const isNewToken = historyCount < 3; // Kiểm tra lính mới
+    const isNewToken = historyCount < 3; // Kiểm tra lính mới
+    const regimeActionBuffer = options.marketRegime === "stress"
+      ? 0.25 //khi thị trường căng thẳng, tăng ngưỡng hành động thêm 25% để tránh tín hiệu giả
+      : options.marketRegime === "defensive"
+        ? 0.1 //khi thị trường phòng thủ, tăng ngưỡng hành động thêm 10%
+        : 0; //trạng thái khác không điều chỉnh ngưỡng hành động
+    const actionThreshold = isNewToken
+      ? hyperParams.coldStartActionThreshold
+      : hyperParams.actionThreshold + regimeActionBuffer;
+    const suggestionType = state.finalScore! >= actionThreshold
+      ? "buy"
+      : (state.finalScore! <= -actionThreshold ? "sell" : "hold");
+    const requiredSignalThreshold = suggestionType === "hold"
+      ? hyperParams.holdSignalThreshold
+      : hyperParams.signalThreshold;
+
+    if (Math.abs(state.finalScore!) >= requiredSignalThreshold) {
       state.signalMode = isNewToken ? "COLD_START" : "NORMALIZED_ALPHA";
       const rawConfidence = Math.min(Math.abs(state.finalScore!) / hyperParams.confidenceDivisor, 0.95);
       const sampleSizePenalty = historyCount <= 3 ? 0.75 : historyCount <= 5 ? 0.9 : 1;
-      const regimeActionBuffer = options.marketRegime === "stress"
-        ? 0.25 //khi thị trường căng thẳng, tăng ngưỡng hành động thêm 25% để tránh tín hiệu giả
-        : options.marketRegime === "defensive" 
-          ? 0.1 //khi thị trường phòng thủ, tăng ngưỡng hành động thêm 10%
-          : 0; //trạng thái khác không điều chỉnh ngưỡng hành động
-      const actionThreshold = isNewToken
-        ? hyperParams.coldStartActionThreshold
-        : hyperParams.actionThreshold + regimeActionBuffer;
       
       finalSignals.push({
         signalDetected: true,
@@ -121,7 +128,7 @@ export function evaluateAlphaAndCross(
         volatilityFlag: state.avgEntropy,
         uncertaintyEntropy: state.avgEntropy,
         sentimentType: state.finalScore! > 0 ? "positive" : "negative",
-        suggestionType: state.finalScore! > actionThreshold ? "buy" : (state.finalScore! < -actionThreshold ? "sell" : "hold"),
+        suggestionType,
         
         //  CƠ CHẾ PHẠT TỰ TIN: Lính mới tối đa 40%, token ít mẫu bị giảm thêm để tránh saturate 100%.
         confidence: isNewToken 
@@ -151,6 +158,13 @@ export function evaluateAlphaAndCross(
           isNewToken,
           sampleSize: historyCount,
           signalMode: state.signalMode,
+          thresholdDecision: {
+            actionThreshold,
+            signalThreshold: hyperParams.signalThreshold,
+            holdSignalThreshold: hyperParams.holdSignalThreshold,
+            requiredSignalThreshold,
+            suggestionType,
+          },
           uncertaintyEntropy: state.avgEntropy,
           sourceKeys: (state.allSources ?? state.sources).map(source => source.sourceKey).filter(Boolean),
           evidenceSources: state.allSources ?? state.sources,

@@ -1,6 +1,6 @@
 import "dotenv/config";
 import mongoose from "mongoose";
-import { getCurrentRegime } from "../services/regime-service.js";
+import { getCurrentRegime, persistCurrentRegime } from "../services/regime-service.js";
 
 function readNumberArg(name: string, fallback: number): number {
   const prefix = `--${name}=`;
@@ -15,6 +15,7 @@ async function main(): Promise<number> {
       windowHours: readNumberArg("window-hours", 24),
       maxAgeHours: readNumberArg("max-age-hours", 48),
     });
+    await persistCurrentRegime(regime);
     console.log(JSON.stringify({ status: "COMPLETED", ...regime }, null, 2));
     return 0;
   } finally {

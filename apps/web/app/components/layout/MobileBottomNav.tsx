@@ -28,7 +28,7 @@ export function MobileBottomNav() {
               key={item.path}
               href={item.path}
               aria-current={isActive ? 'page' : undefined}
-              className={`flex min-w-[4.75rem] flex-1 flex-col items-center justify-center gap-1 rounded-lg px-2 py-2 text-[11px] font-semibold transition-all ${
+              className={`flex min-w-[4.75rem] flex-1 flex-col items-center justify-center gap-1 rounded-lg px-2 py-2 text-[11px] font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cyan-400 ${
                 isActive
                   ? 'border border-cyan-500/30 bg-cyan-500/10 text-cyan-200 shadow-[0_0_18px_rgba(6,182,212,0.15)]'
                   : 'text-slate-500 hover:bg-white/5 hover:text-slate-200'

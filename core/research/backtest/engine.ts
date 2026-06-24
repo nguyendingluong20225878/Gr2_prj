@@ -42,6 +42,7 @@ export type BacktestSummary = {
   winRate: number;
   totalPnL: number;
   totalPnlPercentage: number;
+  endingPnl: number;
   endingEquity: number;
   maxDrawdownUsd: number;
 };
@@ -301,6 +302,7 @@ export async function runProposalBacktest(
     winRate: 0,
     totalPnL: 0,
     totalPnlPercentage: 0,
+    endingPnl: 0,
     endingEquity: 0,
     maxDrawdownUsd: 0,
   };
@@ -416,6 +418,7 @@ export async function runProposalBacktest(
       summary.evaluated += 1;
       summary.totalPnL += result.actualPnL;
       summary.totalPnlPercentage += result.pnlPercentage;
+      summary.endingPnl = equity;
       summary.endingEquity = equity;
       if (result.winLossStatus === "WIN") summary.wins += 1;
       if (result.winLossStatus === "LOSS") summary.losses += 1;

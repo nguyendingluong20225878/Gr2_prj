@@ -21,20 +21,12 @@ describe("generateProposal with mock Node", () => {
     // Since dataFetchNode is mocked, the graph should execute quickly
     const result = await graph.invoke({}, config);
 
-    console.log("%o", result.proposal);
+    console.log("%o", result);
 
-    expect(result.proposal).toBeDefined();
-    // Proposal should be an object matching the output schema
-    expect(typeof result.proposal!).toBe("object");
-    // Check essential fields in the proposal object
-    expect(result.proposal!).toHaveProperty("summary");
-    expect(typeof result.proposal!.summary).toBe("string");
-    expect(result.proposal!).toHaveProperty("title");
-    expect(typeof result.proposal!.title).toBe("string");
-    // Check that userId and triggerEventId are set correctly
-    // These might now depend on how proposalGenerationNode gets its data
-    // Let's verify the core proposal structure first. We can refine checks later.
-    // expect(result.proposal!.userId).toBe(mockUser.id); // This might fail if proposal node doesn't get user correctly
-    // expect(result.proposal!.triggerEventId).toBe(mockSignal.id); // This might fail if proposal node doesn't get signal correctly
+    expect(result).toBeDefined();
+    // Check that rationaleSummary is present in the state
+    expect(result).toHaveProperty("rationaleSummary");
+    expect(typeof result.rationaleSummary).toBe("string");
+    expect(result.rationaleSummary!.length).toBeGreaterThan(0);
   }, 60000); // Timeout might be reducible now
 });

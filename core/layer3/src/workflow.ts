@@ -38,6 +38,7 @@ type RawSignal = {
   sources?: SourceRef[];
   layer3RetryCount?: number;
   layer3LockedBy?: string | null;
+  nextLayer3RetryAt?: Date | null;
   updatedAt?: Date;
 };
 
@@ -55,13 +56,52 @@ const DEFAULT_OPTIONS = {
   maxRetry: 3,
 };
 const PROCESSING_TTL_MS = 10 * 60 * 1000;
-const DEFAULT_RECOMMENDATION_TTL_HOURS = 24;
+const DEFAULT_RECOMMENDATION_TTL_HOURS = 23.75;
+const DEFAULT_RETRY_BACKOFF_MS = 10 * 60 * 1000;
+const DEFAULT_RETRY_BACKOFF_MAX_MS = 60 * 60 * 1000;
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function positiveNumberOrDefault(value: string | undefined, fallback: number) {
   const n = Number(value);
   return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+function nonNegativeNumberOrDefault(value: string | undefined, fallback: number) {
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
+}
+
+function getLayer3RetryBackoffMs(retryCount: number) {
+  const baseBackoffMs = positiveNumberOrDefault(
+    process.env.LAYER3_RETRY_BACKOFF_MS,
+    DEFAULT_RETRY_BACKOFF_MS
+  );
+  const maxBackoffMs = positiveNumberOrDefault(
+    process.env.LAYER3_RETRY_BACKOFF_MAX_MS,
+    DEFAULT_RETRY_BACKOFF_MAX_MS
+  );
+  const exponent = Math.max(0, retryCount - 1);
+  const rawBackoff = Math.min(baseBackoffMs * (2 ** exponent), maxBackoffMs);
+  const jitterRatio = nonNegativeNumberOrDefault(process.env.LAYER3_RETRY_JITTER_RATIO, 0.2);
+  const jitter = rawBackoff * Math.min(jitterRatio, 1) * Math.random();
+  return Math.floor(Math.min(rawBackoff + jitter, maxBackoffMs));
+}
+
+function isRetryableLayer3ProviderError(error: unknown): boolean {
+  return Boolean(
+    error &&
+    typeof error === "object" &&
+    "retryable" in error &&
+    (error as { retryable?: unknown }).retryable === true
+  );
+}
+
+function layer3ErrorCode(error: unknown) {
+  if (error && typeof error === "object" && "statusCode" in error) {
+    return (error as { statusCode?: unknown }).statusCode ?? null;
+  }
+  return null;
 }
 
 function validDate(value: unknown): Date | null {
@@ -89,6 +129,18 @@ function resolveRecommendationExpiresAt(startsAt: Date) {
     DEFAULT_RECOMMENDATION_TTL_HOURS
   );
   return new Date(startsAt.getTime() + ttlHours * 60 * 60 * 1000);
+}
+
+function getRecommendationTtlMs() {
+  const ttlHours = positiveNumberOrDefault(
+    process.env.LAYER3_RECOMMENDATION_TTL_HOURS,
+    DEFAULT_RECOMMENDATION_TTL_HOURS
+  );
+  return ttlHours * 60 * 60 * 1000;
+}
+
+function getSignalFreshnessCutoff(now: Date) {
+  return new Date(now.getTime() - getRecommendationTtlMs());
 }
 
 function getBatchTime(value: unknown) {
@@ -132,6 +184,10 @@ async function markSignalProcessed(signal: RawSignal, extra: Record<string, unkn
         updatedAt: new Date(),
         layer3LockedAt: null,
         layer3LockedBy: null,
+        nextLayer3RetryAt: null,
+        lastLayer3Error: null,
+        lastLayer3ErrorCode: null,
+        errorType: null,
         ...extra,
       },
     }
@@ -142,7 +198,11 @@ async function expireElapsedActiveRecommendations(now: Date) {
   await proposalsTable.updateMany(
     {
       lifecycleStatus: "ACTIVE",
-      expiresAt: { $lte: now },
+      $or: [
+        { expiresAt: { $lte: now } },
+        { expiresAt: null },
+        { expiresAt: { $exists: false } },
+      ],
     },
     {
       $set: {
@@ -152,6 +212,32 @@ async function expireElapsedActiveRecommendations(now: Date) {
       },
     }
   );
+}
+
+async function skipExpiredRawSignals(now: Date) {
+  const staleBefore = new Date(now.getTime() - PROCESSING_TTL_MS);
+  const cutoff = getSignalFreshnessCutoff(now);
+  const result = await signalsTable.updateMany(
+    {
+      detectedAt: { $lte: cutoff },
+      $or: [
+        { status: "RAW" },
+        { status: "PROCESSING", layer3LockedAt: { $lte: staleBefore } },
+      ],
+    },
+    {
+      $set: {
+        status: "SKIPPED",
+        layer3Decision: "SKIPPED_EXPIRED_BEFORE_LAYER3",
+        layer3SkippedAt: now,
+        layer3LockedAt: null,
+        layer3LockedBy: null,
+        updatedAt: now,
+      },
+    }
+  );
+
+  return result.modifiedCount ?? 0;
 }
 
 function validateRawSignal(signal: RawSignal): string | null {
@@ -244,6 +330,27 @@ export async function processSignal(signal: RawSignal, options: Layer3WorkflowOp
 
   await expireElapsedActiveRecommendations(now);
 
+  const recommendationStartsAt = validDate(signal.detectedAt) ?? resolveSignalBatchStartedAt(signal);
+  const expiresAt = resolveRecommendationExpiresAt(recommendationStartsAt);
+  if (expiresAt <= now) {
+    await signalsTable.updateOne(
+      layer3OwnershipFilter(signal),
+      {
+        $set: {
+          status: "SKIPPED",
+          layer3Decision: "SKIPPED_EXPIRED_BEFORE_LAYER3",
+          layer3SkippedAt: now,
+          layer3LockedAt: null,
+          layer3LockedBy: null,
+          updatedAt: now,
+        },
+      }
+    );
+    return { status: "SKIPPED_EXPIRED" as const, tokenSymbol: signal.tokenSymbol };
+  }
+
+  // Only currently active, unexpired proposals block a new Layer 3 proposal.
+  // Expired/overridden historical proposals for the same token must not prevent a fresh signal.
   const activeProposal = await (proposalsTable as any)
     .findOne({
       tokenAddress: signal.tokenAddress,
@@ -285,7 +392,6 @@ export async function processSignal(signal: RawSignal, options: Layer3WorkflowOp
   const batchStartedAt = resolveSignalBatchStartedAt(signal);
   const batchId = resolveSignalBatchId(signal);
   const proposalWrittenAt = new Date();
-  const expiresAt = resolveRecommendationExpiresAt(proposalWrittenAt);
   const replacesSameBatch = activeProposal
     ? compareSignalToProposalBatch(signal, activeProposal) === 0
     : false;
@@ -296,6 +402,7 @@ export async function processSignal(signal: RawSignal, options: Layer3WorkflowOp
     ? { _id: activeProposal._id }
     : { signalId: signal._id };
 
+  let oldProposalMarkedOverridden = false;
   if (isCrossBatchOverride && activeProposal) {
     await proposalsTable.updateOne(
       { _id: activeProposal._id, lifecycleStatus: "ACTIVE" },
@@ -307,49 +414,67 @@ export async function processSignal(signal: RawSignal, options: Layer3WorkflowOp
         },
       }
     );
+    oldProposalMarkedOverridden = true;
   }
 
-  const writeResult = await proposalsTable.updateOne(
-    proposalFilter,
-    {
-      $set: {
-        signalId: signal._id,
-        tokenSymbol: signal.tokenSymbol,
-        tokenAddress: signal.tokenAddress,
-        suggestionType: signal.suggestionType,
-        sentimentType: signal.sentimentType,
-        quantScore: signal.quantScore,
-        confidence: signal.confidence,
-        batchId,
-        batchStartedAt,
-        lifecycleStatus: "ACTIVE",
-        overriddenAt: null,
-        overriddenByProposalId: null,
-        expiredAt: null,
-        volatilityFlag: signal.volatilityFlag ?? null,
-        uncertaintyEntropy: signal.uncertaintyEntropy ?? signal.metadata?.uncertaintyEntropy ?? null,
-        realizedVolatility: signal.realizedVolatility ?? null,
-        signalMode: signal.signalMode ?? signal.metadata?.signalMode ?? null,
-        detectedAt: signal.detectedAt ?? null,
-        signalUpdatedAt: signal.updatedAt ?? null,
-        scoreComponents: signal.metadata?.scoreComponents ?? {},
-        expiresAt,
-        sources: signal.sources ?? [],
-        rationaleSummary: finalState.rationaleSummary,
-        executionStatus: "PENDING",
-        entryPrice: null,
-        exitPrice: null,
-        actualPnL: null,
-        winLossStatus: null,
-        pnlPercentage: null,
-        backtestedAt: null,
-        backtestMeta: {},
-        updatedAt: proposalWrittenAt,
+  let writeResult;
+  try {
+    writeResult = await proposalsTable.updateOne(
+      proposalFilter,
+      {
+        $set: {
+          signalId: signal._id,
+          tokenSymbol: signal.tokenSymbol,
+          tokenAddress: signal.tokenAddress,
+          suggestionType: signal.suggestionType,
+          sentimentType: signal.sentimentType,
+          quantScore: signal.quantScore,
+          confidence: signal.confidence,
+          batchId,
+          batchStartedAt,
+          lifecycleStatus: "ACTIVE",
+          overriddenAt: null,
+          overriddenByProposalId: null,
+          expiredAt: null,
+          volatilityFlag: signal.volatilityFlag ?? null,
+          uncertaintyEntropy: signal.uncertaintyEntropy ?? signal.metadata?.uncertaintyEntropy ?? null,
+          realizedVolatility: signal.realizedVolatility ?? null,
+          signalMode: signal.signalMode ?? signal.metadata?.signalMode ?? null,
+          detectedAt: signal.detectedAt ?? null,
+          signalUpdatedAt: signal.updatedAt ?? null,
+          scoreComponents: signal.metadata?.scoreComponents ?? {},
+          expiresAt,
+          sources: signal.sources ?? [],
+          rationaleSummary: finalState.rationaleSummary,
+          executionStatus: "PENDING",
+          entryPrice: null,
+          exitPrice: null,
+          actualPnL: null,
+          winLossStatus: null,
+          pnlPercentage: null,
+          backtestedAt: null,
+          backtestMeta: {},
+          updatedAt: proposalWrittenAt,
+        },
+        $setOnInsert: { createdAt: proposalWrittenAt },
       },
-      $setOnInsert: { createdAt: proposalWrittenAt },
-    },
-    { upsert: true }
-  );
+      { upsert: true }
+    );
+  } catch (error) {
+    if (oldProposalMarkedOverridden && activeProposal) {
+      await proposalsTable.updateOne(
+        { _id: activeProposal._id, lifecycleStatus: "OVERRIDDEN", overriddenByProposalId: null },
+        {
+          $set: {
+            lifecycleStatus: "ACTIVE",
+            overriddenAt: null,
+            updatedAt: new Date(),
+          },
+        }
+      );
+    }
+    throw error;
+  }
 
   if (isCrossBatchOverride && activeProposal) {
     const newProposal = await (proposalsTable as any)
@@ -394,9 +519,11 @@ export async function processSignal(signal: RawSignal, options: Layer3WorkflowOp
 async function claimNextRawSignal(options: Required<Layer3WorkflowOptions>): Promise<RawSignal | null> {
   const now = new Date();
   const staleBefore = new Date(now.getTime() - PROCESSING_TTL_MS);
+  const freshnessCutoff = getSignalFreshnessCutoff(now);
   const workerId = `${process.pid}:${now.toISOString()}`;
   const claimed = await signalsTable.findOneAndUpdate(
     {
+      detectedAt: { $gt: freshnessCutoff },
       $or: [
         { status: "RAW" },
         { status: "PROCESSING", layer3LockedAt: { $lte: staleBefore } },
@@ -406,6 +533,13 @@ async function claimNextRawSignal(options: Required<Layer3WorkflowOptions>): Pro
           $or: [
             { layer3RetryCount: { $exists: false } },
             { layer3RetryCount: { $lt: options.maxRetry } },
+          ],
+        },
+        {
+          $or: [
+            { nextLayer3RetryAt: { $exists: false } },
+            { nextLayer3RetryAt: null },
+            { nextLayer3RetryAt: { $lte: now } },
           ],
         },
       ],
@@ -419,7 +553,7 @@ async function claimNextRawSignal(options: Required<Layer3WorkflowOptions>): Pro
       },
     },
     {
-      sort: { detectedAt: 1, createdAt: 1 },
+      sort: { detectedAt: -1, createdAt: -1 },
       returnDocument: "after",
     }
   ).lean();
@@ -436,6 +570,7 @@ export async function runLayer3Batch(options: Layer3WorkflowOptions = {}) {
       ? Math.floor(envMaxRetry)
       : DEFAULT_OPTIONS.maxRetry,
   };
+  const skippedExpiredRaw = await skipExpiredRawSignals(new Date());
   const results = [];
 
   for (let index = 0; index < mergedOptions.limit; index += 1) {
@@ -448,24 +583,38 @@ export async function runLayer3Batch(options: Layer3WorkflowOptions = {}) {
       const reason = error instanceof Error ? error.message : "Unknown error";
       const nextRetryCount = Number(signal.layer3RetryCount ?? 0) + 1;
       const retryExhausted = nextRetryCount >= mergedOptions.maxRetry;
+      const retryableProviderError = isRetryableLayer3ProviderError(error);
+      const finalFailure = !retryableProviderError || retryExhausted;
+      const nextLayer3RetryAt = retryableProviderError && !finalFailure
+        ? new Date(Date.now() + getLayer3RetryBackoffMs(nextRetryCount))
+        : null;
+      const status = finalFailure ? "FAILED" : "RAW";
       await signalsTable.updateOne(
         layer3OwnershipFilter(signal),
         {
           $set: {
-            status: retryExhausted ? "FAILED" : "RAW",
+            status,
             updatedAt: new Date(),
             lastLayer3Error: reason,
+            lastLayer3ErrorCode: layer3ErrorCode(error),
+            nextLayer3RetryAt,
             layer3LockedAt: null,
             layer3LockedBy: null,
-            ...(retryExhausted ? { errorType: "LAYER3_RETRY_EXHAUSTED" } : {}),
+            errorType: retryExhausted
+              ? "LAYER3_RETRY_EXHAUSTED"
+              : retryableProviderError
+                ? "LAYER3_PROVIDER_RETRYABLE"
+                : "LAYER3_NON_RETRYABLE_ERROR",
           },
           $inc: { layer3RetryCount: 1 },
         }
       );
       results.push({
-        status: retryExhausted ? "FAILED" as const : "RETRYABLE_FAILED" as const,
+        status: finalFailure ? "FAILED" as const : "RETRYABLE_FAILED" as const,
         tokenSymbol: signal.tokenSymbol,
         reason,
+        retryCount: nextRetryCount,
+        ...(nextLayer3RetryAt ? { nextLayer3RetryAt } : {}),
       });
     }
 
@@ -474,5 +623,5 @@ export async function runLayer3Batch(options: Layer3WorkflowOptions = {}) {
     }
   }
 
-  return { processed: results.length, results };
+  return { processed: results.length, skippedExpiredRaw, results };
 }

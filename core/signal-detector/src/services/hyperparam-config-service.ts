@@ -28,6 +28,22 @@ export type SaveCandidateConfigInput = {
   status?: "CANDIDATE" | "REJECTED";
 };
 
+function readPositiveEnvNumber(name: string): number | undefined {
+  const raw = process.env[name];
+  if (!raw) return undefined;
+  const value = Number(raw);
+  return Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+function applyEnvOverrides(params: DetectorHyperParams): DetectorHyperParams {
+  return resolveHyperParams({
+    ...params,
+    signalThreshold: readPositiveEnvNumber("SIGNAL_THRESHOLD") ?? params.signalThreshold,
+    actionThreshold: readPositiveEnvNumber("ACTION_THRESHOLD") ?? params.actionThreshold,
+    holdSignalThreshold: readPositiveEnvNumber("HOLD_SIGNAL_THRESHOLD") ?? params.holdSignalThreshold,
+  });
+}
+
 export async function loadActiveHyperParams(
   name = "production"
 ): Promise<DetectorHyperParams> {
@@ -39,13 +55,13 @@ export async function loadActiveHyperParams(
       .sort({ promotedAt: -1, updatedAt: -1 })
       .lean();
 
-    return resolveHyperParams(active?.params ?? DEFAULT_HYPER_PARAMS);
+    return applyEnvOverrides(resolveHyperParams(active?.params ?? DEFAULT_HYPER_PARAMS));
   } catch (error) {
     console.warn(
       "[HyperParamConfigService] Falling back to DEFAULT_HYPER_PARAMS:",
       error instanceof Error ? error.message : String(error)
     );
-    return DEFAULT_HYPER_PARAMS;
+    return applyEnvOverrides(DEFAULT_HYPER_PARAMS);
   }
 }
 

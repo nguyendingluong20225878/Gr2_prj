@@ -203,7 +203,7 @@ async function runPipelineOnce(trigger: "cron" | "startup" = "cron") {
     await runPipelineStep("Bước 8: Phát hiện tín hiệu Quant", ["run", "signal"]);
     await runPipelineStep("Bước 9: Tạo proposal Layer3", [
       "--workspace",
-      "@gr2/proposal-generator",
+      "@gr2/layer3",
       "run",
       "layer3",
     ]);

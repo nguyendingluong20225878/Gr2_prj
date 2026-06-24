@@ -26,7 +26,7 @@ export function Navbar() {
     <nav className="sticky top-0 z-50 border-b border-border/50 glass-card">
       <div className="container mx-auto px-4 py-4">
         <div className="flex items-center justify-between gap-4">
-          <Link href="/overview" className="flex items-center space-x-3 group">
+          <Link href="/overview" className="group flex items-center space-x-3 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black">
             <span className="relative">
               <span className="absolute inset-0 rounded-lg bg-primary opacity-50 blur-lg transition-opacity group-hover:opacity-75" />
               <span className="relative flex rounded-lg bg-gradient-purple-cyan p-2">
@@ -47,7 +47,7 @@ export function Navbar() {
                 <Link
                   key={item.path}
                   href={item.path}
-                  className={`flex items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm transition-all ${
+                  className={`flex items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black ${
                     isActive
                       ? 'border border-primary/50 bg-primary/20 text-primary'
                       : 'text-muted-foreground hover:bg-accent hover:text-foreground'
@@ -65,7 +65,7 @@ export function Navbar() {
               <button
                 type="button"
                 onClick={() => setUserMenuOpen((value) => !value)}
-                className="flex items-center gap-3 rounded-lg border border-slate-700 bg-slate-900/50 px-3 py-2 text-left transition-all hover:border-cyan-500/50"
+                className="flex items-center gap-3 rounded-lg border border-slate-700 bg-slate-900/50 px-3 py-2 text-left transition-all hover:border-cyan-500/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
                 aria-expanded={userMenuOpen}
                 aria-haspopup="menu"
               >
@@ -104,7 +104,7 @@ export function Navbar() {
                       setUserMenuOpen(false);
                       void logout();
                     }}
-                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-red-300 transition-colors hover:bg-red-500/10"
+                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-red-300 transition-colors hover:bg-red-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
                   >
                     <LogOut className="h-4 w-4" />
                     Đăng xuất
@@ -113,7 +113,7 @@ export function Navbar() {
               ) : null}
             </div>
           ) : (
-            <Link href="/" className="inline-flex items-center gap-2 rounded-lg border border-cyan-500/30 px-3 py-2 text-sm font-bold text-cyan-300">
+            <Link href="/" className="inline-flex items-center gap-2 rounded-lg border border-cyan-500/30 px-3 py-2 text-sm font-bold text-cyan-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black">
               <User className="h-4 w-4" />
               Đăng nhập
             </Link>
@@ -128,7 +128,7 @@ export function Navbar() {
               <Link
                 key={item.path}
                 href={item.path}
-                className={`flex min-w-fit items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all ${
+                className={`flex min-w-fit items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black ${
                   isActive
                     ? 'border border-primary/50 bg-primary/20 text-primary'
                     : 'text-muted-foreground hover:bg-accent hover:text-foreground'
@@ -161,7 +161,7 @@ function UserMenuLink({
       href={href}
       onClick={onClick}
       role="menuitem"
-      className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-slate-200 transition-colors hover:bg-white/5 hover:text-cyan-300"
+      className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-slate-200 transition-colors hover:bg-white/5 hover:text-cyan-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
     >
       {icon}
       {label}

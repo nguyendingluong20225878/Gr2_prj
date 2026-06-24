@@ -230,7 +230,7 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error("API Error:", error);
     return NextResponse.json(
-      { error: 'Failed to fetch signals', details: String(error) }, 
+      { error: 'Failed to fetch signals' }, 
       { status: 500 }
     );
   }

@@ -1,4 +1,4 @@
-# @gr2/proposal-generator
+# @gr2/layer3
 
 `core/layer3` is the Layer 3 proposal generator. It reads raw quant signals and creates Vietnamese proposal rationales with LangGraph and Gemini.
 
@@ -30,13 +30,13 @@ core/layer3
 
 ```bash
 # Run Layer 3 batch
-npm --workspace @gr2/proposal-generator run layer3
+npm --workspace @gr2/layer3 run layer3
 
 # Build
-npm --workspace @gr2/proposal-generator run build
+npm --workspace @gr2/layer3 run build
 
 # Test
-npm --workspace @gr2/proposal-generator run test
+npm --workspace @gr2/layer3 run test
 ```
 
 The root batch pipeline also runs this package at the end:

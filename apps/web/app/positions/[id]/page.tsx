@@ -43,9 +43,9 @@ export default function PositionMonitorPage() {
         ) : (
           <>
             <PageHeader
-              eyebrow="Theo dõi vị thế"
+              eyebrow="Theo dõi vị thế demo"
               title={`${tokenSymbol || 'Token chưa định danh'} · ${position.direction ?? 'LONG'}`}
-              description="So sánh vị thế hiện tại với khuyến nghị ban đầu và tín hiệu mới cùng token."
+              description="So sánh vị thế demo hiện tại với kế hoạch ban đầu, khuyến nghị gốc và tín hiệu mới cùng token."
               actions={
                 <>
                   {position.proposalId ? (
@@ -66,13 +66,13 @@ export default function PositionMonitorPage() {
             />
 
             <section className="grid gap-4 lg:grid-cols-3">
-              <Panel title="Vị thế hiện tại">
+              <Panel title="Tình trạng hiện tại">
                 <Mini label="Giá vào" value={formatCurrency(position.entryPrice)} />
                 <Mini label="Giá hiện tại" value="Chưa có dữ liệu giá hiện tại" />
                 <Mini label="PnL" value={position.pnl === null || position.pnl === undefined ? 'Chưa có dữ liệu' : formatCurrency(position.pnl)} />
                 <Mini label="ROI" value={positionRoi === null ? 'Chưa có dữ liệu' : formatPercent(positionRoi)} />
                 <Mini label="Đòn bẩy" value={`${position.leverage ?? 1}x`} />
-                <Mini label="Hướng giao dịch" value={position.direction ?? 'LONG'} />
+                <Mini label="Hướng lệnh demo" value={position.direction ?? 'LONG'} />
               </Panel>
 
               <Panel title="Cảnh báo">
@@ -80,12 +80,33 @@ export default function PositionMonitorPage() {
                 {!warnings.length ? <p className="text-sm text-slate-500">Không có cảnh báo nghiêm trọng.</p> : null}
               </Panel>
 
-              <Panel title="Thông tin vào lệnh">
+              <Panel title="Kế hoạch ban đầu">
                 <Mini label="Giá yêu cầu" value={formatCurrency(position.requestedPrice)} />
-                <Mini label="Giá khớp" value={formatCurrency(position.executedPrice)} />
-                <Mini label="Trượt giá" value={formatPercent(normalizePercentValue(position.slippagePct))} />
-                <Mini label="Mã giao dịch" value={position.txHash ?? 'Chưa có dữ liệu'} />
+                <Mini label="Giá khớp demo" value={formatCurrency(position.executedPrice)} />
+                <Mini label="Trượt giá demo" value={formatPercent(normalizePercentValue(position.slippagePct))} />
+                <Mini label="ID ghi nhận demo" value={formatDemoRecordId(position.txHash ?? position._id)} />
               </Panel>
+            </section>
+
+            <section className="glass-card rounded-xl border border-cyan-500/15 bg-cyan-500/10 p-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-lg font-bold text-white">Bước tiếp theo</h2>
+                  <p className="mt-1 text-sm text-cyan-100/80">
+                    Kiểm tra cảnh báo, so sánh với tín hiệu hiện tại, rồi quyết định giữ mô phỏng, ghi chú hoặc quay lại khuyến nghị để đánh giá lại.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {position.proposalId ? (
+                    <Button asChild variant="outline" className="border-cyan-500/30 text-cyan-300">
+                      <Link href={`/proposal/${position.proposalId}/scenario`}>Thử lại kịch bản</Link>
+                    </Button>
+                  ) : null}
+                  <Button asChild className="bg-gradient-to-r from-purple-600 to-cyan-600 text-white">
+                    <Link href="/positions">Tất cả vị thế demo</Link>
+                  </Button>
+                </div>
+              </div>
             </section>
 
             <section className="grid gap-4 lg:grid-cols-2">
@@ -116,6 +137,12 @@ function warningClassName(warning: string) {
   return important
     ? 'rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200'
     : 'rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200';
+}
+
+function formatDemoRecordId(value?: string | null) {
+  if (!value) return 'Chưa có dữ liệu';
+  if (value.length <= 14) return value;
+  return `${value.slice(0, 6)}...${value.slice(-4)}`;
 }
 
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {

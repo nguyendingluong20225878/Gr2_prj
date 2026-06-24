@@ -49,6 +49,7 @@ Expected variables depend on the scraper setup, but normally include:
 MONGODB_URI=mongodb://localhost:27017/gr2
 X_USERNAME=...
 X_PASSWORD=...
+CHROME_BINARY_PATH=/usr/bin/chromium-browser
 ```
 
 ## Operational Notes

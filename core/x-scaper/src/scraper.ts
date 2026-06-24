@@ -147,6 +147,10 @@ export class XScraper {
 
   private async initDriver(cookies?: any[]): Promise<void> {
     const options = new chrome.Options();
+    const chromeBinaryPath = process.env.CHROME_BINARY_PATH;
+    if (chromeBinaryPath) {
+      options.setChromeBinaryPath(chromeBinaryPath);
+    }
     options.addArguments(
       "--headless=new", "--no-sandbox", "--disable-dev-shm-usage",
       "--disable-blink-features=AutomationControlled",

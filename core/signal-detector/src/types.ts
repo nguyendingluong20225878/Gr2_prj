@@ -79,6 +79,7 @@ export interface DetectorHyperParams {
   alphaBlend: number;
   signalThreshold: number;
   actionThreshold: number;
+  holdSignalThreshold: number;
   coldStartActionThreshold: number;
   confidenceDivisor: number;
   coldStartConfidenceDivisor: number;
@@ -91,8 +92,9 @@ export const DEFAULT_HYPER_PARAMS: DetectorHyperParams = {
   newsBaseWeight: 2,//trọng số cơ bản cho một bài báo/tweets khi quant
   betaToBtc: 0.75,//hệ số điều chỉnh để chuyển từ beta (tín hiệu tổng hợp) sang BTC (điểm tín hiệu cuối cùng)
   alphaBlend: 0.7,//hệ số để blend giữa tín hiệu độc lập và tín hiệu khác
-  signalThreshold: 0.5,//ngưỡng để xác định có tín hiệu hay không (ví dụ: nếu điểm tín hiệu > 0.5 thì coi là có tín hiệu)
-  actionThreshold: 1.5,//ngưỡng để xác định có nên đưa ra gợi ý hành động hay không (ví dụ: nếu điểm tín hiệu > 1.5 thì mới gợi ý buy/sell)
+  signalThreshold: 1.2,//ngưỡng để xác định có tín hiệu buy/sell đủ mạnh hay không
+  actionThreshold: 1.8,//ngưỡng để xác định có nên đưa ra gợi ý hành động buy/sell hay không
+  holdSignalThreshold: 1.8,//hold chỉ được emit khi điểm rất mạnh nhưng chưa đủ điều kiện buy/sell
   coldStartActionThreshold: 999,//Cold-start chỉ nên watch/hold, không tự động đẩy BUY/SELL khi thiếu lịch sử
   confidenceDivisor: 3,//hệ số để chia điểm tín hiệu khi tính confidence (ví dụ: confidence = finalScore / confidenceDivisor)
   coldStartConfidenceDivisor: 5,//hệ số để chia điểm tín hiệu khi tính confidence trong trường hợp cold start (ít dữ liệu) (ví dụ: confidence = finalScore / coldStartConfidenceDivisor)
@@ -141,6 +143,10 @@ export function resolveHyperParams(
     actionThreshold: positiveOrFallback(
       overrides?.actionThreshold,
       DEFAULT_HYPER_PARAMS.actionThreshold
+    ),
+    holdSignalThreshold: positiveOrFallback(
+      overrides?.holdSignalThreshold,
+      DEFAULT_HYPER_PARAMS.holdSignalThreshold
     ),
     coldStartActionThreshold: positiveOrFallback(
       overrides?.coldStartActionThreshold,

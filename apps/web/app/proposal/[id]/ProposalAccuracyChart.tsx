@@ -34,6 +34,11 @@ type VerificationRow = {
   plotted: boolean;
 };
 
+type VerificationRowGroup = VerificationRow & {
+  count: number;
+  ids: string[];
+};
+
 type BacktestSummary = {
   averageRoi: number | null;
   coverageLabel: string;
@@ -149,6 +154,45 @@ function buildVerificationRows(markerPoints: MarkerPoint[]): VerificationRow[] {
     priceGapMs: point.priceGapMs,
     plotted: true,
   }));
+}
+
+function groupVerificationRows(rows: VerificationRow[]): VerificationRowGroup[] {
+  const grouped = new Map<string, VerificationRowGroup>();
+
+  rows.forEach((row) => {
+    const key = [
+      Math.round(row.time / 60_000),
+      row.price === null ? 'no-price' : Number(row.price).toFixed(8),
+      row.marker.action,
+      row.marker.result,
+      row.marker.dateSource,
+    ].join('|');
+    const existing = grouped.get(key);
+
+    if (!existing) {
+      grouped.set(key, { ...row, count: 1, ids: [row.marker.id] });
+      return;
+    }
+
+    grouped.set(key, {
+      ...existing,
+      count: existing.count + 1,
+      ids: [...existing.ids, row.marker.id],
+      marker: {
+        ...existing.marker,
+        confidence: averageNullable(existing.marker.confidence, row.marker.confidence, existing.count),
+        pnlPercentage: averageNullable(existing.marker.pnlPercentage, row.marker.pnlPercentage, existing.count),
+      },
+    });
+  });
+
+  return Array.from(grouped.values());
+}
+
+function averageNullable(current: number | null | undefined, next: number | null | undefined, currentCount: number) {
+  if (current === null || current === undefined || !Number.isFinite(Number(current))) return next ?? current ?? null;
+  if (next === null || next === undefined || !Number.isFinite(Number(next))) return current;
+  return ((Number(current) * currentCount) + Number(next)) / (currentCount + 1);
 }
 
 function buildZoomedDomain(points: ChartPoint[]): [number, number] {
@@ -393,7 +437,9 @@ function readableMissingTimelineData(value: string) {
 }
 
 function VerificationTable({ rows: inputRows }: { rows: VerificationRow[] }) {
-  const sortedRows = [...inputRows].sort((a, b) => b.time - a.time);
+  const groupedRows = groupVerificationRows(inputRows);
+  const sortedRows = groupedRows.sort((a, b) => b.time - a.time);
+  const groupedDuplicateCount = inputRows.length - groupedRows.length;
 
   if (!sortedRows.length) {
     return (
@@ -406,7 +452,7 @@ function VerificationTable({ rows: inputRows }: { rows: VerificationRow[] }) {
   return (
     <div className="rounded-lg border border-white/5 bg-black/30">
       <div className="border-b border-white/5 px-4 py-3 text-xs text-slate-400">
-        Hiển thị {sortedRows.length} khuyến nghị khớp giá. Số dòng trong bảng này luôn bằng số marker đang được vẽ trên đồ thị.
+        Hiển thị {sortedRows.length} dòng kiểm chứng{groupedDuplicateCount > 0 ? `, đã gom ${groupedDuplicateCount} marker trùng thời điểm/giá` : ''}.
       </div>
       <div className="overflow-x-auto">
         <div className="min-w-[800px]">
@@ -418,11 +464,12 @@ function VerificationTable({ rows: inputRows }: { rows: VerificationRow[] }) {
             <span>Tin cậy</span>
             <span>Giá khớp / trạng thái</span>
           </div>
-          {sortedRows.map(({ marker, price, matchedTime, priceGapMs, plotted }) => (
-            <div key={marker.id} className="grid grid-cols-[1.1fr_0.7fr_0.8fr_0.8fr_0.8fr_0.9fr] gap-3 border-b border-white/5 px-4 py-3 text-sm text-slate-300 last:border-b-0">
+          {sortedRows.map(({ count, ids, marker, price, matchedTime, priceGapMs, plotted }) => (
+            <div key={ids.join('|')} className="grid grid-cols-[1.1fr_0.7fr_0.8fr_0.8fr_0.8fr_0.9fr] gap-3 border-b border-white/5 px-4 py-3 text-sm text-slate-300 last:border-b-0">
               <span className="text-slate-400">
                 <span className="block">{formatVietnameseDateTime(marker.date)}</span>
                 <span className="mt-1 block text-[11px] text-slate-500">{getDateSourceLabel(marker.dateSource)}</span>
+                {count > 1 ? <span className="mt-1 block text-[11px] text-cyan-300">Gom {count} khuyến nghị cùng thời điểm</span> : null}
               </span>
               <span className="font-semibold" style={{ color: ACTION_COLOR[String(marker.action).toUpperCase()] ?? ACTION_COLOR.HOLD }}>
                 {marker.action}

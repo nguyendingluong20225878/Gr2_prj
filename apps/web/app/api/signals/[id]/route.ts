@@ -77,7 +77,6 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     });
   } catch (error) {
     console.error('Fetch Signal API Error:', error);
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    return NextResponse.json({ error: 'Internal Error', details: message }, { status: 500 });
+    return NextResponse.json({ error: 'Internal Error' }, { status: 500 });
   }
 }

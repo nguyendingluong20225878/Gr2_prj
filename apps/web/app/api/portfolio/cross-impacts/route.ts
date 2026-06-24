@@ -26,6 +26,7 @@ type NewsArticleRecord = {
   articleUrl: string;
   title?: string;
   summary?: string;
+  content?: string;
   detectedTokens?: string[];
   publishedAt?: Date | null;
   scrapedAt?: Date;
@@ -71,6 +72,20 @@ function confidenceToPercent(value?: number | null) {
   if (!Number.isFinite(Number(value))) return null;
   const n = Number(value);
   return Math.abs(n) <= 1 ? n * 100 : n;
+}
+
+function summarizeSource(article: NewsArticleRecord) {
+  const text = String(article.summary || article.content || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!text) return '';
+
+  const sentences = text
+    .split(/(?<=[.!?。])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+  const summary = sentences.length ? sentences.slice(0, 2).join(' ') : text;
+  return summary.length <= 260 ? summary : `${summary.slice(0, 257).trimEnd()}...`;
 }
 
 async function resolveHoldingSymbols(db: mongoose.mongo.Db, user: UserPortfolioRecord | null) {
@@ -185,6 +200,7 @@ export async function GET(req: Request) {
       return [{
         sourceId: article._id.toString(),
         sourceLabel: article.title || 'Nguồn tin có nhiều token liên quan',
+        sourceSummary: summarizeSource(article),
         sourceUrl: article.articleUrl,
         sourceType: 'news',
         holdingTokens: matchedHoldings,

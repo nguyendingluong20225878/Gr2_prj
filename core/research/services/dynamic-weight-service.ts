@@ -141,6 +141,7 @@ export async function updateRollingSourceWeights(options: {
   windowDays?: number;
   horizonHours?: number;
   minSamples?: number;
+  shrinkageK?: number;
   sparseMaxDistanceMs?: number;
   resetStale?: boolean;
 } = {}) {
@@ -150,6 +151,8 @@ export async function updateRollingSourceWeights(options: {
   const windowDays = options.windowDays ?? 60;
   const horizonHours = options.horizonHours ?? 24;
   const minSamples = options.minSamples ?? 5;
+  const shrinkageK = options.shrinkageK ?? Number(process.env.DYNAMIC_WEIGHT_SHRINKAGE_K ?? 20);
+  const safeShrinkageK = Number.isFinite(shrinkageK) && shrinkageK >= 0 ? shrinkageK : 20;
   const sparseMaxDistanceMs = options.sparseMaxDistanceMs ?? 6 * 60 * 60 * 1000;
   const resetStale = options.resetStale ?? true;
   const from = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
@@ -249,7 +252,8 @@ export async function updateRollingSourceWeights(options: {
       group.map((sample) => sample.signalScore),
       group.map((sample) => sample.forwardReturn)
     );
-    const siteWeight = group.length >= minSamples ? clamp(1 + ic, 0.25, 2) : 1;
+    const effectiveIc = ic * (group.length / (group.length + safeShrinkageK));
+    const siteWeight = group.length >= minSamples ? clamp(1 + effectiveIc, 0.25, 2) : 1;
     //ic [-1,1] , đủ bài vt thì weight = 1+ IC=> sau đó dùng clamp để ép về ngưỡng an toàn (0,25-2)
     return {
       siteHost,
@@ -260,6 +264,7 @@ export async function updateRollingSourceWeights(options: {
       windowDays,
       sampleCount: group.length,
       ic,
+      effectiveIc,
       siteWeight,
       updatedAt: new Date(),
     };
@@ -301,6 +306,7 @@ export async function updateRollingSourceWeights(options: {
     horizonHours,
     samples: samples.length,
     sourcesUpdated: updates.length,
+    shrinkageK: safeShrinkageK,
     staleReset: resetStale,
     updates,
   };

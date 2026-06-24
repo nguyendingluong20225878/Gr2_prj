@@ -1,15 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import { AlertTriangle, ArrowRight, Eye } from 'lucide-react';
+import { ArrowRight, Eye } from 'lucide-react';
 import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
 import { CountdownBadge, MiniStat } from '@/app/components/shared/NdlUi';
-import { formatConfidence, formatDollarAmount, formatNumber, formatPercent, normalizePercentValue, toDisplayAction, toDisplayRisk } from '@/lib/utils/formatters';
-import { formatRelativeVietnamese } from '@/lib/utils/time';
+import { formatConfidence, formatDollarAmount, formatPercent, normalizePercentValue, toDisplayAction } from '@/lib/utils/formatters';
 import {
   getPortfolioImpactLabel,
-  getRecommendationStatusLabel,
   type PortfolioImpact,
   type RecommendationStatus,
 } from '@/lib/utils/recommendationDerivation';
@@ -60,14 +58,6 @@ function impactBadgeClass(impact: PortfolioImpact) {
   return 'border-amber-500/30 bg-amber-500/10 text-amber-300';
 }
 
-function statusBadgeClass(status: RecommendationStatus) {
-  if (status === 'EXPIRING_SOON' || status === 'MISSING_DATA') return 'border-amber-500/30 bg-amber-500/10 text-amber-300';
-  if (status === 'EXPIRED') return 'border-slate-500/30 bg-slate-500/10 text-slate-300';
-  if (status === 'VERIFIED') return 'border-green-500/30 bg-green-500/10 text-green-300';
-  if (status === 'EXECUTED') return 'border-blue-500/30 bg-blue-500/10 text-blue-300';
-  return 'border-cyan-500/30 bg-cyan-500/10 text-cyan-300';
-}
-
 export function RecommendationCard({
   action,
   confidence,
@@ -75,40 +65,26 @@ export function RecommendationCard({
   entryPrice,
   expiresAt,
   href,
-  id,
   isWatched,
+  livePerformance,
   onWatch,
   portfolioImpact,
   projectedPnL,
-  quantScore,
-  riskLevel,
   roi,
-  score,
   showImpactBadge = true,
   status,
-  summary,
   tokenSymbol,
-  livePerformance,
 }: RecommendationCardProps) {
   const archived = status === 'EXPIRED' || status === 'VERIFIED' || status === 'EXECUTED';
-  const pnl = normalizePercentValue(roi);
   const canUseLivePerformance = !archived && Boolean(livePerformance);
   const hasLiveRoi = canUseLivePerformance && livePerformance?.pnlStatus === 'AVAILABLE';
-  const normalizedAction = String(action ?? '').toUpperCase();
-  const isHoldLike = normalizedAction === 'HOLD' || normalizedAction === 'WAIT';
   const displayEntryPrice = canUseLivePerformance
     ? livePerformance?.entryPrice ?? entryPrice
     : entryPrice;
   const displayCurrentPrice = canUseLivePerformance
     ? livePerformance?.markPrice ?? currentPrice
     : currentPrice;
-  const displayRoi = hasLiveRoi ? livePerformance?.roiPct : pnl;
-  const pnlFallback = getPnlFallbackLabel(livePerformance?.pnlStatus, projectedPnL);
-  const pnlLabel = hasLiveRoi
-    ? isHoldLike ? 'Biến động tạm tính' : 'ROI tạm tính'
-    : archived
-      ? 'PnL/ROI'
-      : 'PnL/ROI';
+  const displayRoi = hasLiveRoi ? livePerformance?.roiPct : normalizePercentValue(roi);
   const currentPriceLabel = status === 'VERIFIED' ? 'Giá sau 24h' : 'Giá hiện tại';
 
   return (
@@ -125,22 +101,12 @@ export function RecommendationCard({
             <span className="text-lg font-bold text-white">{tokenSymbol ?? 'Token chưa định danh'}</span>
             <Badge className={actionBadgeClass(action)} variant="outline">{toDisplayAction(action)}</Badge>
             {showImpactBadge ? <Badge className={impactBadgeClass(portfolioImpact)} variant="outline">{getPortfolioImpactLabel(portfolioImpact)}</Badge> : null}
-            <Badge className="border-white/10 bg-black/30 text-slate-300" variant="outline">{toDisplayRisk(riskLevel)}</Badge>
-            {status !== 'MISSING_DATA' ? (
-              <Badge className={statusBadgeClass(status)} variant="outline">
-                {status === 'EXPIRING_SOON' ? <AlertTriangle className="h-3 w-3" /> : null}
-                {getRecommendationStatusLabel(status)}
-              </Badge>
-            ) : null}
             {status !== 'VERIFIED' ? <CountdownBadge value={expiresAt} /> : null}
+            <Badge className="border-white/10 bg-black/30 text-slate-200" variant="outline">Tin cậy {formatConfidence(confidence)}</Badge>
             {isWatched ? <Badge className="border-cyan-500/30 bg-cyan-500/10 text-cyan-300" variant="outline">Đã theo dõi</Badge> : null}
           </div>
-          {summary ? <p className="mt-3 line-clamp-2 text-sm leading-6 text-slate-300">{summary}</p> : null}
           {status === 'EXPIRED' ? (
             <p className="mt-2 text-xs text-slate-400">Khuyến nghị đã hết hiệu lực và chỉ còn giá trị tham khảo.</p>
-          ) : null}
-          {canUseLivePerformance && livePerformance?.markMatchedAt ? (
-            <p className="mt-2 text-xs text-slate-500">Giá hiện tại cập nhật {formatRelativeVietnamese(livePerformance.markMatchedAt)}.</p>
           ) : null}
         </div>
         <div className="flex shrink-0 flex-col gap-2 sm:flex-row lg:flex-col">
@@ -155,14 +121,10 @@ export function RecommendationCard({
         </div>
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-5">
-        <MiniStat label="Tin cậy" value={formatConfidence(confidence)} />
-        {quantScore !== null && quantScore !== undefined ? (
-          <MiniStat label="Điểm tín hiệu" value={formatNumber(quantScore, 2)} />
-        ) : null}
-        <MiniStat label={canUseLivePerformance ? 'Giá vào tạm tính' : 'Giá vào'} value={formatDollarAmount(displayEntryPrice)} />
+      <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3">
+        <MiniStat label="Giá vào tạm tính" value={formatDollarAmount(displayEntryPrice)} />
         <MiniStat label={currentPriceLabel} value={formatDollarAmount(displayCurrentPrice)} />
-        <MiniStat label={pnlLabel} value={displayRoi === null || displayRoi === undefined ? pnlFallback : formatPercent(displayRoi)} />
+        <MiniStat label="PnL tạm tính" value={displayRoi === null || displayRoi === undefined ? getPnlFallbackLabel(livePerformance?.pnlStatus, projectedPnL) : formatPercent(displayRoi)} />
       </div>
     </article>
   );

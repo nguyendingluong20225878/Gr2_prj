@@ -23,6 +23,7 @@ const sourceWeightSchema = new Schema(
     windowDays: { type: Number, required: true, default: 60 },
     sampleCount: { type: Number, required: true, default: 0 },
     ic: { type: Number, required: true, default: 0 }, // Information Coefficient
+    effectiveIc: { type: Number, required: false, default: 0 },
     siteWeight: { type: Number, required: true, default: 1 }, // derived from ic
     updatedAt: { type: Date, required: true, default: Date.now },
   },

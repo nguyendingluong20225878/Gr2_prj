@@ -19,7 +19,7 @@
     "@gr2/token-price-fetcher": "file:../token-price-fetcher",
     "x-scaper": "file:../x-scaper",
     "@gr2/signal-detector": "file:../signal-detector",
-    "@gr2/proposal-generator": "file:../layer3",
+    "@gr2/layer3": "file:../layer3",
     "node-cron": "^3.0.3"
   }
 }

@@ -4,6 +4,14 @@ import {
   type MarketRegime,
 } from "../../shared/src/index.js";
 
+export type CurrentRegimeState = {
+  regime: MarketRegime | "mixed";
+  confidence: number;
+  sampleCount: number;
+  asOf: Date | null;
+  reason: string;
+};
+
 export async function getCurrentRegime(options: {
   windowHours?: number;
   maxAgeHours?: number;
@@ -49,5 +57,56 @@ export async function getCurrentRegime(options: {
     sampleCount: latest.length,
     asOf: latestAsOf,
     reason: `Rule-based regime from latest ${windowHours}h rolling_metrics.`,
+  };
+}
+
+export async function persistCurrentRegime(regime: CurrentRegimeState): Promise<void> {
+  const connection = await connectToDatabase();
+  const db = connection.db;
+  if (!db) throw new Error("Database connection is not available");
+
+  await db.collection("job_state").updateOne(
+    { _id: "current-market-regime" },
+    {
+      $set: {
+        ...regime,
+        updatedAt: new Date(),
+      },
+      $setOnInsert: {
+        createdAt: new Date(),
+      },
+    },
+    { upsert: true }
+  );
+}
+
+export async function loadPersistedCurrentRegime(options: {
+  maxAgeHours?: number;
+} = {}): Promise<(CurrentRegimeState & { updatedAt?: Date }) | null> {
+  const connection = await connectToDatabase();
+  const db = connection.db;
+  if (!db) throw new Error("Database connection is not available");
+
+  const row = await db.collection("job_state").findOne({ _id: "current-market-regime" });
+  if (!row) return null;
+
+  const updatedAt = row.updatedAt ? new Date(row.updatedAt) : null;
+  const maxAgeHours = options.maxAgeHours ?? 48;
+  if (
+    !updatedAt ||
+    !Number.isFinite(updatedAt.getTime()) ||
+    updatedAt.getTime() < Date.now() - maxAgeHours * 60 * 60 * 1000
+  ) {
+    return null;
+  }
+
+  const asOf = row.asOf ? new Date(row.asOf) : null;
+  return {
+    regime: String(row.regime ?? "mixed") as MarketRegime | "mixed",
+    confidence: Number(row.confidence ?? 0),
+    sampleCount: Number(row.sampleCount ?? 0),
+    asOf: asOf && Number.isFinite(asOf.getTime()) ? asOf : null,
+    reason: String(row.reason ?? "Persisted current market regime."),
+    updatedAt,
   };
 }
