@@ -1,0 +1,34 @@
+flowchart LR
+    %% Hinh 4.6 - Bieu do phu thuoc goi Shared Data Access
+
+    subgraph SHARED["Shared Data Access (core/shared)"]
+        direction LR
+
+        subgraph DB["Database"]
+            direction TB
+            CONNECTION["DB Connection"]
+            SCHEMAS["Mongoose Schemas"]
+        end
+
+        REPOSITORIES["Repository Interfaces"]
+        SERVICES["Domain Services"]
+        UTILS["Shared Utilities"]
+        TYPES["Shared Types"]
+        CONSTANTS["Constants"]
+
+        REPOSITORIES -. "uses document types" .-> SCHEMAS
+        SERVICES -. "queries models" .-> SCHEMAS
+        UTILS -. "connects" .-> CONNECTION
+        UTILS -. "uses models" .-> SCHEMAS
+        CONSTANTS -. "uses schema types" .-> SCHEMAS
+    end
+
+    classDef database fill:#FFF4D6,stroke:#9A6B16,stroke-width:2px,color:#111;
+    classDef repository fill:#E8F1FF,stroke:#315A8A,stroke-width:1.5px,color:#111;
+    classDef service fill:#EAF7EE,stroke:#357A4B,stroke-width:1.5px,color:#111;
+    classDef support fill:#F4F4F4,stroke:#666,stroke-width:1.5px,color:#111;
+
+    class CONNECTION,SCHEMAS database;
+    class REPOSITORIES repository;
+    class SERVICES service;
+    class UTILS,TYPES,CONSTANTS support;

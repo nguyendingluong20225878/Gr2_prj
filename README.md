@@ -15,7 +15,7 @@ GR2 Project is a TypeScript monorepo for Web3 signal detection, proposal generat
 │   ├── token-price-fetcher/  # Jupiter price updater and historical backfill
 │   ├── signal-detector/      # Quant/FinBERT signal engine
 │   ├── research/             # Backtest, metrics, regime, dynamic weights
-│   ├── layer3/               # LangGraph/Gemini proposal generator
+│   ├── layer3/               # LangGraph/Gemini Layer 3 proposal workflow
 │   └── run/                  # Cron-style orchestration runner
 ├── scripts/                  # Root helper scripts
 ├── FE_UI.md                  # Frontend UI notes
@@ -24,27 +24,28 @@ GR2 Project is a TypeScript monorepo for Web3 signal detection, proposal generat
 
 ## Main Pipeline
 
-The batch pipeline is wired from the root `package.json`:
+The canonical pipeline entrypoint is `core/run`. Root scripts keep compatibility aliases, so `npm run pipeline`, `npm run pipeline:core`, and `npm run pipeline:batch` all execute the same one-shot pipeline runner.
 
 ```text
 X scrape/news scrape
-→ token price backfill
-→ backtest outcome update
 → rolling metrics/regime/dynamic weights
 → signal detector
-→ Layer 3 proposal generator
+→ Layer 3 proposal workflow
+→ backtest outcome update
 ```
 
-Use the composed command when you want the full batch flow:
+Token price/history updates are handled by the deployed `core/token-price-fetcher` job, outside `npm run pipeline:core`.
+
+Use this command for the full core pipeline:
 
 ```bash
-npm run pipeline:batch
+npm run pipeline:core
 ```
 
-Use the cron runner when you want the orchestrator package:
+Use the scheduler command when you want the long-running cron process:
 
 ```bash
-npm run pipeline
+npm run pipeline:scheduler
 ```
 
 ## Common Commands
@@ -69,7 +70,7 @@ npm --workspace @gr2/web run dev
 npm run signal
 
 # Run Layer 3 proposal generation only
-npm --workspace @gr2/proposal-generator run layer3
+npm --workspace @gr2/layer3 run layer3
 ```
 
 ## Environment
@@ -114,3 +115,4 @@ Check each package README for package-specific variables and commands.
 - [core/README.md](core/README.md): backend/research packages.
 - [core/shared/README.md](core/shared/README.md): shared schemas and DB helpers.
 - [core/run/README.md](core/run/README.md): orchestration runner.
+

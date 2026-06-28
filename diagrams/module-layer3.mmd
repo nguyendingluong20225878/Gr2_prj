@@ -1,0 +1,66 @@
+classDiagram
+    direction LR
+
+    class Layer3Workflow {
+        <<module: workflow.ts>>
+        +runLayer3Batch(options: Layer3WorkflowOptions) Promise~BatchResult~
+        +processSignal(signal: RawSignal, options: Layer3WorkflowOptions) Promise~ProcessResult~
+        +enrichSignalSources(signal: RawSignal, contentLimit: number) Promise~string~
+        +toProposalState(signal: RawSignal, sourcesContent: string) ProposalState
+    }
+
+    class ProposalState {
+        <<data structure: state.ts>>
+        +signalId: string
+        +tokenSymbol: string
+        +quantScore: number
+        +confidence: number
+        +suggestionType: string
+        +sourcesContent: string
+        +rationaleSummary: string?
+        +messages: BaseMessage[]
+    }
+
+    class Layer3Graph {
+        <<LangGraph: agent.ts>>
+        +invoke(state: ProposalState) Promise~ProposalState~
+    }
+
+    class ReasoningNode {
+        <<function: agent.ts>>
+        +reasoningNode(state: ProposalState) Promise~Partial~ProposalState~~
+    }
+
+    class GeminiAPI {
+        <<external>>
+        +generateContent(prompt: string) Promise~GeminiResponse~
+    }
+
+    class signalsTable {
+        <<Mongoose model>>
+        +findOneAndUpdate(filter, update) Query~RawSignal|null~
+        +updateOne(filter, update) Query~UpdateResult~
+        +exists(filter) Query~Object|null~
+    }
+
+    class SourceModels {
+        <<Mongoose models>>
+        +tweetTable: Model~TweetSchema~
+        +newsArticlesTable: Model~NewsArticleSchema~
+    }
+
+    class proposalsTable {
+        <<Mongoose model>>
+        +findOne(filter) Query~Proposal|null~
+        +updateOne(filter, update) Query~UpdateResult~
+        +updateMany(filter, update) Query~UpdateResult~
+    }
+
+    Layer3Workflow ..> signalsTable : claims and updates
+    Layer3Workflow ..> SourceModels : enriches sources
+    Layer3Workflow ..> ProposalState : creates
+    Layer3Workflow ..> Layer3Graph : invokes
+    Layer3Workflow ..> proposalsTable : upserts and overrides
+    Layer3Graph ..> ProposalState : reads and updates
+    Layer3Graph ..> ReasoningNode : executes
+    ReasoningNode ..> GeminiAPI : HTTPS request

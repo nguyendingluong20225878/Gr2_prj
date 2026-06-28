@@ -22,7 +22,7 @@ const logger = new Logger("MasterCron");
 let isRunning = false;
 const LOCK_ID = "master-cron-pipeline";
 const LOCK_TTL_MS = Number(process.env.PIPELINE_LOCK_TTL_MINUTES ?? 180) * 60 * 1000;
-const CRON_EXPRESSION = process.env.PIPELINE_CRON ?? "0 8,20 * * *";
+const CRON_EXPRESSION = process.env.PIPELINE_CRON ?? "0 0,12 * * *";
 const CRON_TIMEZONE = process.env.PIPELINE_TIMEZONE ?? "Asia/Ho_Chi_Minh";
 const RUN_ON_START = process.env.PIPELINE_RUN_ON_START === "true";
 const PROJECT_ROOT = path.resolve(__dirname, "../../..");
@@ -147,10 +147,16 @@ async function waitBetweenSteps() {
   await new Promise((resolve) => setTimeout(resolve, STEP_DELAY_MS));
 }
 
-async function runPipelineStep(label: string, args: string[], options: { optional?: boolean } = {}) {
+async function runPipelineStep(
+  label: string,
+  args: string[],
+  options: { optional?: boolean; waitAfter?: boolean } = {}
+) {
   if (options.optional) await runOptionalNpmStep(label, args);
   else await runNpmStep(label, args);
-  await waitBetweenSteps();
+  if (options.waitAfter !== false) {
+    await waitBetweenSteps();
+  }
 }
 
 async function runPipelineOnce(trigger: "cron" | "startup" = "cron") {
@@ -195,18 +201,21 @@ async function runPipelineOnce(trigger: "cron" | "startup" = "cron") {
     }
 
     await runPipelineStep("Bước 2: Cào dữ liệu News", ["run", "news"], { optional: true });
-    await runPipelineStep("Bước 3: Backfill giá 1 ngày", ["run", "prices:backfill:1d"]);
-    await runPipelineStep("Bước 4: Chấm outcome backtest 12h", ["run", "backtest:outcome"]);
-    await runPipelineStep("Bước 5: Cập nhật rolling metrics", ["run", "metrics"]);
-    await runPipelineStep("Bước 6: Xác định regime", ["run", "regime"]);
-    await runPipelineStep("Bước 7: Cập nhật dynamic source weights", ["run", "weights"]);
-    await runPipelineStep("Bước 8: Phát hiện tín hiệu Quant", ["run", "signal"]);
-    await runPipelineStep("Bước 9: Tạo proposal Layer3", [
+    await runPipelineStep("Bước 3: Cập nhật rolling metrics", ["run", "metrics"]);
+    await runPipelineStep("Bước 4: Xác định regime", ["run", "regime"]);
+    await runPipelineStep("Bước 5: Cập nhật dynamic source weights", ["run", "weights"]);
+    await runPipelineStep("Bước 6: Phát hiện tín hiệu Quant", ["run", "signal"]);
+    await runPipelineStep("Bước 7: Tạo proposal Layer3", [
       "--workspace",
       "@gr2/layer3",
       "run",
       "layer3",
     ]);
+    await runPipelineStep(
+      "Bước 8: Chấm outcome backtest 24h",
+      ["run", "backtest:outcome"],
+      { waitAfter: false }
+    );
 
     logger.info("=== PIPELINE HOÀN TẤT ===");
   } catch (error) {

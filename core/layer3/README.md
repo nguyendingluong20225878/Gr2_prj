@@ -39,10 +39,10 @@ npm --workspace @gr2/layer3 run build
 npm --workspace @gr2/layer3 run test
 ```
 
-The root batch pipeline also runs this package at the end:
+The root core pipeline also runs this package near the end:
 
 ```bash
-npm run pipeline:batch
+npm run pipeline:core
 ```
 
 ## Environment

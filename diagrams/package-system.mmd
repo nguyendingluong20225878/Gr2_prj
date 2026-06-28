@@ -1,0 +1,37 @@
+flowchart LR
+    %% Hinh 4.2 - Bieu do phu thuoc goi muc toan he thong
+    %% Chi the hien cau truc tong quat; chi tiet tung goi nam o cac hinh sau.
+
+    subgraph ROOT["NDL TypeScript Monorepo"]
+        direction LR
+
+        subgraph WEB["apps/web"]
+            direction TB
+            FE["Frontend / Client"]
+            BFF["API / BFF"]
+
+            FE -. "calls" .-> BFF
+        end
+
+        subgraph CORE["core"]
+            direction TB
+            PIPE["Core Pipeline"]
+            PRICE["Independent Price Job"]
+            SHARED["Shared Data Access"]
+
+            PIPE -. "uses" .-> SHARED
+            PRICE -. "uses" .-> SHARED
+        end
+
+        BFF -. "uses" .-> SHARED
+    end
+
+    classDef web fill:#E8F1FF,stroke:#315A8A,stroke-width:1.5px,color:#111;
+    classDef core fill:#EAF7EE,stroke:#357A4B,stroke-width:1.5px,color:#111;
+    classDef independent fill:#FCECEC,stroke:#9B4A4A,stroke-width:1.5px,color:#111;
+    classDef shared fill:#FFF4D6,stroke:#9A6B16,stroke-width:2px,color:#111;
+
+    class FE,BFF web;
+    class PIPE core;
+    class PRICE independent;
+    class SHARED shared;

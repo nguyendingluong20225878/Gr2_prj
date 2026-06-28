@@ -1,70 +1,89 @@
-flowchart TD
-    user["User with Solana wallet"]
-    wallet["Solana wallet adapter"]
-    web["Next.js web app"]
-    api["Next.js BFF API routes"]
-    auth["Wallet auth service"]
-    mongo["MongoDB"]
-    shared["@gr2/shared schemas and DB utilities"]
-    runner["core/run cron orchestrator"]
-    xscraper["core/x-scaper"]
-    news["core/news-scraper"]
-    prices["core/token-price-fetcher"]
-    research["core/research jobs"]
-    signal["core/signal-detector"]
-    layer3["core/layer3 proposal generator"]
-    gemini["Google Gemini API"]
-    finbert["HuggingFace FinBERT"]
-    priceapi["CoinGecko or Jupiter price API"]
-    xext["X/Twitter"]
-    newsext["News sites and Firecrawl"]
+flowchart LR
+    %% Overall architecture with explicit layer boundaries.
 
-    user --> wallet
-    wallet --> web
-    web --> api
-    api --> auth
-    auth --> mongo
-    api --> shared
-    shared --> mongo
-    api --> mongo
+    subgraph L1["Frontend / Client Layer"]
+        user["End user"]
+        wallet["Solana wallet adapter"]
+        ui["Next.js App Router UI<br/>pages, components, hooks, contexts"]
+    end
 
-    runner --> xscraper
-    runner --> news
-    runner --> prices
-    runner --> research
-    runner --> signal
-    runner --> layer3
+    subgraph L2["API / Backend-for-Frontend Layer"]
+        api["Next.js API routes<br/>/app/api/*"]
+        auth["Wallet auth service<br/>nonce, signature, session"]
+        dto["DTO mapping and semantic utils<br/>formatters, proposal derivation"]
+    end
 
-    xscraper --> xext
-    xscraper --> shared
-    news --> newsext
-    news --> shared
-    prices --> priceapi
-    prices --> shared
-    research --> shared
-    signal --> finbert
-    signal --> shared
-    layer3 --> gemini
-    layer3 --> shared
+    subgraph L3["Core Pipeline Layer"]
+        runner["core/run<br/>scheduler and batch orchestrator"]
+        xscraper["core/x-scaper<br/>X/Twitter ingestion"]
+        news["core/news-scraper<br/>news ingestion"]
+        prices["core/token-price-fetcher<br/>price update and history"]
+        research["core/research<br/>backtest, metrics, regime, weights"]
+        signal["core/signal-detector<br/>quant signal generation"]
+        layer3["core/layer3<br/>proposal explanation workflow"]
+    end
 
-    shared --> tweets["tweets"]
-    shared --> articles["news_articles"]
-    shared --> tokens["tokens and token_prices"]
-    shared --> signals["signals"]
-    shared --> proposals["proposals"]
-    shared --> backtests["backtest_results"]
-    shared --> portfolio["users, watchlist_items, perp_positions"]
+    subgraph L4["Shared Data Access Layer"]
+        shared["@gr2/shared / core/shared<br/>schemas, DB connection, types, repositories"]
+    end
 
-    tweets --> mongo
-    articles --> mongo
-    tokens --> mongo
-    signals --> mongo
-    proposals --> mongo
-    backtests --> mongo
-    portfolio --> mongo
+    subgraph L5["Database Layer"]
+        mongo[("MongoDB")]
+        raw["Raw/source collections<br/>tweets, news_articles"]
+        market["Market data collections<br/>tokens, token_prices, price_history"]
+        derived["Derived collections<br/>signals, proposals, metrics, backtests"]
+        userdb["User/runtime collections<br/>users, watchlist, positions, decisions"]
+    end
 
-    signals --> layer3
-    proposals --> api
-    backtests --> api
-    portfolio --> api
-    api --> web
+    subgraph L6["External Services Layer"]
+        xext["X/Twitter"]
+        newsext["News sites / Firecrawl"]
+        priceapi["Jupiter / CoinGecko"]
+        finbert["HuggingFace FinBERT"]
+        gemini["Google Gemini API"]
+        solana["Solana wallet / RPC"]
+    end
+
+    user -->|"interact"| ui
+    ui -->|"connect and sign"| wallet
+    wallet -->|"signature / wallet address"| ui
+    ui -->|"HTTP JSON"| api
+    api -->|"response DTO"| ui
+
+    api -->|"auth checks"| auth
+    auth -->|"verify signature"| solana
+    api -->|"normalize response"| dto
+    api -->|"read/write through models"| shared
+    auth -->|"session/user read-write"| shared
+    dto -->|"uses domain helpers"| shared
+
+    runner -->|"starts jobs"| xscraper
+    runner -->|"starts jobs"| news
+    runner -->|"starts jobs"| prices
+    runner -->|"starts jobs"| research
+    runner -->|"starts jobs"| signal
+    runner -->|"starts jobs"| layer3
+
+    xscraper -->|"fetch posts"| xext
+    news -->|"fetch articles"| newsext
+    prices -->|"fetch prices"| priceapi
+    signal -->|"sentiment scoring"| finbert
+    layer3 -->|"rationale generation"| gemini
+
+    xscraper -->|"upsert raw posts"| shared
+    news -->|"upsert articles"| shared
+    prices -->|"upsert prices"| shared
+    research -->|"read signals/proposals; write metrics"| shared
+    signal -->|"read evidence; write signals"| shared
+    layer3 -->|"read RAW signals; write proposals"| shared
+
+    shared -->|"DB connection and schemas"| mongo
+    mongo --> raw
+    mongo --> market
+    mongo --> derived
+    mongo --> userdb
+
+    raw -->|"evidence input"| signal
+    market -->|"price/indicator input"| signal
+    derived -->|"proposal and signal data"| api
+    userdb -->|"profile, portfolio, watchlist, trades"| api

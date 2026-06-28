@@ -52,4 +52,12 @@ describe("evaluateAlphaAndCross signal thresholds", () => {
     expect(signals).toHaveLength(1);
     expect(signals[0].suggestionType).toBe("sell");
   });
+
+  test("clamps extreme scores while preserving the raw score in metadata", () => {
+    const signals = evaluateAlphaAndCross(buildState(47), {}, params);
+    expect(signals).toHaveLength(1);
+    expect(signals[0].quantScore).toBe(5);
+    expect(signals[0].metadata?.scoreComponents.rawFinalScore).toBe(47);
+    expect(signals[0].metadata?.scoreComponents.scoreWasClamped).toBe(true);
+  });
 });

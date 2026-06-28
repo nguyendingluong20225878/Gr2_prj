@@ -39,6 +39,14 @@ export type BackfillTokenPriceHistoryOptions = {
   tokenIds?: string[];
 };
 
+export type CapturePriceHistorySnapshotOptions = {
+  batchSize?: number;
+  delayMs?: number;
+  maxRetries?: number;
+  retryDelayMs?: number;
+  timestamp?: Date;
+};
+
 function downsamplePricePoints(
   points: HistoricalPricePoint[],
   intervalHours: number
@@ -235,6 +243,106 @@ export class TokenPriceService {
     await tokenPricesTable.bulkWrite(bulkOps as any);
 
     logger.info(`Đã cập nhật giá ${bulkOps.length} coin`);
+  }
+
+  static async capturePriceHistorySnapshot(
+    options: CapturePriceHistorySnapshotOptions = {}
+  ) {
+    const batchSize = positiveInteger(options.batchSize, 50);
+    const delayMs = options.delayMs ?? 15_000;
+    const maxRetries = options.maxRetries ?? 3;
+    const retryDelayMs = options.retryDelayMs ?? 60_000;
+    const requestedAt = options.timestamp ?? new Date();
+    const timestamp = new Date(
+      Math.floor(requestedAt.getTime() / (60 * 60 * 1000)) * 60 * 60 * 1000
+    );
+    const tokens: TokenBackfillRow[] = await (tokensTable as any)
+      .find(
+        { coingeckoId: { $exists: true, $ne: null } },
+        { _id: 1, coingeckoId: 1, symbol: 1 }
+      )
+      .sort({ symbol: 1 })
+      .lean();
+
+    let points = 0;
+    let failedTokens = 0;
+    let requests = 0;
+
+    for (let offset = 0; offset < tokens.length; offset += batchSize) {
+      const batch = tokens.slice(offset, offset + batchSize);
+      const ids = batch
+        .map((token) => token.coingeckoId)
+        .filter((id): id is string => Boolean(id));
+      let prices: Record<string, number> = {};
+      let success = false;
+
+      for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+        try {
+          requests += 1;
+          prices = await fetchPricesFromCoingecko(ids);
+          success = true;
+          break;
+        } catch (error) {
+          const isLastAttempt = attempt >= maxRetries;
+          const waitMs = retryDelayForAttempt(error, retryDelayMs, attempt);
+          logger.warn(
+            `Lỗi snapshot giá batch ${Math.floor(offset / batchSize) + 1} attempt ${attempt + 1}/${maxRetries + 1}`,
+            { error: String(error), retryInMs: isLastAttempt ? 0 : waitMs }
+          );
+          if (isLastAttempt) break;
+          await sleep(waitMs);
+        }
+      }
+
+      if (!success) {
+        failedTokens += batch.length;
+      } else {
+        const bulkOps = batch
+          .map((token) => {
+            const coingeckoId = token.coingeckoId;
+            const priceUsd = coingeckoId ? prices[coingeckoId] : undefined;
+            if (!coingeckoId || !Number.isFinite(priceUsd) || Number(priceUsd) <= 0) {
+              return null;
+            }
+
+            return {
+              updateOne: {
+                filter: { tokenAddress: coingeckoId, timestamp },
+                update: {
+                  $set: {
+                    tokenAddress: coingeckoId,
+                    token: token._id,
+                    priceUsd: String(priceUsd),
+                    timestamp,
+                    source: "coingecko_simple_price",
+                  },
+                },
+                upsert: true,
+              },
+            };
+          })
+          .filter(Boolean);
+
+        if (bulkOps.length > 0) {
+          await tokenPriceHistory.bulkWrite(bulkOps as any);
+        }
+        points += bulkOps.length;
+        failedTokens += batch.length - bulkOps.length;
+      }
+
+      if (offset + batchSize < tokens.length && delayMs > 0) {
+        await sleep(delayMs);
+      }
+    }
+
+    return {
+      tokens: tokens.length,
+      points,
+      failedTokens,
+      requests,
+      batchSize,
+      timestamp,
+    };
   }
 
   static async backfillHistoricalPrices(

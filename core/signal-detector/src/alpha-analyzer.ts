@@ -1,6 +1,14 @@
 import { calcEMA, calcMAD } from "./quant-math.js";
 import { DetectorHyperParams, TokenQuantState, QuantSignalResponse } from "./types.js";
 
+function clampScore(score: number, maxAbsScore: number): number {
+  if (!Number.isFinite(score)) return score;
+  const safeMaxAbsScore = Number.isFinite(maxAbsScore) && maxAbsScore > 0
+    ? maxAbsScore
+    : 5;
+  return Math.min(Math.max(score, -safeMaxAbsScore), safeMaxAbsScore);
+}
+
 //Phân tích tín hiệu alpha và chuẩn hóa chéo cho từng token
 export function evaluateAlphaAndCross(
   tokenStates: Map<string, TokenQuantState>,//quant của token  
@@ -98,6 +106,10 @@ export function evaluateAlphaAndCross(
     //  Trích xuất các tín hiệu thực sự có giá trị giao dịch
     if (!Number.isFinite(state.finalScore)) continue;
 
+    const rawFinalScore = state.finalScore!;
+    const clampedFinalScore = clampScore(rawFinalScore, hyperParams.maxAbsSignalScore);
+    state.finalScore = clampedFinalScore;
+
     const isNewToken = historyCount < 3; // Kiểm tra lính mới
     const regimeActionBuffer = options.marketRegime === "stress"
       ? 0.25 //khi thị trường căng thẳng, tăng ngưỡng hành động thêm 25% để tránh tín hiệu giả
@@ -107,16 +119,16 @@ export function evaluateAlphaAndCross(
     const actionThreshold = isNewToken
       ? hyperParams.coldStartActionThreshold
       : hyperParams.actionThreshold + regimeActionBuffer;
-    const suggestionType = state.finalScore! >= actionThreshold
+    const suggestionType = clampedFinalScore >= actionThreshold
       ? "buy"
-      : (state.finalScore! <= -actionThreshold ? "sell" : "hold");
+      : (clampedFinalScore <= -actionThreshold ? "sell" : "hold");
     const requiredSignalThreshold = suggestionType === "hold"
       ? hyperParams.holdSignalThreshold
       : hyperParams.signalThreshold;
 
-    if (Math.abs(state.finalScore!) >= requiredSignalThreshold) {
+    if (Math.abs(clampedFinalScore) >= requiredSignalThreshold) {
       state.signalMode = isNewToken ? "COLD_START" : "NORMALIZED_ALPHA";
-      const rawConfidence = Math.min(Math.abs(state.finalScore!) / hyperParams.confidenceDivisor, 0.95);
+      const rawConfidence = Math.min(Math.abs(clampedFinalScore) / hyperParams.confidenceDivisor, 0.95);
       const sampleSizePenalty = historyCount <= 3 ? 0.75 : historyCount <= 5 ? 0.9 : 1;
       
       finalSignals.push({
@@ -124,22 +136,22 @@ export function evaluateAlphaAndCross(
         tokenSymbol: state.symbol,
         tokenAddress: state.tokenAddress, 
         sources: state.sources, 
-        quantScore: state.finalScore,
+        quantScore: clampedFinalScore,
         volatilityFlag: state.avgEntropy,
         uncertaintyEntropy: state.avgEntropy,
-        sentimentType: state.finalScore! > 0 ? "positive" : "negative",
+        sentimentType: clampedFinalScore > 0 ? "positive" : "negative",
         suggestionType,
         
         //  CƠ CHẾ PHẠT TỰ TIN: Lính mới tối đa 40%, token ít mẫu bị giảm thêm để tránh saturate 100%.
         confidence: isNewToken 
-            ? Math.min(Math.abs(state.finalScore!) / hyperParams.coldStartConfidenceDivisor, 0.4) 
+            ? Math.min(Math.abs(clampedFinalScore) / hyperParams.coldStartConfidenceDivisor, 0.4)
             : rawConfidence * sampleSizePenalty,
         signalMode: state.signalMode,
             
         //  LÝ DO MINH BẠCH DÀNH CHO DASHBOARD LAYER 3
         rationaleSummary: isNewToken 
-            ? `[Cold Start] Tín hiệu dựa vào ${state.finalScore! > 0 ? 'bullish' : 'bearish'} sentiment mạnh mẽ hôm nay, nhưng thiếu dữ liệu lịch sử đối chiếu.` 
-            : `Quant V3 detected a significant ${state.finalScore! > 0 ? 'bullish' : 'bearish'} alpha divergence.`,
+            ? `[Cold Start] Tín hiệu dựa vào ${clampedFinalScore > 0 ? 'bullish' : 'bearish'} sentiment mạnh mẽ hôm nay, nhưng thiếu dữ liệu lịch sử đối chiếu.`
+            : `Quant V3 detected a significant ${clampedFinalScore > 0 ? 'bullish' : 'bearish'} alpha divergence.`,
         metadata: {
           type: "quant_v3_aggregation",
           hyperParams,
@@ -148,7 +160,10 @@ export function evaluateAlphaAndCross(
             timeZ: state.timeZ,
             pureAlphaZ: state.pureAlphaZ,
             crossZ: state.crossZ,
-            finalScore: state.finalScore,
+            rawFinalScore,
+            finalScore: clampedFinalScore,
+            scoreWasClamped: rawFinalScore !== clampedFinalScore,
+            maxAbsSignalScore: hyperParams.maxAbsSignalScore,
             btcTimeZ,
             crossMean,
             crossStd: safeCrossStd,

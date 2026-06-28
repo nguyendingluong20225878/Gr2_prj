@@ -31,7 +31,7 @@ async function loadLatestDynamicBetaFromDb(db: any, options: {
 
 async function loadPersistedRegimeFromDb(db: any, options: {
   maxAgeHours: number;
-}): Promise<{ regime: string; updatedAt: Date } | null> {
+}): Promise<{ regime: string; updatedAt: Date; confidence: number; sampleCount: number; reason: string } | null> {
   const row = await db.collection("job_state").findOne({ _id: "current-market-regime" });
   if (!row?.regime || !row.updatedAt) return null;
 
@@ -43,7 +43,13 @@ async function loadPersistedRegimeFromDb(db: any, options: {
     return null;
   }
 
-  return { regime: String(row.regime), updatedAt };
+  return {
+    regime: String(row.regime),
+    updatedAt,
+    confidence: Number(row.confidence ?? 0),
+    sampleCount: Number(row.sampleCount ?? 0),
+    reason: String(row.reason ?? ""),
+  };
 }
 
 async function loadQuantWatermark(db: any, fallbackFrom: Date): Promise<Date> {
@@ -200,7 +206,10 @@ async function main(): Promise<number> {
     });
     const regime = persistedRegime?.regime ?? rollingMetricsRegime;
     const regimeSource = persistedRegime ? "job_state" : "rolling_metrics";
-    console.log(`📈 Dynamic beta loaded for ${Object.keys(betaBySymbol).length} tokens, regime=${regime}, regimeSource=${regimeSource}.`);
+    const regimeDetails = persistedRegime
+      ? `, regimeConfidence=${persistedRegime.confidence.toFixed(3)}, regimeSamples=${persistedRegime.sampleCount}, regimeReason=${persistedRegime.reason}`
+      : "";
+    console.log(`📈 Dynamic beta loaded for ${Object.keys(betaBySymbol).length} tokens, regime=${regime}, regimeSource=${regimeSource}${regimeDetails}.`);
 
     const results = await detectSignalWithFinBertQuant({
       formattedNews,

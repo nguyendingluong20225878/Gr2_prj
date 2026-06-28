@@ -26,7 +26,7 @@ research metrics: rolling_metrics, source_weights, signal_weights, regime
 signal-detector Quant V3 -> signals
         |
         v
-Layer3 proposal generator -> proposals
+Layer3 proposal workflow -> proposals
         |
         v
 backtest outcome + trade simulation -> proposals / backtest_* / perp_positions
@@ -55,11 +55,12 @@ Scripts quan trong o root:
 
 - `npm run dev`: chay `turbo run dev`.
 - `npm run build`: build toan bo workspace qua Turbo.
-- `npm run pipeline`: chay orchestrator `@gr2/run`.
-- `npm run pipeline:batch`: chay tuan tu scraper/news/prices/backtest/metrics/regime/weights/signal/layer3.
+- `npm run pipeline:core`: chay core pipeline mot lan thong qua orchestrator `@gr2/run`.
+- `npm run pipeline`: alias cua `pipeline:core`.
+- `npm run pipeline:batch`: alias tuong thich nguoc cua `pipeline:core`.
 - `npm run scraper`: chay X scraper.
 - `npm run news`: chay news scraper.
-- `npm run prices:backfill:1d`: backfill lich su gia 1 ngay.
+- `npm run prices:backfill:1d`: backfill lich su gia 1 ngay khi can chay thu cong; job gia duoc van hanh rieng, khong nam trong `pipeline:core`.
 - `npm run metrics`: tinh rolling metrics.
 - `npm run regime`: tinh market regime.
 - `npm run weights`: cap nhat dynamic source weights.
@@ -274,7 +275,7 @@ Signal lifecycle:
 
 ### 3.7 `core/layer3`
 
-Package proposal generator bang LangGraph + Gemini.
+Package Layer 3 bang LangGraph + Gemini, chịu trách nhiệm sinh proposal và diễn giải khuyến nghị.
 
 Thanh phan:
 
@@ -313,7 +314,7 @@ Thanh phan:
 
 Mac dinh:
 
-- Cron expression: `0 8,20 * * *`.
+- Cron expression: `0 0,12 * * *`.
 - Timezone: `Asia/Ho_Chi_Minh`.
 - Co `PIPELINE_RUN_ON_START` de chay ngay khi start.
 - Co lock Mongo collection `job_locks`, lock id `master-cron-pipeline`, TTL mac dinh 180 phut.
@@ -322,13 +323,12 @@ Pipeline steps:
 
 1. X scraper, optional neu du credential hoac `RUN_X_SCRAPER=true`.
 2. News scraper, optional.
-3. Backfill gia 1 ngay.
-4. Backtest outcome 12h.
-5. Rolling metrics.
-6. Regime.
-7. Dynamic source weights.
-8. Quant signal.
-9. Layer3 proposal.
+3. Rolling metrics.
+4. Regime.
+5. Dynamic source weights.
+6. Quant signal.
+7. Layer3 proposal.
+8. Backtest outcome 12h.
 
 Diem tot:
 
@@ -644,7 +644,7 @@ Trade demo:
 ```text
 X accounts -> x-scaper -> tweets
 News sites -> news-scraper -> news_articles
-CoinGecko/Jupiter -> token-price-fetcher -> tokens/token_prices/token_price_history
+CoinGecko/Jupiter -> token-price-fetcher job rieng -> tokens/token_prices/token_price_history
 ```
 
 ### 6.2 Research Metrics
@@ -891,7 +891,7 @@ Uu tien dai han:
 |   |-- token-price-fetcher     token list, price current/history
 |   |-- research                rolling metrics, regime, weights, backtest
 |   |-- signal-detector         Quant V3 signal pipeline
-|   |-- layer3                  LangGraph/Gemini proposal generator
+|   |-- layer3                  LangGraph/Gemini Layer 3 proposal workflow
 |   `-- run                     master cron/orchestrator
 |-- scripts
 |   `-- run-concurrent.mjs      helper run concurrent commands
@@ -920,16 +920,16 @@ Chay toan bo dev qua Turbo:
 npm run dev
 ```
 
+Chay core pipeline mot lan:
+
+```bash
+npm run pipeline:core
+```
+
 Chay pipeline scheduler:
 
 ```bash
-npm run pipeline
-```
-
-Chay batch pipeline mot lan theo chuoi:
-
-```bash
-npm run pipeline:batch
+npm run pipeline:scheduler
 ```
 
 Chay tung buoc core:
@@ -942,7 +942,7 @@ npm run metrics
 npm run regime
 npm run weights
 npm run signal
-npm --workspace @gr2/proposal-generator run layer3
+npm --workspace @gr2/layer3 run layer3
 ```
 
 Build/test:
@@ -951,4 +951,3 @@ Build/test:
 npm run build
 npm run test
 ```
-

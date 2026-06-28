@@ -14,6 +14,10 @@ async function main(): Promise<number> {
     const regime = await getCurrentRegime({
       windowHours: readNumberArg("window-hours", 24),
       maxAgeHours: readNumberArg("max-age-hours", 48),
+      minSampleCount: readNumberArg(
+        "min-sample-count",
+        Number(process.env.REGIME_MIN_SAMPLE_COUNT ?? 20)
+      ),
     });
     await persistCurrentRegime(regime);
     console.log(JSON.stringify({ status: "COMPLETED", ...regime }, null, 2));

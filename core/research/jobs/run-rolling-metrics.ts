@@ -30,11 +30,28 @@ async function main(): Promise<number> {
       minSamples: readNumberArg("min-samples", 6),
     });
     const regime = results[0]?.marketRegime ?? "mixed";
-    console.log(JSON.stringify({
-      status: "COMPLETED",
+    const summary = {
       rows: results.length,
       regime,
       asOf: results[0]?.asOf ?? new Date(),
+      updatedAt: new Date(),
+    };
+    const db = mongoose.connection.db;
+    if (db) {
+      await db.collection("job_state").updateOne(
+        { _id: "latest-rolling-metrics-run" },
+        {
+          $set: summary,
+          $setOnInsert: { createdAt: new Date() },
+        },
+        { upsert: true }
+      );
+    }
+    console.log(JSON.stringify({
+      status: "COMPLETED",
+      rows: summary.rows,
+      regime: summary.regime,
+      asOf: summary.asOf,
     }, null, 2));
     return 0;
   } finally {

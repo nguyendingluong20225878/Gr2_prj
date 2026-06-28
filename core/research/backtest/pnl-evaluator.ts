@@ -59,6 +59,7 @@ export type PnlEvaluationResult = {
   winRate: number;
   totalPnL: number;
   totalPnlPercentage: number;
+  endingPnl: number;
   endingEquity: number;
   maxDrawdownUsd: number;
   trades: EvaluatedTrade[];
@@ -165,6 +166,7 @@ export function evaluateVirtualProposals(
     winRate: 0,
     totalPnL: 0,
     totalPnlPercentage: 0,
+    endingPnl: 0,
     endingEquity: 0,
     maxDrawdownUsd: 0,
     trades: [],
@@ -209,6 +211,7 @@ export function evaluateVirtualProposals(
     result.evaluated += 1;
     result.totalPnL += pnl.actualPnL;
     result.totalPnlPercentage += pnl.pnlPercentage;
+    result.endingPnl = equity;
     result.endingEquity = equity;
     if (pnl.winLossStatus === "WIN") result.wins += 1;
     if (pnl.winLossStatus === "LOSS") result.losses += 1;

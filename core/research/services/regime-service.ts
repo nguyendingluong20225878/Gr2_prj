@@ -15,6 +15,7 @@ export type CurrentRegimeState = {
 export async function getCurrentRegime(options: {
   windowHours?: number;
   maxAgeHours?: number;
+  minSampleCount?: number;
 } = {}): Promise<{
   regime: MarketRegime | "mixed";
   confidence: number;
@@ -22,9 +23,26 @@ export async function getCurrentRegime(options: {
   asOf: Date | null;
   reason: string;
 }> {
-  await connectToDatabase();
+  const connection = await connectToDatabase();
   const windowHours = options.windowHours ?? 24;
+  const minSampleCount = options.minSampleCount ?? 20;
   const minAsOf = new Date(Date.now() - (options.maxAgeHours ?? windowHours * 2) * 60 * 60 * 1000);
+
+  const latestRollingRun = connection.db
+    ? await connection.db.collection("job_state").findOne({ _id: "latest-rolling-metrics-run" })
+    : null;
+  const latestRollingRows = Number(latestRollingRun?.rows);
+  if (Number.isFinite(latestRollingRows) && latestRollingRows < minSampleCount) {
+    const latestRollingAsOf = latestRollingRun?.asOf ? new Date(latestRollingRun.asOf) : null;
+    return {
+      regime: "mixed",
+      confidence: 0,
+      sampleCount: latestRollingRows,
+      asOf: latestRollingAsOf && Number.isFinite(latestRollingAsOf.getTime()) ? latestRollingAsOf : null,
+      reason: `Latest rolling_metrics run produced insufficient rows (${latestRollingRows}/${minSampleCount}); guarded fallback mixed.`,
+    };
+  }
+
   const rows = await rollingMetricsTable
     .find({ windowHours, asOf: { $gte: minAsOf } })
     .sort({ asOf: -1 })
@@ -43,6 +61,16 @@ export async function getCurrentRegime(options: {
 
   const latestAsOf = new Date((rows[0] as any).asOf);
   const latest = (rows as any[]).filter((row) => new Date(row.asOf).getTime() === latestAsOf.getTime());
+  if (latest.length < minSampleCount) {
+    return {
+      regime: "mixed",
+      confidence: 0,
+      sampleCount: latest.length,
+      asOf: latestAsOf,
+      reason: `Insufficient latest rolling_metrics rows (${latest.length}/${minSampleCount}); guarded fallback mixed.`,
+    };
+  }
+
   const counts = new Map<string, number>();
   for (const row of latest) {
     const regime = String(row.marketRegime ?? "mixed");

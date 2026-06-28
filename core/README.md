@@ -13,18 +13,20 @@
 | `signal-detector` | Scores tweet/news evidence and emits token-level quant signals. |
 | `research` | Backtest, rolling metrics, regime detection, source weights, and maintenance jobs. |
 | `layer3` | Generates Vietnamese proposal rationales from raw signals using LangGraph/Gemini. |
-| `run` | Cron-style process that orchestrates signal detection and Layer 3 batches. |
+| `run` | Canonical one-shot and cron-style process that orchestrates the full core pipeline. |
 
 ## Typical Batch Flow
 
 ```text
 x-scaper + news-scraper
-→ token-price-fetcher
-→ research/backtest + metrics/regime/weights
+→ research metrics/regime/weights
 → signal-detector
 → layer3
+→ research/backtest outcome
 → apps/web
 ```
+
+`token-price-fetcher` is deployed as a separate price job and writes market data to MongoDB for the pipeline and dashboard to consume.
 
 ## Root Commands
 
@@ -33,14 +35,16 @@ From the repository root:
 ```bash
 npm run scraper                  # X/Twitter scraper
 npm run news                     # News scraper
-npm run prices:backfill:1d       # One-day price history backfill
+npm run prices:backfill:1d       # Manual one-day price history backfill, outside pipeline:core
 npm run backtest:outcome         # Backtest generated proposals
 npm run metrics                  # Rolling metrics
 npm run regime                   # Regime detection
 npm run weights                  # Dynamic source/strategy weights
 npm run signal                   # Quant signal detector
-npm run pipeline:batch           # Full sequential batch pipeline
-npm run pipeline                 # Cron runner package
+npm run pipeline:core            # Full one-shot core pipeline
+npm run pipeline                 # Alias of pipeline:core
+npm run pipeline:batch           # Backward-compatible alias of pipeline:core
+npm run pipeline:scheduler       # Long-running cron scheduler
 ```
 
 ## Environment

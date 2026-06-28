@@ -11,7 +11,7 @@
 - `signal-detector`: FinBERT + quant alpha engine.
 - `layer3`: LangGraph/Gemini proposal generator.
 - `research/backtest`: proposal PnL and hyperparameter replay.
-- `run`: cron runner.
+- `run`: canonical pipeline runner, supporting both one-shot execution and cron scheduling.
 
 ### 3. Luồng hoạt động
 
@@ -27,11 +27,10 @@ Core enforces the system rule: math/ML produces ground truth signal; LLM explain
 
 ### 6. Rủi ro / vấn đề
 
-- Scheduler in `core/run` currently comments out X scraping and only runs quant + layer3 every minute.
+- `core/run` orchestrates the full pipeline through `npm run pipeline:core`; scheduler mode uses the same pipeline with the default cron expression `0 0,12 * * *`.
 - External API credentials and rate limits directly affect pipeline.
 - Lack of strong job queue/retry/state machine can cause duplicate or missed processing.
 
 ### 7. Cách cải thiện
 
 Introduce durable job orchestration, idempotency keys per stage, typed event contracts, and observability dashboards for pipeline health.
-

@@ -1,0 +1,92 @@
+classDiagram
+    direction LR
+
+    class AuthRoutes {
+        <<route module>>
+        +POST nonce(req: NextRequest) Promise~NextResponse~
+        +POST verify(req: NextRequest) Promise~NextResponse~
+        +GET verifySession(req: Request) Promise~NextResponse~
+        +POST logout(req: Request) Promise~NextResponse~
+    }
+
+    class SignalProposalRoutes {
+        <<route modules>>
+        +GET signals(req: Request) Promise~NextResponse~
+        +GET signalById(req: Request, id: string) Promise~NextResponse~
+        +GET proposals() Promise~NextResponse~
+        +GET proposalById(req: Request, id: string) Promise~NextResponse~
+        +POST decision(req: Request, id: string) Promise~NextResponse~
+        +GET timeline(id: string) Promise~NextResponse~
+        +GET scoreExplanation(id: string) Promise~NextResponse~
+    }
+
+    class PortfolioRoutes {
+        <<route modules>>
+        +GET portfolio(req: Request) Promise~NextResponse~
+        +GET crossImpacts(req: Request) Promise~NextResponse~
+        +GET watchlist(req: Request) Promise~NextResponse~
+        +POST watchlist(req: Request) Promise~NextResponse~
+        +PATCH watchlistItem(req: Request, proposalId: string) Promise~NextResponse~
+        +DELETE watchlistItem(req: Request, proposalId: string) Promise~NextResponse~
+    }
+
+    class TradeRoutes {
+        <<route modules>>
+        +POST preview(req: Request) Promise~NextResponse~
+        +POST execute(req: Request) Promise~NextResponse~
+    }
+
+    class MarketHealthRoutes {
+        <<route modules>>
+        +GET priceHistory(req: Request, symbol: string) Promise~NextResponse~
+        +GET modelHealth() Promise~NextResponse~
+    }
+
+    class WalletAuthService {
+        <<service: server/auth>>
+        +AUTH_COOKIE_NAME: string
+        +createWalletNonce(walletAddress: string, domain: string) Promise~NonceResult~
+        +verifyWalletSignature(input: VerifyInput) Promise~VerifyResult~
+        +createSession(walletAddress: string, userId?: string) Promise~SessionResult~
+        +getSessionUser(req?: Request) Promise~SessionUser|null~
+        +requireSessionUser(req?: Request) Promise~SessionUser~
+        +revokeSession(req: Request) Promise~void~
+    }
+
+    class SemanticMapper {
+        <<utility: lib/utils>>
+        +normalizeAction(value?: string) CanonicalAction
+        +normalizeConfidence(value?: number) number
+        +normalizePercent(value?: number) number|null
+        +deriveSignalHealth(input: SignalSemanticsInput) SignalHealth
+        +deriveLayerConflict(layer2?: string, layer3?: string) LayerConflict
+        +deriveBacktestSemantics(input: BacktestSemanticsInput) BacktestSemantics
+    }
+
+    class DataAccess {
+        <<adapter>>
+        +Proposal: Model~Proposal~
+        +SignalModel: Model~Signal~
+        +User: Model~User~
+        +WatchlistModel: Model~WatchlistRecord~
+        +tokenPriceHistory: Model~TokenPriceHistory~
+        +backtestResultsTable: Model~BacktestResult~
+        +connectDB() Promise~Mongoose~
+        +collection(name: string) Collection~Document~
+    }
+
+    AuthRoutes ..> WalletAuthService : delegates
+    AuthRoutes ..> DataAccess : reads user
+
+    SignalProposalRoutes ..> SemanticMapper : maps DTO
+    SignalProposalRoutes ..> DataAccess : queries
+
+    PortfolioRoutes ..> WalletAuthService : authorizes
+    PortfolioRoutes ..> DataAccess : queries
+
+    TradeRoutes ..> WalletAuthService : authorizes
+    TradeRoutes ..> DataAccess : transaction writes
+
+    MarketHealthRoutes ..> DataAccess : queries
+
+    WalletAuthService ..> DataAccess : session and user data

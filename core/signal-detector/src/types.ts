@@ -81,6 +81,7 @@ export interface DetectorHyperParams {
   actionThreshold: number;
   holdSignalThreshold: number;
   coldStartActionThreshold: number;
+  maxAbsSignalScore: number;
   confidenceDivisor: number;
   coldStartConfidenceDivisor: number;
 }
@@ -96,6 +97,7 @@ export const DEFAULT_HYPER_PARAMS: DetectorHyperParams = {
   actionThreshold: 1.8,//ngưỡng để xác định có nên đưa ra gợi ý hành động buy/sell hay không
   holdSignalThreshold: 1.8,//hold chỉ được emit khi điểm rất mạnh nhưng chưa đủ điều kiện buy/sell
   coldStartActionThreshold: 999,//Cold-start chỉ nên watch/hold, không tự động đẩy BUY/SELL khi thiếu lịch sử
+  maxAbsSignalScore: 5,//Clamp final score de tranh outlier cuc doan lam meo ranking/action.
   confidenceDivisor: 3,//hệ số để chia điểm tín hiệu khi tính confidence (ví dụ: confidence = finalScore / confidenceDivisor)
   coldStartConfidenceDivisor: 5,//hệ số để chia điểm tín hiệu khi tính confidence trong trường hợp cold start (ít dữ liệu) (ví dụ: confidence = finalScore / coldStartConfidenceDivisor)
 };
@@ -151,6 +153,10 @@ export function resolveHyperParams(
     coldStartActionThreshold: positiveOrFallback(
       overrides?.coldStartActionThreshold,
       DEFAULT_HYPER_PARAMS.coldStartActionThreshold
+    ),
+    maxAbsSignalScore: positiveOrFallback(
+      overrides?.maxAbsSignalScore,
+      DEFAULT_HYPER_PARAMS.maxAbsSignalScore
     ),
     confidenceDivisor: positiveOrFallback(
       overrides?.confidenceDivisor,

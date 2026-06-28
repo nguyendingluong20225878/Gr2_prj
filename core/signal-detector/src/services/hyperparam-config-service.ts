@@ -41,6 +41,7 @@ function applyEnvOverrides(params: DetectorHyperParams): DetectorHyperParams {
     signalThreshold: readPositiveEnvNumber("SIGNAL_THRESHOLD") ?? params.signalThreshold,
     actionThreshold: readPositiveEnvNumber("ACTION_THRESHOLD") ?? params.actionThreshold,
     holdSignalThreshold: readPositiveEnvNumber("HOLD_SIGNAL_THRESHOLD") ?? params.holdSignalThreshold,
+    maxAbsSignalScore: readPositiveEnvNumber("MAX_ABS_SIGNAL_SCORE") ?? params.maxAbsSignalScore,
   });
 }
 

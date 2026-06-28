@@ -1,14 +1,15 @@
 # @gr2/run
 
-`core/run` is the cron-style orchestrator for the backend pipeline.
+`core/run` is the canonical orchestrator for the backend pipeline. It can run once for an external scheduler or run as a long-lived cron process.
 
 ## Responsibilities
 
 - Connect to MongoDB.
-- Schedule periodic backend work with `node-cron`.
+- Run the full backend pipeline in a single, ordered flow.
+- Schedule periodic backend work with `node-cron` when started in scheduler mode.
 - Prevent local overlap with an in-process lock.
 - Prevent multi-instance overlap with a MongoDB job lock.
-- Run quant signal detection and Layer 3 proposal generation sequentially.
+- Run scraping, price backfill, backtest outcome, metrics, regime, weights, quant signal detection, and Layer 3 proposal generation sequentially.
 
 ## Structure
 
@@ -21,11 +22,15 @@ core/run
 ## Commands
 
 ```bash
-# Start development runner
-npm --workspace @gr2/run run dev
+# Run the full pipeline once
+npm run pipeline:core
 
-# Root shortcut
+# Backward-compatible aliases for the same one-shot runner
 npm run pipeline
+npm run pipeline:batch
+
+# Start the long-running cron scheduler
+npm run pipeline:scheduler
 
 # Start compiled runner
 npm --workspace @gr2/run run start
@@ -44,6 +49,6 @@ Sibling scripts may require their own env variables, such as `HUGGINGFACE_API_KE
 
 ## Notes
 
-- The runner is orchestration glue. Business logic lives in `signal-detector`, `layer3`, and `research`.
-- The X scraping step is currently not part of the active runner flow in `src/index.ts`.
-- `execSync` blocks the event loop; for production-grade scheduling, consider a durable queue with per-stage retries and metrics.
+- The runner is orchestration glue. Business logic lives in `x-scaper`, `news-scraper`, `token-price-fetcher`, `research`, `signal-detector`, and `layer3`.
+- The root command `npm run pipeline:core` is kept as the stable operational command.
+- For production-grade scaling, consider a durable queue with per-stage retries and metrics.

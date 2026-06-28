@@ -1,333 +1,108 @@
 erDiagram
     USERS {
-        ObjectId _id
-        string walletAddress
-        string email
+        ObjectId _id PK
+        string email UK
+        string walletAddress IDX
         string name
-        number age
         string riskTolerance
         string tradeStyle
-        number totalAssetUsd
-        number cryptoInvestmentUsd
-        boolean notificationEnabled
         array balances
         date createdAt
         date updatedAt
     }
 
     TOKENS {
-        ObjectId _id## Prompt 3: Complete `/recommendations` Recommendation Center Filters
-
-```txt
-Hãy audit và hoàn thiện `/recommendations` trong:
-
-- `apps/web/app/recommendations/page.tsx`
-- `apps/web/app/recommendations/components/RecommendationCard.tsx`
-
-Quan trọng:
-
-- Recommendation Center có thể đã có header, tabs, card hierarchy.
-- Trước khi sửa, liệt kê phần đã đạt và phần còn thiếu.
-- Trọng tâm prompt này là filter bar thật, URL search params, và các gap còn thiếu trên card.
-- Không gọi API riêng cho từng tab/filter.
-
-Mục tiêu UX:
-
-Recommendation Center gom toàn bộ recommendations và opportunities thành một workflow chuẩn hóa. User phải phân biệt được:
-
-- Cái gì cần xử lý ngay.
-- Cái gì liên quan danh mục.
-- Cái gì ngoài danh mục.
-- Cái gì đã kiểm chứng.
-- Cái gì hết hiệu lực.
-
-Yêu cầu layout:
-
-1. Header
-   - Eyebrow: `Trung tâm khuyến nghị`.
-   - Title: `Chọn việc cần quyết định tiếp theo`.
-   - Description: Ưu tiên danh mục trước, sau đó mới đến cơ hội ngoài ví.
-
-2. Filter bar
-   Thêm filter controls thật, ưu tiên search params để hỗ trợ back/forward:
-   - Token: tất cả / token symbols.
-   - Hành động: tất cả / BUY / SELL / HOLD / WAIT...
-   - Rủi ro: tất cả / low / medium / high / critical.
-   - Độ tin cậy: tất cả / >50 / >60 / >75.
-   - Thời hạn: tất cả / còn hiệu lực / sắp hết hạn / hết hiệu lực.
-   - Dữ liệu: tất cả / đủ dữ liệu / thiếu dữ liệu.
-   - Có `Reset filters`.
-
-Search params:
-
-- `tab=urgent|portfolio|outside-portfolio|verified|expired`
-- `token=SOL`
-- `action=BUY|SELL|HOLD|WAIT`
-- `risk=LOW|MEDIUM|HIGH|CRITICAL`
-- `confidence=50|60|75`
-- `expiry=active|expiring|expired|all`
-- `data=complete|missing|all`
-
-Implementation requirements:
-
-- Updating filters phải preserve `tab`.
-- Derive token options từ `proposals.data`.
-- Filters phải accessible và responsive.
-- Empty state phải phản ánh filtered result.
-
-3. Tabs
-   Giữ đúng 5 tabs:
-   - `Cần xử lý ngay` -> `?tab=urgent`.
-   - `Liên quan danh mục` -> `?tab=portfolio`.
-   - `Ngoài danh mục` -> `?tab=outside-portfolio`.
-   - `Đã kiểm chứng` -> `?tab=verified`.
-   - `Hết hiệu lực` -> `?tab=expired`.
-
-4. Recommendation list
-   - Urgent và portfolio tabs nên dùng list một cột để giữ priority order.
-   - Outside portfolio có thể dùng grid nếu hợp responsive.
-
-5. RecommendationCard
-   Card phải render theo hierarchy:
-   - Token.
-   - Action badge.
-   - Portfolio impact badge.
-   - Risk badge.
-   - Expiry/status badge.
-   - Watched badge.
-   - Confidence: `Tin cậy`.
-   - Quant score: `Điểm tín hiệu` nếu data có `quantScore` hoặc `scoreComponents.finalScore`.
-   - Short reason.
-   - Missing data warning nếu status `MISSING_DATA`.
-   - Expired note nếu status `EXPIRED`.
-   - CTA chính: `Xem chi tiết`.
-   - CTA phụ: `Theo dõi`, nếu chưa watched và không expired/executed.
-
-Logic bắt buộc:
-
-- Dùng `derivePortfolioImpact`, `deriveRecommendationStatus`, `deriveIsWatched`.
-- Không gọi API riêng cho từng tab; dùng data từ `useNdlData()` rồi filter frontend.
-- First derive all items.
-- Apply tab filter.
-- Apply filter bar.
-- Sort by priority.
-- Tab filter:
-  - `verified`: status `VERIFIED`.
-  - `expired`: status `EXPIRED`.
-  - `outside-portfolio`: impact `OUTSIDE`, bỏ `EXPIRED`, `VERIFIED`, `EXECUTED`.
-  - `portfolio`: impact `DIRECT` hoặc `INDIRECT`, bỏ `EXPIRED`, `VERIFIED`, `EXECUTED`.
-  - `urgent`: status `ACTIVE`, `EXPIRING_SOON`, `MISSING_DATA`.
-- Apply filter bar sau khi tab filter hoặc theo thứ tự hợp lý, nhưng UX phải nhất quán.
-- Priority score:
-  - Base confidence.
-  - Expiring soon bonus.
-  - Missing data bonus vừa phải.
-  - Direct > indirect > outside.
-  - SELL/high risk ưu tiên cao.
-
-Acceptance criteria:
-
-- Có filter bar hoạt động.
-- URL phản ánh filter hiện tại.
-- Browser back/forward hoạt động với filter.
-- Reset filters hoạt động và giữ tab hiện tại.
-- Có đủ 5 tabs.
-- Không có tab `Đang theo dõi`.
-- `Đã theo dõi` chỉ là badge.
-- Expired card muted, không có trade/execute CTA.
-- Missing data card có warning.
-- Card có `Điểm tín hiệu` nếu proposal có quant data.
-- Không dùng chữ `Proposal`, `Quant`, `Cross-impact` trong UI thường.
-```
-        string address
-        string canonicalKey
-        string chain
-        string primaryAddress
-        array aliases
-        string coingeckoId
-        string symbol
+        ObjectId _id PK
+        string address UK
+        string canonicalKey UK
+        string coingeckoId UK
+        string chain IDX
+        string symbol IDX
         string name
-        number decimals
-        string type
-        string iconUrl
+        string type IDX
         number priceUsd
         date priceUpdatedAt
     }
 
-    TOKEN_PRICES {
-        ObjectId _id
-        string tokenKey
-        ObjectId token
-        number priceUsd
-        date lastUpdated
-        string source
-    }
-
     TOKEN_PRICE_HISTORY {
-        ObjectId _id
-        string tokenAddress
-        ObjectId token
+        ObjectId _id PK
+        ObjectId token FK
+        string tokenAddress IDX
         string priceUsd
-        date timestamp
+        date timestamp IDX
         string source
     }
 
     SIGNALS {
-        ObjectId _id
-        string tokenSymbol
-        string tokenAddress
-        string signalKey
-        date detectedAt
-        string batchId
-        date batchStartedAt
+        ObjectId _id PK
+        string signalKey UK
+        string tokenSymbol IDX
+        string tokenAddress IDX
+        string batchId IDX
+        date detectedAt IDX
         array sources
         string sentimentType
-        string suggestionType
+        string suggestionType IDX
         number directionScore
         number quantScore
         number confidence
-        string rationaleSummary
-        date expiresAt
+        string signalMode IDX
         string status
-        date layer3LockedAt
-        string layer3LockedBy
-        string signalMode
-        object metadata
-        date createdAt
-        date updatedAt
+        date expiresAt IDX
     }
 
     PROPOSALS {
-        ObjectId _id
-        ObjectId signalId
-        string tokenSymbol
-        string tokenAddress
+        ObjectId _id PK
+        ObjectId signalId FK
+        ObjectId userId FK
+        ObjectId triggerSignalId FK
+        ObjectId overriddenByProposalId FK
+        string tokenSymbol UK_ACTIVE
+        string tokenAddress UK_ACTIVE
         string suggestionType
-        string sentimentType
         number quantScore
         number confidence
-        string batchId
-        date batchStartedAt
-        string lifecycleStatus
-        ObjectId overriddenByProposalId
-        string rationaleSummary
-        array sources
+        string lifecycleStatus IDX
         string executionStatus
-        date expiresAt
-        number entryPrice
-        number exitPrice
-        number actualPnL
-        string winLossStatus
-        number pnlPercentage
-        date backtestedAt
-        ObjectId userId
-        ObjectId triggerSignalId
-        string action
-        object financialImpact
-        object analysis
-        string status
-        date createdAt
-        date updatedAt
+        date expiresAt IDX
+        string winLossStatus IDX
+        date backtestedAt IDX
     }
 
     BACKTEST_RESULTS {
-        ObjectId _id
-        ObjectId proposalId
-        ObjectId signalId
-        string tokenSymbol
-        string tokenAddress
-        string suggestionType
-        date detectedAt
-        date expiresAt
+        ObjectId _id PK
+        ObjectId proposalId FK_UK
+        ObjectId signalId FK
+        string tokenSymbol IDX
+        string tokenAddress IDX
+        date detectedAt IDX
+        date expiresAt IDX
         number entryPrice
         number exitPrice
         number pnlPercentage
         number actualPnL
-        string winLossStatus
+        string winLossStatus IDX
         number feeRate
         number slippageRate
         number notionalUsd
-        string dataQuality
+        string dataQuality IDX
     }
 
     WATCHLIST_ITEMS {
-        ObjectId _id
-        ObjectId proposalId
-        ObjectId userId
-        string walletAddress
+        ObjectId _id PK
+        ObjectId proposalId FK
+        ObjectId userId FK
+        string walletAddress IDX
         string addedBy
-        string reason
-        string status
+        string status IDX
         date addedAt
         date resolvedAt
     }
 
-    TRANSACTIONS {
-        ObjectId _id
-        ObjectId userId
-        string transactionType
-        string fromTokenAddress
-        string toTokenAddress
-        ObjectId fromToken
-        ObjectId toToken
-        string amountFrom
-        string amountTo
-        string fee
-        object details
-        date createdAt
-    }
-
-    PERP_POSITIONS {
-        ObjectId _id
-        ObjectId userId
-        ObjectId proposalId
-        ObjectId executionId
-        string tokenSymbol
-        string tokenAddress
-        ObjectId token
-        string positionDirection
-        number leverage
-        number entryPrice
-        number executedPrice
-        number positionSize
-        number liquidationPrice
-        string status
-        date createdAt
-        date updatedAt
-    }
-
-    INVESTMENTS {
-        ObjectId _id
-        ObjectId userId
-        string tokenAddress
-        ObjectId token
-        string actionType
-        string principal
-        string accruedInterest
-        date startDate
-        date lastUpdate
-        number interestRate
-        string status
-    }
-
-    TRADES {
-        ObjectId _id
-        string walletAddress
-        ObjectId proposalId
-        string tokenSymbol
-        string type
-        number amount
-        number entryPrice
-        number currentPrice
-        string status
-        number pnl
-        date executedAt
-    }
-
     TRADE_EXECUTIONS {
-        ObjectId _id
-        ObjectId proposalId
-        ObjectId userId
+        ObjectId _id PK
+        ObjectId proposalId FK
+        ObjectId userId FK
         string walletAddress
         string tokenSymbol
         string tokenAddress
@@ -337,99 +112,66 @@ Acceptance criteria:
         string txHash
         number requestedPrice
         number executedPrice
+        number slippagePct
         number sizeUsd
         number notionalUsd
         number leverage
-        object riskPlan
         date requestedAt
         date executedAt
     }
 
+    PERP_POSITIONS {
+        ObjectId _id PK
+        ObjectId userId FK
+        ObjectId proposalId FK
+        ObjectId executionId FK
+        ObjectId token FK
+        string tokenSymbol
+        string tokenAddress IDX
+        string positionDirection
+        number leverage
+        number entryPrice
+        number executedPrice
+        number positionSize
+        number liquidationPrice IDX
+        string status IDX
+        date createdAt
+        date updatedAt
+    }
+
     PROPOSAL_DECISIONS {
-        ObjectId _id
-        ObjectId proposalId
-        ObjectId signalId
-        ObjectId userId
+        ObjectId _id PK
+        ObjectId proposalId FK
+        ObjectId signalId FK
+        ObjectId userId FK
+        ObjectId executionId FK
         string walletAddress
         string decision
         string reason
         array blockersAtDecision
         object snapshot
-        ObjectId executionId
         date createdAt
-    }
-
-    TWEETS {
-        ObjectId _id
-        string authorId
-        string url
-        string content
-        number retweetCount
-        number replyCount
-        number likeCount
-        date tweetTime
-        object metadata
-        boolean isSignalGenerated
-    }
-
-    X_ACCOUNTS {
-        ObjectId _id
-        string accountId
-        string username
-        string displayName
-        string profileUrl
-        boolean enabled
-    }
-
-    NEWS_SITES {
-        ObjectId _id
-        string url
-        string title
-        string content
-        array userIds
-        date lastScraped
-        string tier
-        number siteWeight
-    }
-
-    NEWS_ARTICLES {
-        ObjectId _id
-        string siteUrl
-        string articleUrl
-        string title
-        string summary
-        string content
-        date publishedAt
-        array detectedTokens
-        object raw
-        date scrapedAt
     }
 
     USERS ||--o{ PROPOSALS : "userId"
     USERS ||--o{ WATCHLIST_ITEMS : "userId"
-    USERS ||--o{ TRANSACTIONS : "userId"
-    USERS ||--o{ PERP_POSITIONS : "userId"
-    USERS ||--o{ INVESTMENTS : "userId"
     USERS ||--o{ TRADE_EXECUTIONS : "userId"
+    USERS ||--o{ PERP_POSITIONS : "userId"
     USERS ||--o{ PROPOSAL_DECISIONS : "userId"
-    TOKENS ||--o{ TOKEN_PRICES : "token"
+
     TOKENS ||--o{ TOKEN_PRICE_HISTORY : "token"
-    TOKENS ||--o{ TRANSACTIONS : "fromToken"
-    TOKENS ||--o{ TRANSACTIONS : "toToken"
     TOKENS ||--o{ PERP_POSITIONS : "token"
-    TOKENS ||--o{ INVESTMENTS : "token"
+
     SIGNALS ||--o{ PROPOSALS : "signalId"
     SIGNALS ||--o{ BACKTEST_RESULTS : "signalId"
     SIGNALS ||--o{ PROPOSAL_DECISIONS : "signalId"
-    PROPOSALS ||--o{ BACKTEST_RESULTS : "proposalId"
+
+    PROPOSALS ||--o| BACKTEST_RESULTS : "proposalId"
     PROPOSALS ||--o{ WATCHLIST_ITEMS : "proposalId"
-    PROPOSALS ||--o{ TRADES : "proposalId"
     PROPOSALS ||--o{ TRADE_EXECUTIONS : "proposalId"
     PROPOSALS ||--o{ PERP_POSITIONS : "proposalId"
     PROPOSALS ||--o{ PROPOSAL_DECISIONS : "proposalId"
-    PROPOSALS ||--o{ PROPOSALS : "overriddenByProposalId"
-    X_ACCOUNTS ||--o{ TWEETS : "authorId"
-    NEWS_SITES ||--o{ NEWS_ARTICLES : "siteUrl"
+    PROPOSALS o|--o{ PROPOSALS : "overriddenByProposalId"
+
     TRADE_EXECUTIONS ||--o{ PERP_POSITIONS : "executionId"
-    TRADE_EXECUTIONS ||--o{ PROPOSAL_DECISIONS : "executionId"
-    %% thiếu dữ liệu: trade_executions va proposal_decisions duoc ghi truc tiep trong API, khong thay Mongoose schema rieng
+    TRADE_EXECUTIONS o|--o{ PROPOSAL_DECISIONS : "executionId"

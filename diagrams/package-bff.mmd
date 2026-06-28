@@ -1,0 +1,34 @@
+flowchart LR
+    %% Hinh 4.4 - Bieu do phu thuoc goi API / BFF
+
+    subgraph BFF["API / BFF (apps/web)"]
+        direction LR
+
+        subgraph ROUTES["Route Handlers - app/api"]
+            direction TB
+            AUTH_API["Auth and User API"]
+            SIGNAL_API["Signal and Proposal API"]
+            PORTFOLIO_API["Portfolio and Watchlist API"]
+            TRADE_API["Trade API"]
+            MARKET_API["Token and Model Health API"]
+        end
+
+        AUTH["Auth and Session"]
+        MAPPING["DTO Mapping"]
+        DATA["Data Access"]
+
+        ROUTES -. "uses" .-> AUTH
+        ROUTES -. "maps DTOs" .-> MAPPING
+        ROUTES -. "reads and writes" .-> DATA
+        AUTH -. "loads session data" .-> DATA
+    end
+
+    classDef route fill:#E8F1FF,stroke:#315A8A,stroke-width:1.5px,color:#111;
+    classDef auth fill:#FCECEC,stroke:#9B4A4A,stroke-width:1.5px,color:#111;
+    classDef mapping fill:#EAF7EE,stroke:#357A4B,stroke-width:1.5px,color:#111;
+    classDef data fill:#FFF4D6,stroke:#9A6B16,stroke-width:2px,color:#111;
+
+    class AUTH_API,SIGNAL_API,PORTFOLIO_API,TRADE_API,MARKET_API route;
+    class AUTH auth;
+    class MAPPING mapping;
+    class DATA data;

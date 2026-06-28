@@ -12,8 +12,9 @@
   "scripts": {
     "dev": "turbo run dev",
     "dev:phase2": "node scripts/run-concurrent.mjs \"npm run scraper\" \"npm run metrics\" \"npm run weights\" \"npm run signal\"",
-    "pipeline:batch": "npm run scraper && npm run news && npm run prices:backfill:1d && npm run metrics && npm run regime && npm run weights && npm run signal && npm --workspace @gr2/layer3 run layer3 -- --limit=200 && npm run backtest:outcome",
-    "pipeline": "npm --workspace @gr2/run run dev",
+    "pipeline": "npm run pipeline:core",
+    "pipeline:core": "npm --workspace @gr2/run run dev",
+    "pipeline:batch": "npm run pipeline:core",
     "pipeline:scheduler": "npm --workspace @gr2/run run dev:scheduler",
     "build": "turbo run build",
     "scraper": "npm --workspace x-scaper run scraper",
@@ -32,8 +33,7 @@
     "demo:backtest": "npm run backtest:outcome",
     "demo:prepare-data": "npm run demo:backfill-prices && npm run backtest:outcome",
     "lint": "turbo run lint",
-    "test": "turbo run test",
-    "pipeline:core": "npm run scraper && npm run news && npm run metrics && npm run regime && npm run weights && npm run signal && npm --workspace @gr2/layer3 run layer3 -- --limit=200 && npm run backtest:outcome"
+    "test": "turbo run test"
   },
   "keywords": [],
   "author": "",

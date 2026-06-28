@@ -6,6 +6,8 @@ import {
 } from "@gr2/shared";
 import { TokenPriceService } from "../src/index.js";
 
+let hourlyBackfillRunning = false;
+
 function readNumberArg(name: string, fallback: number): number {
   const prefix = `--${name}=`;
   const raw = process.argv.find((arg) => arg.startsWith(prefix));
@@ -24,24 +26,47 @@ function readNonNegativeNumberArg(name: string, fallback: number): number {
   return Number.isFinite(value) && value >= 0 ? value : fallback;
 }
 
-async function runHourlyBackfill() {
-  const result = await TokenPriceService.backfillHistoricalPrices({
-    concurrency: readNumberArg("concurrency", 1),
-    days: readNumberArg("days", 0.05),
-    delayMs: readNonNegativeNumberArg("delay-ms", 15000),
-    existingToleranceMinutes: readNumberArg("existing-tolerance-minutes", 90),
-    intervalHours: readNumberArg("interval-hours", 1),
-    maxRetries: readNumberArg("max-retries", 3),
-    recentOnlyDays: readNumberArg("recent-only-days", 1),
-    retryDelayMs: readNonNegativeNumberArg("retry-delay-ms", 60000),
-    skipExisting: true,
-    targetHoursAgo: readNumberArg("target-hours-ago", 1),
-  });
+async function runHourlyBackfill(trigger: "startup" | "cron") {
+  if (hourlyBackfillRunning) {
+    console.warn(JSON.stringify({
+      status: "SKIPPED_OVERLAP",
+      trigger,
+      reason: "Previous hourly price backfill is still running.",
+      skippedAt: new Date().toISOString(),
+    }, null, 2));
+    return;
+  }
 
-  console.log(JSON.stringify({
-    ...result,
-    ranAt: new Date().toISOString(),
-  }, null, 2));
+  hourlyBackfillRunning = true;
+  const startedAt = new Date();
+  const configuredBatchSize = Number(process.env.PRICE_HISTORY_BATCH_SIZE ?? 50);
+
+  try {
+    const result = await TokenPriceService.capturePriceHistorySnapshot({
+      batchSize: readNumberArg(
+        "batch-size",
+        Number.isFinite(configuredBatchSize) && configuredBatchSize > 0
+          ? configuredBatchSize
+          : 50
+      ),
+      delayMs: readNonNegativeNumberArg("delay-ms", 15000),
+      maxRetries: readNumberArg("max-retries", 3),
+      retryDelayMs: readNonNegativeNumberArg("retry-delay-ms", 60000),
+    });
+    const finishedAt = new Date();
+
+    console.log(JSON.stringify({
+      ...result,
+      trigger,
+      startedAt: startedAt.toISOString(),
+      ranAt: finishedAt.toISOString(),
+      durationSeconds: Math.round(
+        (finishedAt.getTime() - startedAt.getTime()) / 1000
+      ),
+    }, null, 2));
+  } finally {
+    hourlyBackfillRunning = false;
+  }
 }
 
 async function main() {
@@ -49,11 +74,11 @@ async function main() {
   const cronExpression = process.env.PRICE_HISTORY_BACKFILL_CRON || "0 * * * *";
   console.log(`Backfill token price history hourly cron: ${cronExpression}`);
 
-  await runHourlyBackfill();
+  await runHourlyBackfill("startup");
 
   cron.schedule(cronExpression, async () => {
     try {
-      await runHourlyBackfill();
+      await runHourlyBackfill("cron");
     } catch (error) {
       console.error("Hourly price history backfill failed:", error);
     }

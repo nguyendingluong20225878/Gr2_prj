@@ -1,0 +1,44 @@
+flowchart TB
+    %% Hinh 4.5 - Bieu do phu thuoc goi Core
+
+    subgraph CORE["core"]
+        direction TB
+
+        RUN["Pipeline Orchestrator<br/>core/run"]
+
+        subgraph PIPELINE["Core Pipeline Packages"]
+            direction LR
+            X["X Scraper<br/>core/x-scaper"]
+            NEWS["News Scraper<br/>core/news-scraper"]
+            RESEARCH["Research<br/>core/research"]
+            SIGNAL["Signal Detector<br/>core/signal-detector"]
+            LAYER3["Layer 3<br/>core/layer3"]
+        end
+
+        PRICE["Independent Price Job<br/>core/token-price-fetcher"]
+        SHARED["Shared Data Access<br/>core/shared"]
+
+        RUN -. "orchestrates" .-> X
+        RUN -. "orchestrates" .-> NEWS
+        RUN -. "orchestrates" .-> RESEARCH
+        RUN -. "orchestrates" .-> SIGNAL
+        RUN -. "orchestrates" .-> LAYER3
+        RUN -. "uses" .-> SHARED
+
+        X -. "uses" .-> SHARED
+        NEWS -. "uses" .-> SHARED
+        RESEARCH -. "uses" .-> SHARED
+        SIGNAL -. "uses" .-> SHARED
+        LAYER3 -. "uses" .-> SHARED
+        PRICE -. "uses" .-> SHARED
+    end
+
+    classDef runner fill:#E8F1FF,stroke:#315A8A,stroke-width:2px,color:#111;
+    classDef pipeline fill:#EAF7EE,stroke:#357A4B,stroke-width:1.5px,color:#111;
+    classDef independent fill:#FCECEC,stroke:#9B4A4A,stroke-width:1.5px,color:#111;
+    classDef shared fill:#FFF4D6,stroke:#9A6B16,stroke-width:2px,color:#111;
+
+    class RUN runner;
+    class X,NEWS,RESEARCH,SIGNAL,LAYER3 pipeline;
+    class PRICE independent;
+    class SHARED shared;

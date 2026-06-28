@@ -1,0 +1,40 @@
+flowchart LR
+    %% Hinh 4.3 - Bieu do phu thuoc goi Frontend
+
+    subgraph FRONTEND["Frontend / Client - apps/web"]
+        direction TB
+
+        PAGES["Routes and Pages<br/>app/*/page.tsx"]
+        COMPONENTS["UI Components<br/>app/components"]
+        CONTEXTS["Context Providers<br/>app/contexts"]
+        HOOKS["Data Hooks<br/>lib/hooks"]
+        UTILS["UI Utilities<br/>lib/utils"]
+        CONFIG["Frontend Config<br/>app/config, lib/config"]
+
+        PAGES -. "uses" .-> COMPONENTS
+        PAGES -. "uses state" .-> CONTEXTS
+        PAGES -. "uses data" .-> HOOKS
+        PAGES -. "formats and derives" .-> UTILS
+        PAGES -. "uses" .-> CONFIG
+
+        COMPONENTS -. "uses state" .-> CONTEXTS
+        COMPONENTS -. "uses data types" .-> HOOKS
+        COMPONENTS -. "formats display data" .-> UTILS
+    end
+
+    BFF["API / BFF<br/>apps/web/app/api"]
+
+    HOOKS -. "fetch / SWR" .-> BFF
+    CONTEXTS -. "authentication requests" .-> BFF
+
+    classDef page fill:#E8F1FF,stroke:#315A8A,stroke-width:2px,color:#111;
+    classDef ui fill:#EEF7FF,stroke:#4A7199,stroke-width:1.5px,color:#111;
+    classDef state fill:#EAF7EE,stroke:#357A4B,stroke-width:1.5px,color:#111;
+    classDef support fill:#FFF4D6,stroke:#9A6B16,stroke-width:1.5px,color:#111;
+    classDef external fill:#FCECEC,stroke:#9B4A4A,stroke-width:2px,color:#111;
+
+    class PAGES page;
+    class COMPONENTS ui;
+    class CONTEXTS,HOOKS state;
+    class UTILS,CONFIG support;
+    class BFF external;
